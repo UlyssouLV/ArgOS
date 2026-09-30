@@ -1,10 +1,12 @@
-"""Le Flux de cam1, vu de l'extérieur : RTSP conforme et playlist HLS."""
+"""Les Flux des Caméras simulées, vus de l'extérieur : RTSP conforme et playlist HLS."""
 
 import json
 import subprocess
 import urllib.request
 
-from conftest import HOTE, PORT_HLS, PORT_RTSP
+import pytest
+
+from conftest import CAMERAS_SIMULEES, HOTE, PORT_HLS, PORT_RTSP
 
 IMAGE_FFPROBE = "linuxserver/ffmpeg:version-7.1-cli"
 # Le conteneur ffprobe joint l'hôte via ses ports publiés, comme un client du réseau local.
@@ -33,8 +35,9 @@ def ffprobe(camera: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_cam1_diffuse_du_h264_1280x720_decodable():
-    resultat = ffprobe("cam1")
+@pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
+def test_diffuse_du_h264_1280x720_decodable(camera):
+    resultat = ffprobe(camera)
 
     assert resultat.returncode == 0, resultat.stderr
     (flux,) = json.loads(resultat.stdout)["streams"]
@@ -43,8 +46,9 @@ def test_cam1_diffuse_du_h264_1280x720_decodable():
     assert int(flux["nb_read_frames"]) >= 1
 
 
-def test_cam1_a_une_playlist_hls():
-    url = f"http://{HOTE}:{PORT_HLS}/cam1/index.m3u8"
+@pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
+def test_a_une_playlist_hls(camera):
+    url = f"http://{HOTE}:{PORT_HLS}/{camera}/index.m3u8"
 
     with urllib.request.urlopen(url, timeout=10) as reponse:
         assert reponse.status == 200

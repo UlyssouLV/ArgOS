@@ -18,7 +18,7 @@ Chaque `camN.mp4` est diffusé en boucle par MediaMTX sur `rtsp://<hôte>:8554/c
 - Keyframe ~2 s, ≤ 50 Mo
 - Diffusion MediaMTX en **copie de flux** (`-c copy`), sans réencodage à la volée
 
-La conversion est faite **une fois**, avant commit (ffmpeg en conteneur, seul prérequis : Docker). État : `cam1.mp4` converti ; `cam2.mp4` et `cam3.mp4` encore au format source.
+La conversion est faite **une fois**, avant commit (ffmpeg en conteneur, seul prérequis : Docker). État : `cam1.mp4`, `cam2.mp4` et `cam3.mp4` convertis.
 
 ## Conversion (référence)
 

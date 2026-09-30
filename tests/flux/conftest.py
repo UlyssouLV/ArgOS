@@ -1,4 +1,4 @@
-"""Fixture de session : la stack Docker Compose tourne et cam1 est prête."""
+"""Fixture de session : la stack Docker Compose tourne et les Caméras simulées sont prêtes."""
 
 import subprocess
 import time
@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HOTE = "localhost"
 PORT_RTSP = 8554
 PORT_HLS = 8888
-CAMERAS_SIMULEES = ["cam1"]
+CAMERAS_SIMULEES = ["cam1", "cam2", "cam3"]
 DELAI_PRET_S = 60
 
 
