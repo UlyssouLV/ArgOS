@@ -1,0 +1,16 @@
+[project]
+name = "argos-tests-flux"
+version = "0.1.0"
+description = "Tests de bout en bout des Flux des Caméras simulées (vus de l'extérieur de la stack)."
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+addopts = "-ra"

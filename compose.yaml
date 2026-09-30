@@ -1,0 +1,15 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.1-ffmpeg
+    restart: unless-stopped
+    volumes:
+      - ./media/mediamtx.yml:/mediamtx.yml:ro
+      - ./media/simulated:/media/simulated:ro
+    ports:
+      - "8554:8554"  # RTSP
+      - "8888:8888"  # HLS
+      - "8889:8889"  # WebRTC (page et signalisation)
+      - "8189:8189/udp"  # WebRTC (ICE)
+    environment:
+      # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
+      MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
