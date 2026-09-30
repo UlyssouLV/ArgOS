@@ -3,8 +3,10 @@
 
 rtspAddress: :8554
 hlsAddress: :8888
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+# Candidats ICE annoncés aux navigateurs : voir MTX_WEBRTCADDITIONALHOSTS dans compose.yaml.
 
-webrtc: no
 rtmp: no
 srt: no
 moq: no
