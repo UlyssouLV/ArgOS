@@ -1,0 +1,10 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.1-ffmpeg
+    restart: unless-stopped
+    volumes:
+      - ./media/mediamtx.yml:/mediamtx.yml:ro
+      - ./media/simulated:/media/simulated:ro
+    ports:
+      - "8554:8554"  # RTSP
+      - "8888:8888"  # HLS

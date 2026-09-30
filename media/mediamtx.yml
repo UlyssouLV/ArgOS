@@ -1,0 +1,20 @@
+# MediaMTX : Caméras simulées de dev.
+# Chaque chemin camN diffuse media/simulated/camN.mp4 en boucle, sans réencodage.
+
+rtspAddress: :8554
+hlsAddress: :8888
+
+webrtc: no
+rtmp: no
+srt: no
+moq: no
+
+pathDefaults:
+  runOnInit: >-
+    ffmpeg -hide_banner -loglevel error
+    -re -stream_loop -1 -i /media/simulated/$MTX_PATH.mp4
+    -c copy -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+  runOnInitRestart: yes
+
+paths:
+  cam1:
