@@ -11,6 +11,8 @@ Contraintes transverses :
 
 ## 0.1.0 — Flux RTSP simulés
 
+**Livrée** ([PR #5](https://github.com/UlyssouLV/ArgOS/pull/5)).
+
 Rendre disponibles un ou plusieurs flux RTSP de test via MediaMTX (et source vidéo en boucle), vérifiables en CLI et dans le navigateur, avec tests automatisés qui échouent si le tuyau est cassé.
 
 ## 0.2.0 — API Site, auth et caméras

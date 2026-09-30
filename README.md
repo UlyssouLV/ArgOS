@@ -47,6 +47,31 @@ docker compose up -d --wait                # recrée le conteneur avec la nouvel
 
 Puis ouvrir `http://<IP>:8889/camN` depuis un téléphone ou une tablette du même réseau.
 
+## Comment circulent les Flux
+
+Pour chaque Caméra simulée, MediaMTX lance un ffmpeg qui lit `camN.mp4` au rythme réel, en boucle, **sans réencodage** (`-c copy`), et le publie en RTSP sur le chemin `camN`. MediaMTX joue alors le rôle d’une caméra IP. Il ressert les **mêmes images H.264** sous trois emballages :
+
+| Protocole | Chemin | Retard | Pour qui |
+|-----------|--------|--------|----------|
+| RTSP (8554/tcp) | une connexion TCP ; paquets RTP en continu | direct | VLC, ffprobe, backend |
+| HLS (8888/tcp) | page + lecteur JS ; playlist `index.m3u8` relue en boucle ; morceaux MP4 d’environ 1 s téléchargés en HTTP | plusieurs secondes | navigateur |
+| WebRTC (8889/tcp + 8189/udp) | page + lecteur JS ; négociation HTTP (`/camN/whep`), où MediaMTX annonce les adresses où le joindre (candidats ICE) ; puis RTP chiffré en UDP | < 1 s | navigateur (Live) |
+
+Les navigateurs ne lisent pas le RTSP : HLS et WebRTC servent de pont. WebRTC a besoin de l’IP de la machine dans `.env`, parce que sous Docker Desktop, MediaMTX ne voit que son IP interne de conteneur et ne peut pas annoncer celle du réseau local.
+
+### Rôle de chaque protocole dans ArgOS
+
+```
+Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offline, plus tard enregistrement, IA)
+                               └─RTSP──▶ MediaMTX ──WebRTC (ou HLS)──▶ navigateur (onglet Live)
+```
+
+- **RTSP, en entrée** : protocole des caméras IP. Une Caméra est identifiée par son URL RTSP (voir `CONTEXT.md`). Ajouter une Caméra au Site (0.2.0), c’est d’abord enregistrer cette URL.
+- **WebRTC, en sortie** : candidat pour le Live (0.3.0 / 1.0.0), grâce à son faible retard. HLS reste une solution de secours.
+- **Contrat de la 0.1.0** : 3 URL RTSP stables, en H.264 1280×720, visibles dans un navigateur. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
+
+Pas encore décidé (à trancher à l’ouverture de la 0.2.0 / 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
+
 ## Vérifier un Flux en CLI
 
 ```bash
