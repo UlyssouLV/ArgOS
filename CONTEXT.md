@@ -27,3 +27,7 @@ _Avoid_ : Stream, feed
 **Caméra simulée** :
 Caméra dont le Flux est produit par MediaMTX à partir d’une vidéo de dev, en remplacement d’un appareil réel.
 _Avoid_ : Flux simulé, fausse caméra, mock
+
+**Live** :
+La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à la suivante.
+_Avoid_ : mur d'images, mosaïque, visionneuse

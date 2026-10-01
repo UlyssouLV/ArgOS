@@ -1,0 +1,217 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1d2328;
+  background: #f4f5f7;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #1d2328;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+input {
+  font: inherit;
+  padding: 0.4rem;
+  border: 1px solid #9aa3ab;
+  border-radius: 4px;
+}
+
+.chargement {
+  padding: 2rem;
+}
+
+.connexion {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.connexion form {
+  display: grid;
+  gap: 1rem;
+  width: min(22rem, 90vw);
+  padding: 2rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+}
+
+.connexion h1 {
+  margin: 0;
+  text-align: center;
+}
+
+.connexion label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.erreur {
+  margin: 0;
+  color: #b3261e;
+}
+
+.en-tete {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.6rem 1.5rem;
+  background: #1d2328;
+  color: #fff;
+}
+
+.marque {
+  font-weight: bold;
+}
+
+.onglets {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+}
+
+.onglets a {
+  color: #c9d1d9;
+  text-decoration: none;
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.onglets a.active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+.contenu {
+  padding: 1.5rem;
+}
+
+.administration h2 {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.formulaire-camera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.formulaire-camera label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.formulaire-camera input[name="url_rtsp"] {
+  width: 24rem;
+}
+
+.formulaire-camera .boutons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.formulaire-camera .erreur {
+  flex-basis: 100%;
+}
+
+.cameras {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.cameras th,
+.cameras td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #dde1e5;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.cameras .url {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.cameras .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.etat {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e3e6ea;
+}
+
+.etat-online {
+  background: #d3f0dc;
+  color: #145a2b;
+}
+
+.etat-offline {
+  background: #f8d7d5;
+  color: #8c1d18;
+}
+
+button.danger {
+  border-color: #b3261e;
+  color: #b3261e;
+}
+
+.live-en-tete {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.live-en-tete h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.live-en-tete button {
+  margin-left: auto;
+}
+
+.lecteur {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 12rem);
+  background: #000;
+}
+
+.lecteur video {
+  width: 100%;
+  height: 100%;
+}
+
+.flux-indisponible {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  background: #1d2328;
+  color: #fff;
+  font-size: 1.2rem;
+}

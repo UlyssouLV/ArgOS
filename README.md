@@ -8,12 +8,15 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
 
-Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`).
+
+Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`. Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose
-- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12)
+- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright (voir [Tests](#tests))
+- Pour lancer le front en dev seulement : Node 24 (npm)
 
 Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
 
@@ -35,11 +38,11 @@ Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identif
 **1. Démarrer la stack**
 
 ```bash
-docker compose up -d --build --wait   # Caméras simulées (mediamtx), API (api) et base (db)
-docker compose ps                      # attendu : api et db « healthy », mediamtx « Up »
+docker compose up -d --build --wait   # Caméras simulées (mediamtx), API (api), base (db) et UI (web)
+docker compose ps                      # attendu : api, db, mediamtx et web « healthy »
 ```
 
-Au premier lancement, Docker construit l’image de l’API. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
+Au premier lancement, Docker construit les images de l’API et de l’UI. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
 
 **2. Se connecter en tant qu’Administrateur**
 
@@ -111,6 +114,63 @@ docker compose down      # arrête ; Caméras et sessions restent dans le volume
 docker compose down -v   # arrête et efface la base (repartir de zéro : refaire l’étape 3)
 ```
 
+## UI
+
+Ouvrir **http://localhost:8080** et se connecter avec `ARGOS_IDENTIFIANT` / `ARGOS_MOT_DE_PASSE` de `.env`. L’en-tête montre les onglets **Administration** et **Live**, l’identifiant connecté et le bouton **Déconnexion**. Une session absente ou expirée renvoie sur `/connexion`, puis à la page demandée après connexion.
+
+### Administration
+
+L’onglet **Administration** couvre toute la gestion des Caméras :
+
+- la liste de toutes les Caméras (nom, emplacement, hôte:port, URL avec le mot de passe RTSP masqué, active ou désactivée, état `unknown` / `online` / `offline`, dernière vérification), rafraîchie toute seule toutes les 10 s ;
+- **Nouvelle Caméra** : nom, URL RTSP, emplacement facultatif ;
+- **Modifier** : nom, URL, emplacement. L’URL s’affiche masquée (`rtsp://user:***@…`) : la laisser telle quelle conserve le mot de passe RTSP enregistré ;
+- un refus de l’API s’affiche dans le formulaire : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
+- **Désactiver** / **Réactiver** ;
+- **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression**.
+
+**Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). Dans **Nouvelle Caméra**, créer :
+
+| Nom | URL RTSP |
+|---|---|
+| Caméra simulée 1 | `rtsp://mediamtx:8554/cam1` |
+| Caméra simulée 2 | `rtsp://mediamtx:8554/cam2` |
+| Caméra simulée 3 | `rtsp://mediamtx:8554/cam3` |
+
+Elles passent `online` en 15 s au plus, sans recharger la page. Pourquoi `mediamtx` et pas `localhost` : voir [Ajouter les Caméras simulées](#ajouter-les-caméras-simulées).
+
+Le conteneur `web` ne sert que les fichiers statiques. Le front appelle l’API sur **le même hôte que la page**, port 8000, avec le cookie de session (CORS avec credentials, voir [docs/securite.md](docs/securite.md#ui-et-api--deux-origines-cors-avec-credentials)) : le même build marche via `localhost` ou l’IP du réseau local. Pour ouvrir l’UI depuis un autre appareil (`http://<IP>:8080`), ajouter cette origine dans `.env`, puis `docker compose up -d --wait` :
+
+```bash
+ARGOS_ORIGINES_AUTORISEES=http://localhost:8080,http://localhost:5173,http://192.168.1.20:8080
+```
+
+### Live
+
+L’onglet **Live** montre en grand le Flux d’**une** Caméra active à la fois, en WebRTC (moins d’une seconde de retard) :
+
+- les Caméras actives sont prises dans l’ordre des noms ; le Live s’ouvre sur la première ;
+- **Suivant** (ou la flèche droite) passe à la suivante, puis revient à la première après la dernière ;
+- au-dessus de la vidéo : nom, emplacement et état de la Caméra (rafraîchi toutes les 10 s) ;
+- aucune Caméra active : un message renvoie vers **Administration** ;
+- la vidéo ne vient pas ou se coupe : **Flux indisponible**, puis nouvelle tentative toutes les 5 s. Une Caméra tout juste créée ou réactivée peut mettre jusqu’à 10 s à être relayée : le Live la rattrape seul.
+
+Le front lit le Flux par un client **WHEP** : `POST http://<hôte>:8889/<chemin_flux>/whep` (offre SDP), puis la vidéo arrive dans un `<video>`. Pas d’iframe ni de HLS. Changer de Caméra ferme la connexion WebRTC précédente : une seule est ouverte à la fois. `<chemin_flux>` (`camera-<id>`) vient de l’API.
+
+WebRTC fait passer la vidéo en **UDP 8189** : ce port doit être joignable depuis le navigateur. Pour regarder le Live depuis un autre appareil du réseau local, `MTX_WEBRTCADDITIONALHOSTS` doit contenir l’IP de la machine (voir [WebRTC sur le réseau local](#webrtc-sur-le-réseau-local)), en plus de l’origine dans `ARGOS_ORIGINES_AUTORISEES`.
+
+### Front en dev
+
+Contre la stack lancée (étape 1), sans reconstruire l’image :
+
+```bash
+cd web
+npm install
+npm run dev     # http://localhost:5173, rechargement à chaud
+```
+
+`http://localhost:5173` est autorisée par défaut. Port de l’API différent : `VITE_ARGOS_PORT_API=8001 npm run dev` (vaut aussi pour `npm run build`).
+
 ## API du Site
 
 Écoute sur `http://localhost:8000` (HTTP simple : voir [docs/securite.md](docs/securite.md)). Documentation OpenAPI interactive : **`http://localhost:8000/api/docs`**.
@@ -137,7 +197,7 @@ PostgreSQL n’a aucun port publié : seul `api` le joint. Pour l’inspecter : 
 
 ### Ajouter les Caméras simulées
 
-La base démarre vide : déclarer les Caméras simulées avec l’étape 3 du [protocole de lancement](#protocole-de-lancement).
+La base démarre vide : déclarer les Caméras simulées depuis l’onglet [Administration](#administration) de l’UI, ou avec l’étape 3 du [protocole de lancement](#protocole-de-lancement).
 
 L’URL est `rtsp://mediamtx:8554/camN`, pas `rtsp://localhost:8554/camN` : c’est le conteneur `api` qui sonde la Caméra, et dans ce conteneur `localhost` désigne `api` lui-même. `mediamtx` est le nom du service MediaMTX sur le réseau interne de Docker Compose. Une vraie caméra se déclare avec son adresse sur le réseau local (`rtsp://user:motdepasse@192.168.1.50/...`).
 
@@ -170,7 +230,7 @@ ipconfig getifaddr en0                     # IP de la machine sur Mac (Linux : h
 docker compose up -d --wait                # recrée le conteneur avec la nouvelle valeur
 ```
 
-Puis ouvrir `http://<IP>:8889/camN` depuis un téléphone ou une tablette du même réseau.
+Puis ouvrir `http://<IP>:8889/camN` depuis un téléphone ou une tablette du même réseau. Le [Live](#live) de l’UI en a besoin aussi, avec l’UDP 8189 joignable.
 
 ## Comment circulent les Flux
 
@@ -192,10 +252,10 @@ Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offli
 ```
 
 - **RTSP, en entrée** : protocole des caméras IP. Une Caméra est identifiée par son URL RTSP (voir `CONTEXT.md`). Ajouter une Caméra au Site (0.2.0), c’est d’abord enregistrer cette URL.
-- **WebRTC, en sortie** : candidat pour le Live (0.3.0 / 1.0.0), grâce à son faible retard. HLS reste une solution de secours.
+- **WebRTC, en sortie** : protocole du Live (0.3.0), grâce à son faible retard. MediaMTX relaie chaque Caméra active sur `camera-<id>` ([ADR 0001](docs/adr/0001-mediamtx-en-pont.md)).
 - **Contrat de la 0.1.0** : 3 URL RTSP stables, en H.264 1280×720, visibles dans un navigateur. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
 
-Pas encore décidé (reporté à l’ouverture de la 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
+Décidé en 0.3.0 : le Live lit en WebRTC uniquement, et l’API ajoute elle-même chaque Caméra active comme chemin MediaMTX (API de contrôle, source = URL RTSP de la Caméra), dans le même MediaMTX que les Caméras simulées.
 
 ## Vérifier un Flux en CLI
 
@@ -211,29 +271,40 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`.
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`) ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`, `tests/web/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
 cd tests/api && uv run pytest
 cd tests/regles-sessions && uv run pytest
+cd tests/web && uv run pytest
+```
+
+`tests/web/` a besoin de Chromium pour Playwright, à installer une fois :
+
+```bash
+cd tests/web && uv sync && uv run playwright install chromium
 ```
 
 - `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
 - `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `rtsp://mediamtx:8554/cam1`, `offline` sur une URL injoignable ou `cam404`, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : Caméra créée sur `cam1` qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active) ; Live : première Caméra active par nom dont la `<video>` joue vraiment (`currentTime` qui avance), Suivant puis flèche droite qui font le tour en gardant une seule connexion WebRTC ouverte, message avec lien vers Administration sans Caméra active, « Flux indisponible » sur une URL injoignable. Les tests Live désactivent les Caméras actives existantes le temps du test, puis les réactivent. Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
+- `tests/api/` couvre aussi le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
 
 ```
-compose.yaml              Stack Docker Compose (mediamtx, api, db)
-.env.example              Clés de .env (Administrateur, WebRTC réseau local, Sonar)
+compose.yaml              Stack Docker Compose (mediamtx, api, db, web)
+.env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
 api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
-media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
+web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
+media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, API de contrôle (pont), ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
 tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
+tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
 docs/dev/                 Feuille de route de dev
 docs/specs/               Specs de version et contexte initial
 docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
@@ -246,7 +317,7 @@ AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 - Standards ouverts (RTSP, ONVIF, H.264/H.265, Docker)
 - Caméras abstraites (réelles ou simulées via MediaMTX) — pas de lock-in fabricant
 - Modularité : chaque brique testable ; IA, ONVIF, PTZ optionnels
-- PostgreSQL pour les données ; UI web React (navigateur / kiosque) prévue
+- PostgreSQL pour les données ; UI web React (navigateur / kiosque)
 - Intent open source pendant le développement (licence formelle à la première release)
 
 Hypothèses et notes de conception du moment (non figées) : [docs/specs/contexte-initial.md](docs/specs/contexte-initial.md).

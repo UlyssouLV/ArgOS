@@ -10,6 +10,7 @@ services:
       - "8888:8888"  # HLS
       - "8889:8889"  # WebRTC (page et signalisation)
       - "8189:8189/udp"  # WebRTC (ICE)
+      # 9997 (API de contrôle, pilotée par api) volontairement non publié : réseau Compose seulement (docs/securite.md).
     environment:
       # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
@@ -30,8 +31,21 @@ services:
       # Sonde de l'état des Caméras : voir .env.example.
       ARGOS_SONDE_INTERVALLE_S: ${ARGOS_SONDE_INTERVALLE_S:-10}
       ARGOS_SONDE_DELAI_S: ${ARGOS_SONDE_DELAI_S:-5}
+      # Origines de l'UI autorisées à appeler l'API avec le cookie : voir .env.example.
+      ARGOS_ORIGINES_AUTORISEES: ${ARGOS_ORIGINES_AUTORISEES:-http://localhost:8080,http://localhost:5173}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # UI (fichiers statiques ; appelle l'API sur le même hôte, port 8000)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 2s
       timeout: 5s
       retries: 30

@@ -26,9 +26,15 @@ Les identifiants RTSP (dans l’URL) sont stockés **en clair** en base pour l�
 
 ## 0.3.0 — UI login, Admin et Live
 
-Livrer le frontend React : connexion, onglet Administration (gérer les caméras) et onglet Live (une image en grand, navigation vers la caméra suivante), branché sur l’API.
+**Livrée** ([PR #17](https://github.com/UlyssouLV/ArgOS/pull/17)).
+
+Livrer le frontend React (conteneur `web`) branché sur l’API : connexion, onglet **Administration** (gérer les Caméras, voir leur état) et onglet **Live** (le Flux d’une Caméra active en grand, passage à la suivante).
+
+La vidéo arrive dès cette version : le Live lit le Flux en **WebRTC** (client WHEP dans le front), depuis **MediaMTX en pont** : l’API réconcilie les Caméras actives avec des chemins MediaMTX `camera-<id>` qui relaient leur URL RTSP, sans réencodage ([ADR 0001](../adr/0001-mediamtx-en-pont.md)).
 
 ## 1.0.0 — Fil rouge Site → Live RTSP
+
+**À redéfinir** : la vidéo arrive en 0.3.0.
 
 Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras.
 
