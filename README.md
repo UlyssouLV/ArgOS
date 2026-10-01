@@ -6,7 +6,9 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 ## Quoi
 
-Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local. Pas encore d’API Site ni d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
+
+Version **0.2.0** (en cours) : l’**API du Site** (FastAPI + PostgreSQL). Pour l’instant, l’Administrateur s’y connecte et s’en déconnecte. Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -15,12 +17,47 @@ Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). Media
 
 Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
 
+## Configurer `.env`
+
+`.env` est ignoré par git : les secrets n’entrent jamais dans le dépôt. Les clés sont décrites dans `.env.example`.
+
+```bash
+cp .env.example .env
+# dans .env : ARGOS_IDENTIFIANT=… et ARGOS_MOT_DE_PASSE=… (mot de passe long recommandé)
+```
+
+`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut).
+
 ## Lancer / arrêter
 
 ```bash
-docker compose up -d --wait   # lance les Caméras simulées
-docker compose down           # arrête
+docker compose up -d --wait   # lance les Caméras simulées (mediamtx), l’API (api) et sa base (db)
+docker compose down           # arrête ; les données de la base restent dans le volume donnees-db
 ```
+
+Au premier lancement, Docker construit l’image de l’API. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle.
+
+## API du Site
+
+Écoute sur `http://localhost:8000` (HTTP simple : voir [docs/securite.md](docs/securite.md)). Documentation OpenAPI interactive : **`http://localhost:8000/api/docs`**.
+
+| Route | Effet |
+|-------|-------|
+| `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
+| `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
+| `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
+
+Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
+
+```bash
+curl -c cookies.txt -X POST http://localhost:8000/api/session \
+  -H 'Content-Type: application/json' \
+  -d '{"identifiant": "…", "mot_de_passe": "…"}'
+curl -b cookies.txt http://localhost:8000/api/moi
+curl -b cookies.txt -X DELETE http://localhost:8000/api/session
+```
+
+PostgreSQL n’a aucun port publié : seul `api` le joint. Pour l’inspecter : `docker compose exec db psql -U argos`.
 
 ## Flux des Caméras simulées
 
@@ -86,25 +123,30 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`.
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans `tests/flux/` ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
+cd tests/api && uv run pytest
 ```
 
-Les tests démarrent la stack si elle ne tourne pas, puis vérifient chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
+- `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
+- `tests/api/` lance `docker compose up -d --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `/api/docs`. Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
 
 ## Structure
 
 ```
-compose.yaml              Stack Docker Compose (MediaMTX)
-.env.example              Clés de .env (WebRTC réseau local, Sonar)
+compose.yaml              Stack Docker Compose (mediamtx, api, db)
+.env.example              Clés de .env (Administrateur, WebRTC réseau local, Sonar)
+api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
 media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
+tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
 docs/dev/                 Feuille de route de dev
 docs/specs/               Specs de version et contexte initial
-CONTEXT.md                Glossaire (Caméra, Flux, Caméra simulée)
+docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
+CONTEXT.md                Glossaire (Site, Administrateur, Caméra, Flux…)
 AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 ```
 

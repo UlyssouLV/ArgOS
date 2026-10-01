@@ -34,3 +34,4 @@ roles:
   test-roots:
     paths:
       - tests/flux/
+      - tests/api/
