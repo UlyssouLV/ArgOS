@@ -1,0 +1,27 @@
+[project]
+name = "argos-tests-regles-sessions"
+version = "0.2.0"
+description = "Tests en processus des règles de session de l'API du Site (horloge et configuration injectées, PostgreSQL de test)."
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+# Mêmes dépendances que api/pyproject.toml : l'application est importée depuis api/ (pythonpath).
+dev = [
+    "pytest>=8",
+    "httpx2",
+    "testcontainers[postgres]>=4.9",
+    "fastapi>=0.115",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "pydantic-settings>=2.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+pythonpath = ["../../api"]
+addopts = "-ra"

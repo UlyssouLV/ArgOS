@@ -70,7 +70,8 @@ def administrateur() -> dict[str, str]:
 
 @pytest.fixture(scope="session", autouse=True)
 def stack(administrateur):
-    compose("up", "-d", "--wait")
+    # --build : les tests visent toujours le code courant de api/, pas une image périmée.
+    compose("up", "-d", "--build", "--wait")
     attendre_api()
 
 

@@ -35,3 +35,4 @@ roles:
     paths:
       - tests/flux/
       - tests/api/
+      - tests/regles-sessions/

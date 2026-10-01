@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -16,4 +16,6 @@ class SessionAdministrateur(Base):
     __tablename__ = "sessions"
 
     empreinte_jeton: Mapped[str] = mapped_column(String(64), primary_key=True)
-    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Empreinte du mot de passe en vigueur à l'ouverture : s'il change, la session est refusée.
+    empreinte_mot_de_passe: Mapped[str] = mapped_column(String(64))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True))

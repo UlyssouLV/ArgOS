@@ -123,15 +123,17 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`.
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`) ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
 cd tests/api && uv run pytest
+cd tests/regles-sessions && uv run pytest
 ```
 
 - `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
-- `tests/api/` lance `docker compose up -d --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `/api/docs`. Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`. Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
 
@@ -143,6 +145,7 @@ media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
+tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
 docs/dev/                 Feuille de route de dev
 docs/specs/               Specs de version et contexte initial
 docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
