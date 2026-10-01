@@ -10,7 +10,7 @@ Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). Media
 
 Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`).
 
-Version **0.3.0** (en cours) : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`. Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`. Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -299,7 +299,7 @@ compose.yaml              Stack Docker Compose (mediamtx, api, db, web)
 .env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
 api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
 web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
-media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
+media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, API de contrôle (pont), ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
