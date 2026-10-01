@@ -29,7 +29,7 @@ Load `.env` the same way **`quality-gate`** does. If any of that skill’s three
 
 Otherwise run **`quality-gate`** as if **`/qg -w`**.
 
-- No analysis for `HEAD` after the wait → continue. One line that Sonar is skipped. Do not `/cqg`.
+- No analysis for `HEAD` after the wait → **stop**. Do not `/cci`. Tell the user Sonar n’a pas encore analysé ce commit (pousser la branche / attendre le workflow `sonarcloud`, puis `/qg -w`).
 - **`OK`** → continue.
 - Not **`OK`** (`ERROR`, `WARN`, …) → run skill **`corriger-quality-gate`** as if **`/cqg`**.
   - That skill stopped without a code change (policy / user needed) → **stop**. No `/cci`.
