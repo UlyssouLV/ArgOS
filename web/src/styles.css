@@ -1,0 +1,100 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1d2328;
+  background: #f4f5f7;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #1d2328;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+input {
+  font: inherit;
+  padding: 0.4rem;
+  border: 1px solid #9aa3ab;
+  border-radius: 4px;
+}
+
+.chargement {
+  padding: 2rem;
+}
+
+.connexion {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.connexion form {
+  display: grid;
+  gap: 1rem;
+  width: min(22rem, 90vw);
+  padding: 2rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+}
+
+.connexion h1 {
+  margin: 0;
+  text-align: center;
+}
+
+.connexion label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.erreur {
+  margin: 0;
+  color: #b3261e;
+}
+
+.en-tete {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.6rem 1.5rem;
+  background: #1d2328;
+  color: #fff;
+}
+
+.marque {
+  font-weight: bold;
+}
+
+.onglets {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+}
+
+.onglets a {
+  color: #c9d1d9;
+  text-decoration: none;
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.onglets a.active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+.contenu {
+  padding: 1.5rem;
+}

@@ -49,6 +49,14 @@ Aujourd'hui, MediaMTX sert les Flux (RTSP, HLS, WebRTC) **sans authentification*
 
 L'API écoute en HTTP sur le port 8000. Sur le Wi-Fi, le mot de passe de l'Administrateur et le cookie de session circulent **en clair** ; le cookie n'a pas l'attribut `Secure`. Il faut HTTPS avant tout usage réel.
 
+### UI et API : deux origines, CORS avec credentials
+
+L'UI (`web`, port 8080) et l'API (port 8000) sont deux **origines** différentes sur le même hôte. Le front appelle l'API avec `credentials: 'include'` : le navigateur joint le cookie de session, et l'API doit l'autoriser par CORS.
+
+- **Origines exactes, jamais `*`** : l'API n'autorise que les origines listées dans `ARGOS_ORIGINES_AUTORISEES` (`.env`, défaut `http://localhost:8080,http://localhost:5173`). Une autre origine ne reçoit pas `Access-Control-Allow-Origin` : le navigateur ne lui laisse pas lire les réponses, et refuse les requêtes qui demandent un préflight (JSON, `PATCH`, `DELETE`).
+- **Sur le réseau local**, ajouter l'adresse ouverte dans le navigateur (ex. `http://192.168.1.20:8080`), sinon l'UI ne peut pas appeler l'API.
+- **Limite « same-site »** : le cookie est `SameSite=Lax`, et le « site » ne tient compte ni du port ni du schéma. **Toute autre application servie sur le même hôte** (autre port) est donc same-site : le navigateur lui envoie le cookie d'ArgOS sur ses requêtes vers l'API. CORS l'empêche de lire les réponses, mais pas d'envoyer une requête « simple » (formulaire `POST`, par exemple) : ne rien héberger d'autre de non fiable sur le serveur d'ArgOS.
+
 ### Accès depuis internet
 
 Passer par un **VPN** (WireGuard, Tailscale…) plutôt que par une redirection de port : le serveur n'est alors joignable que par des appareils authentifiés, et rien n'est exposé à internet.

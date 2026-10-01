@@ -8,12 +8,14 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
 
-Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). 
+Version **0.3.0** (en cours) : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080` et retrouve les onglets **Administration** et **Live** (encore vides). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose
-- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12)
+- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright (voir [Tests](#tests))
+- Pour lancer le front en dev seulement : Node 24 (npm)
 
 Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
 
@@ -35,11 +37,11 @@ Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identif
 **1. Démarrer la stack**
 
 ```bash
-docker compose up -d --build --wait   # Caméras simulées (mediamtx), API (api) et base (db)
-docker compose ps                      # attendu : api et db « healthy », mediamtx « Up »
+docker compose up -d --build --wait   # Caméras simulées (mediamtx), API (api), base (db) et UI (web)
+docker compose ps                      # attendu : api, db, mediamtx et web « healthy »
 ```
 
-Au premier lancement, Docker construit l’image de l’API. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
+Au premier lancement, Docker construit les images de l’API et de l’UI. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
 
 **2. Se connecter en tant qu’Administrateur**
 
@@ -110,6 +112,28 @@ curl -b cookies.txt -X DELETE http://localhost:8000/api/session   # déconnexion
 docker compose down      # arrête ; Caméras et sessions restent dans le volume donnees-db
 docker compose down -v   # arrête et efface la base (repartir de zéro : refaire l’étape 3)
 ```
+
+## UI
+
+Ouvrir **http://localhost:8080** et se connecter avec `ARGOS_IDENTIFIANT` / `ARGOS_MOT_DE_PASSE` de `.env`. L’en-tête montre les onglets **Administration** et **Live**, l’identifiant connecté et le bouton **Déconnexion**. Une session absente ou expirée renvoie sur `/connexion`, puis à la page demandée après connexion.
+
+Le conteneur `web` ne sert que les fichiers statiques. Le front appelle l’API sur **le même hôte que la page**, port 8000, avec le cookie de session (CORS avec credentials, voir [docs/securite.md](docs/securite.md#ui-et-api--deux-origines-cors-avec-credentials)) : le même build marche via `localhost` ou l’IP du réseau local. Pour ouvrir l’UI depuis un autre appareil (`http://<IP>:8080`), ajouter cette origine dans `.env`, puis `docker compose up -d --wait` :
+
+```bash
+ARGOS_ORIGINES_AUTORISEES=http://localhost:8080,http://localhost:5173,http://192.168.1.20:8080
+```
+
+### Front en dev
+
+Contre la stack lancée (étape 1), sans reconstruire l’image :
+
+```bash
+cd web
+npm install
+npm run dev     # http://localhost:5173, rechargement à chaud
+```
+
+`http://localhost:5173` est autorisée par défaut. Port de l’API différent : `VITE_ARGOS_PORT_API=8001 npm run dev` (vaut aussi pour `npm run build`).
 
 ## API du Site
 
@@ -211,29 +235,40 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`.
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`) ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`, `tests/web/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
 cd tests/api && uv run pytest
 cd tests/regles-sessions && uv run pytest
+cd tests/web && uv run pytest
+```
+
+`tests/web/` a besoin de Chromium pour Playwright, à installer une fois :
+
+```bash
+cd tests/web && uv sync && uv run playwright install chromium
 ```
 
 - `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
 - `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `rtsp://mediamtx:8554/cam1`, `offline` sur une URL injoignable ou `cam404`, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion. Les identifiants sont lus dans `.env`.
+- `tests/api/` couvre aussi le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
 
 ```
-compose.yaml              Stack Docker Compose (mediamtx, api, db)
-.env.example              Clés de .env (Administrateur, WebRTC réseau local, Sonar)
+compose.yaml              Stack Docker Compose (mediamtx, api, db, web)
+.env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
 api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
+web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
 media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
 tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
+tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
 docs/dev/                 Feuille de route de dev
 docs/specs/               Specs de version et contexte initial
 docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
@@ -246,7 +281,7 @@ AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 - Standards ouverts (RTSP, ONVIF, H.264/H.265, Docker)
 - Caméras abstraites (réelles ou simulées via MediaMTX) — pas de lock-in fabricant
 - Modularité : chaque brique testable ; IA, ONVIF, PTZ optionnels
-- PostgreSQL pour les données ; UI web React (navigateur / kiosque) prévue
+- PostgreSQL pour les données ; UI web React (navigateur / kiosque)
 - Intent open source pendant le développement (licence formelle à la première release)
 
 Hypothèses et notes de conception du moment (non figées) : [docs/specs/contexte-initial.md](docs/specs/contexte-initial.md).

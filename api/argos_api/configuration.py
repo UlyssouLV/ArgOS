@@ -15,6 +15,13 @@ class Configuration(BaseSettings):
     # Sonde de l'état des Caméras, en secondes.
     intervalle_sonde: float = Field(10, gt=0, validation_alias="ARGOS_SONDE_INTERVALLE_S")
     delai_sonde: float = Field(5, gt=0, validation_alias="ARGOS_SONDE_DELAI_S")
+    # Origines exactes (séparées par des virgules) autorisées à appeler l'API avec le cookie de session.
+    origines_autorisees: str = Field(
+        "http://localhost:8080,http://localhost:5173", validation_alias="ARGOS_ORIGINES_AUTORISEES"
+    )
+
+    def liste_origines_autorisees(self) -> list[str]:
+        return [origine.strip() for origine in self.origines_autorisees.split(",") if origine.strip()]
 
 
 def charger() -> Configuration:

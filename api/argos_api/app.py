@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -57,6 +58,15 @@ def creer_app(
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         redoc_url=None,
+    )
+    # L'UI est servie sur une autre origine (port 8080, ou 5173 en dev) : CORS avec credentials,
+    # jamais `*`, seulement les origines exactes de la configuration (docs/securite.md).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=configuration.liste_origines_autorisees(),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type"],
     )
 
     def base() -> Iterator[Session]:
