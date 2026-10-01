@@ -42,9 +42,9 @@ services:
     build: ./web
     restart: unless-stopped
     ports:
-      - "8080:80"  # UI (fichiers statiques ; appelle l'API sur le même hôte, port 8000)
+      - "8080:8080"  # UI (fichiers statiques ; appelle l'API sur le même hôte, port 8000)
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 2s
       timeout: 5s
       retries: 30

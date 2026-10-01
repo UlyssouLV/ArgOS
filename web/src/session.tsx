@@ -28,12 +28,12 @@ async function lireMoi(): Promise<EtatSession> {
   }
 }
 
-export function FournisseurSession({ children }: { children: ReactNode }) {
+export function FournisseurSession({ children }: Readonly<{ children: ReactNode }>) {
   const [etat, setEtat] = useState<EtatSession>({ etat: "verification" });
 
   useEffect(() => {
     surNonConnecte(() => setEtat({ etat: "deconnecte" }));
-    lireMoi().then(setEtat);
+    void lireMoi().then(setEtat); // lireMoi ne rejette jamais : elle renvoie « déconnecté » en cas d'échec
   }, []);
 
   const seConnecter = useCallback(async (identifiant: string, motDePasse: string) => {

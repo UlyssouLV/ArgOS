@@ -37,7 +37,7 @@ export function Connexion() {
       <form onSubmit={envoyer}>
         <h1>ArgOS</h1>
         <label>
-          Identifiant
+          <span>Identifiant</span>
           <input
             name="identifiant"
             autoComplete="username"
@@ -47,7 +47,7 @@ export function Connexion() {
           />
         </label>
         <label>
-          Mot de passe
+          <span>Mot de passe</span>
           <input
             name="mot_de_passe"
             type="password"
