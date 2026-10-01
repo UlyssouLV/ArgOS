@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from argos_api.modeles import Camera
+from argos_api.pont import chemin_flux
 
 PORT_RTSP = 554
 MASQUE = "***"
@@ -80,6 +81,8 @@ class CameraLue(BaseModel):
     active: bool
     etat: Etat
     etat_verifie_le: datetime | None
+    # Chemin MediaMTX qui relaie le Flux (docs/adr/0001-mediamtx-en-pont.md) ; aucun si désactivée.
+    chemin_flux: str | None
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -94,11 +97,18 @@ class CameraLue(BaseModel):
             active=camera.active,
             etat=camera.etat,
             etat_verifie_le=camera.etat_verifie_le,
+            chemin_flux=chemin_flux(camera.id) if camera.active else None,
         )
 
 
 def lister(base: Session) -> list[CameraLue]:
     return [CameraLue.depuis(c) for c in base.scalars(select(Camera).order_by(Camera.id))]
+
+
+def urls_actives(base: Session) -> dict[int, str]:
+    """URL RTSP stockée (mot de passe compris) de chaque Caméra active, par id."""
+    lignes = base.execute(select(Camera.id, Camera.url_rtsp).where(Camera.active))
+    return {id_camera: url for id_camera, url in lignes}
 
 
 def lire(base: Session, id_camera: int) -> CameraLue:

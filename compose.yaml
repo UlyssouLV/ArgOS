@@ -10,6 +10,7 @@ services:
       - "8888:8888"  # HLS
       - "8889:8889"  # WebRTC (page et signalisation)
       - "8189:8189/udp"  # WebRTC (ICE)
+      # 9997 (API de contrôle, pilotée par api) volontairement non publié : réseau Compose seulement (docs/securite.md).
     environment:
       # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}

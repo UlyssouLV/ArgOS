@@ -1,4 +1,4 @@
-"""API du Site : connexion de l'Administrateur, gestion des Caméras et surveillance de leur état."""
+"""API du Site : connexion de l'Administrateur, gestion des Caméras, surveillance de leur état et pont MediaMTX."""
 
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -12,12 +12,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from argos_api import cameras, sessions, sonde
+from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, charger
 from argos_api.frein import FreinForceBrute, TropDEchecs
+from argos_api.pont import Pont
 from argos_api.surveillance import Surveillance
 
 COOKIE_SESSION = "argos_session"
+# Réconciliation des Caméras actives avec les chemins MediaMTX, en secondes (docs/adr/0001-mediamtx-en-pont.md).
+INTERVALLE_PONT_S = 10
 
 Horloge = Callable[[], datetime]
 
@@ -45,12 +49,23 @@ def creer_app(
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
-        surveillance = Surveillance(
-            ouvrir_base, sonde.sonder, configuration.intervalle_sonde, configuration.delai_sonde, horloge
-        )
-        surveillance.demarrer()
+        surveillance = Surveillance(ouvrir_base, sonde.sonder, configuration.delai_sonde, horloge)
+        pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
+
+        def reconcilier() -> None:
+            with ouvrir_base() as base:
+                actives = cameras.urls_actives(base)
+            pont.reconcilier(actives)
+
+        boucles = [
+            BoucleDeFond("surveillance-cameras", surveillance.sonder_tout, configuration.intervalle_sonde),
+            BoucleDeFond("pont-mediamtx", reconcilier, INTERVALLE_PONT_S),
+        ]
+        for boucle in boucles:
+            boucle.demarrer()
         yield
-        surveillance.arreter()
+        for boucle in boucles:
+            boucle.arreter()
 
     app = FastAPI(
         lifespan=cycle_de_vie,

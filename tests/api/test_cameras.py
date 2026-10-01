@@ -85,6 +85,7 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "active": True,
         "etat": "unknown",
         "etat_verifie_le": None,
+        "chemin_flux": f"camera-{camera['id']}",
     }
 
 
@@ -248,7 +249,12 @@ def test_desactivation_puis_reactivation_camera_desactivee_toujours_listee(conne
     reactivee = connecte.patch(chemin, json={"active": True})
 
     assert desactivee.status_code == 200
-    assert desactivee.json() == camera | {"active": False, "etat": "unknown", "etat_verifie_le": None}
+    assert desactivee.json() == camera | {
+        "active": False,
+        "etat": "unknown",
+        "etat_verifie_le": None,
+        "chemin_flux": None,
+    }
     assert listee == desactivee.json()
     assert reactivee.status_code == 200
     assert reactivee.json()["active"] is True

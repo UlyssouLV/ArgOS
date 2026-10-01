@@ -45,6 +45,14 @@ Si on publiait le port (`ports: "5432:5432"`), PostgreSQL écouterait sur **tout
 
 Aujourd'hui, MediaMTX sert les Flux (RTSP, HLS, WebRTC) **sans authentification** sur tout le réseau local. Acceptable avec des Caméras simulées. Avec de vraies caméras, n'importe qui sur le Wi-Fi pourrait regarder sans passer par la connexion d'ArgOS : le login de l'API deviendrait décoratif.
 
+Depuis la 0.3.0, MediaMTX est le **pont** entre toute Caméra active et le navigateur ([ADR 0001](adr/0001-mediamtx-en-pont.md)) : l'API le configure pour relayer chaque Caméra active sur un chemin `camera-<id>`. Ces chemins sont lisibles **sans authentification par tout poste du réseau local**, comme `cam1`–`cam3` : la dette « Flux sans auth » couvre désormais **toutes** les Caméras du Site, pas seulement les simulées. Un chemin n'est retiré qu'au tour de réconciliation suivant (≤ 10 s) après la désactivation ou la suppression de la Caméra.
+
+Seul ffmpeg, dans le conteneur `mediamtx`, peut publier un Flux (les Caméras simulées) : aucune publication n'est acceptée depuis le réseau.
+
+### MediaMTX : API de contrôle non publiée
+
+L'API de contrôle de MediaMTX (port 9997) permet d'ajouter, modifier ou retirer des chemins, donc de relayer n'importe quelle URL RTSP. Elle est **activée sans authentification mais non publiée** dans `compose.yaml` : seuls les conteneurs du réseau Compose (dont `api`) la joignent. **Ne jamais publier ce port.** Elle lit aussi les URL des Caméras **avec leurs mots de passe en clair** (source des chemins `camera-<id>`).
+
 ### API : HTTP simple
 
 L'API écoute en HTTP sur le port 8000. Sur le Wi-Fi, le mot de passe de l'Administrateur et le cookie de session circulent **en clair** ; le cookie n'a pas l'attribut `Secure`. Il faut HTTPS avant tout usage réel.
@@ -67,7 +75,7 @@ Passer par un **VPN** (WireGuard, Tailscale…) plutôt que par une redirection 
 |---|---|---|---|
 | Identifiants RTSP stockés **en clair** en base (masqués dans les réponses de l'API) | 0.2.0 | Lecture de la base → accès à toutes les caméras | Chiffrement des identifiants RTSP |
 | Pas de HTTPS (API, Live) | 0.2.0 | Mot de passe et session lisibles sur le Wi-Fi | HTTPS |
-| Flux MediaMTX sans authentification | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
+| Flux MediaMTX sans authentification (`camN`, et `camera-<id>` pour toute Caméra active depuis la 0.3.0) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
 | Mot de passe de l'Administrateur en clair dans `.env` | 0.2.0 | Lecture du serveur → accès à ArgOS | À revoir avec les comptes multiples |
 | Frein à la force brute en mémoire | 0.2.0 | Remis à zéro à chaque redémarrage de l'API | À revoir avec HTTPS / comptes multiples |
 
