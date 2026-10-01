@@ -8,6 +8,7 @@ Contraintes transverses :
 - README type repos Ulysse : sections claires (**quoi**, **prérequis**, **comment lancer**, structure) — enrichi dès qu’une version devient lançable ; avant ça, pas de fausse « souche » runnable.
 - Preuve 0.1.0 : flux RTSP simulés **joignables**, y compris un accès **navigateur** (ex. page HLS/WebRTC MediaMTX), plus tests auto (`ffprobe` / équivalent) via `/t`.
 - Auth 1.0.0 : compte **local** suffit. États caméra minimaux : `unknown` / `online` / `offline`.
+- **Pas d’installation sur de vraies caméras avant HTTPS et authentification des Flux.** Limites et dettes : [sécurité](../securite.md).
 
 ## 0.1.0 — Flux RTSP simulés
 
@@ -18,6 +19,8 @@ Rendre disponibles un ou plusieurs flux RTSP de test via MediaMTX (et source vid
 ## 0.2.0 — API Site, auth et caméras
 
 Exposer l’API d’un Site avec authentification locale, CRUD caméras (nom, URL RTSP, infos réseau) et lecture d’état `unknown` / `online` / `offline`.
+
+Les identifiants RTSP (dans l’URL) sont stockés **en clair** en base pour l’instant ; l’API les masque dans ses réponses.
 
 ## 0.3.0 — UI login, Admin et Live
 
@@ -30,6 +33,26 @@ Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés)
 ## Plus tard — Enregistrement sans réencodage
 
 Conserver les flux utiles sur disque, hors scope 1.0.0.
+
+## Plus tard — Chiffrement des identifiants RTSP
+
+Ne plus stocker en clair le mot de passe des Caméras dans la base.
+
+## Plus tard — HTTPS
+
+Servir l’API et le Live en HTTPS (cookie de session `Secure`), pour que mot de passe et session ne circulent plus en clair sur le réseau local. Avant toute installation sur de vraies caméras.
+
+## Plus tard — Authentification des Flux
+
+Fermer l’accès libre aux Flux côté MediaMTX, pour que regarder une Caméra passe par la connexion d’ArgOS. Avant toute installation sur de vraies caméras.
+
+## Plus tard — Accès distant par VPN
+
+Accéder au Site depuis internet par un VPN (WireGuard, Tailscale…), sans redirection de port ni UPnP.
+
+## Plus tard — Détection de Flux figé ou rejoué
+
+Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
 
 ## Plus tard — Codecs multiples (H.265…)
 
