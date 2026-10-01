@@ -1,4 +1,4 @@
-import { appeler } from "./api";
+import { appeler, NonConnecte } from "./api";
 
 export type Etat = "unknown" | "online" | "offline";
 
@@ -13,6 +13,8 @@ export type Camera = {
   active: boolean;
   etat: Etat;
   etat_verifie_le: string | null;
+  /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
+  chemin_flux: string | null;
 };
 
 export type SaisieCamera = { nom: string; url_rtsp: string; emplacement: string | null };
@@ -21,6 +23,13 @@ export type SaisieCamera = { nom: string; url_rtsp: string; emplacement: string 
 export class Refus extends Error {}
 
 const URL_INVALIDE = "URL RTSP invalide. Format attendu : rtsp://[utilisateur:motdepasse@]hote[:port]/chemin";
+
+/** Message à montrer pour un échec d'appel ; `null` si la session est fermée (la connexion s'affiche). */
+export function messageEchec(erreur: unknown): string | null {
+  if (erreur instanceof NonConnecte) return null;
+  if (erreur instanceof Refus) return erreur.message;
+  return "L'API du Site ne répond pas. Réessayez dans un instant.";
+}
 
 async function lever(reponse: Response): Promise<never> {
   if (reponse.status === 422) throw new Refus(URL_INVALIDE);

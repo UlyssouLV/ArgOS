@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import { NonConnecte } from "../api";
 import {
   creerCamera,
   listerCameras,
+  messageEchec,
   modifierCamera,
-  Refus,
   supprimerCamera,
   type Camera,
   type SaisieCamera,
@@ -13,13 +12,6 @@ import {
 
 const RAFRAICHISSEMENT_MS = 10_000;
 const SAISIE_VIDE: SaisieCamera = { nom: "", url_rtsp: "", emplacement: null };
-
-/** Message à montrer pour un échec d'appel ; `null` si la session est fermée (la connexion s'affiche). */
-function messageEchec(erreur: unknown): string | null {
-  if (erreur instanceof NonConnecte) return null;
-  if (erreur instanceof Refus) return erreur.message;
-  return "L'API du Site ne répond pas. Réessayez dans un instant.";
-}
 
 function dateVerification(camera: Camera): string {
   return camera.etat_verifie_le ? new Date(camera.etat_verifie_le).toLocaleString("fr-FR") : "—";

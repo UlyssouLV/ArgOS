@@ -176,3 +176,42 @@ button.danger {
   border-color: #b3261e;
   color: #b3261e;
 }
+
+.live-en-tete {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.live-en-tete h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.live-en-tete button {
+  margin-left: auto;
+}
+
+.lecteur {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 12rem);
+  background: #000;
+}
+
+.lecteur video {
+  width: 100%;
+  height: 100%;
+}
+
+.flux-indisponible {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  background: #1d2328;
+  color: #fff;
+  font-size: 1.2rem;
+}

@@ -8,8 +8,9 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
 
-Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). 
-Version **0.3.0** (en cours) : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080` et retrouve les onglets **Administration** et **Live** (encore vides). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`).
+
+Version **0.3.0** (en cours) : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`. Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -144,6 +145,20 @@ Le conteneur `web` ne sert que les fichiers statiques. Le front appelle l’API 
 ARGOS_ORIGINES_AUTORISEES=http://localhost:8080,http://localhost:5173,http://192.168.1.20:8080
 ```
 
+### Live
+
+L’onglet **Live** montre en grand le Flux d’**une** Caméra active à la fois, en WebRTC (moins d’une seconde de retard) :
+
+- les Caméras actives sont prises dans l’ordre des noms ; le Live s’ouvre sur la première ;
+- **Suivant** (ou la flèche droite) passe à la suivante, puis revient à la première après la dernière ;
+- au-dessus de la vidéo : nom, emplacement et état de la Caméra (rafraîchi toutes les 10 s) ;
+- aucune Caméra active : un message renvoie vers **Administration** ;
+- la vidéo ne vient pas ou se coupe : **Flux indisponible**, puis nouvelle tentative toutes les 5 s. Une Caméra tout juste créée ou réactivée peut mettre jusqu’à 10 s à être relayée : le Live la rattrape seul.
+
+Le front lit le Flux par un client **WHEP** : `POST http://<hôte>:8889/<chemin_flux>/whep` (offre SDP), puis la vidéo arrive dans un `<video>`. Pas d’iframe ni de HLS. Changer de Caméra ferme la connexion WebRTC précédente : une seule est ouverte à la fois. `<chemin_flux>` (`camera-<id>`) vient de l’API.
+
+WebRTC fait passer la vidéo en **UDP 8189** : ce port doit être joignable depuis le navigateur. Pour regarder le Live depuis un autre appareil du réseau local, `MTX_WEBRTCADDITIONALHOSTS` doit contenir l’IP de la machine (voir [WebRTC sur le réseau local](#webrtc-sur-le-réseau-local)), en plus de l’origine dans `ARGOS_ORIGINES_AUTORISEES`.
+
 ### Front en dev
 
 Contre la stack lancée (étape 1), sans reconstruire l’image :
@@ -215,7 +230,7 @@ ipconfig getifaddr en0                     # IP de la machine sur Mac (Linux : h
 docker compose up -d --wait                # recrée le conteneur avec la nouvelle valeur
 ```
 
-Puis ouvrir `http://<IP>:8889/camN` depuis un téléphone ou une tablette du même réseau.
+Puis ouvrir `http://<IP>:8889/camN` depuis un téléphone ou une tablette du même réseau. Le [Live](#live) de l’UI en a besoin aussi, avec l’UDP 8189 joignable.
 
 ## Comment circulent les Flux
 
@@ -237,10 +252,10 @@ Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offli
 ```
 
 - **RTSP, en entrée** : protocole des caméras IP. Une Caméra est identifiée par son URL RTSP (voir `CONTEXT.md`). Ajouter une Caméra au Site (0.2.0), c’est d’abord enregistrer cette URL.
-- **WebRTC, en sortie** : candidat pour le Live (0.3.0 / 1.0.0), grâce à son faible retard. HLS reste une solution de secours.
+- **WebRTC, en sortie** : protocole du Live (0.3.0), grâce à son faible retard. MediaMTX relaie chaque Caméra active sur `camera-<id>` ([ADR 0001](docs/adr/0001-mediamtx-en-pont.md)).
 - **Contrat de la 0.1.0** : 3 URL RTSP stables, en H.264 1280×720, visibles dans un navigateur. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
 
-Pas encore décidé (reporté à l’ouverture de la 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
+Décidé en 0.3.0 : le Live lit en WebRTC uniquement, et l’API ajoute elle-même chaque Caméra active comme chemin MediaMTX (API de contrôle, source = URL RTSP de la Caméra), dans le même MediaMTX que les Caméras simulées.
 
 ## Vérifier un Flux en CLI
 
@@ -273,7 +288,7 @@ cd tests/web && uv sync && uv run playwright install chromium
 
 - `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
 - `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `rtsp://mediamtx:8554/cam1`, `offline` sur une URL injoignable ou `cam404`, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
-- `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : Caméra créée sur `cam1` qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active). Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
+- `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : Caméra créée sur `cam1` qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active) ; Live : première Caméra active par nom dont la `<video>` joue vraiment (`currentTime` qui avance), Suivant puis flèche droite qui font le tour en gardant une seule connexion WebRTC ouverte, message avec lien vers Administration sans Caméra active, « Flux indisponible » sur une URL injoignable. Les tests Live désactivent les Caméras actives existantes le temps du test, puis les réactivent. Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
 - `tests/api/` couvre aussi le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
