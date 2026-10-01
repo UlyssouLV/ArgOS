@@ -20,6 +20,9 @@ roles:
   adr:
     paths:
       - docs/adr/
+  security:
+    paths:
+      - docs/securite.md
   readme:
     paths:
       - README.md
@@ -31,3 +34,5 @@ roles:
   test-roots:
     paths:
       - tests/flux/
+      - tests/api/
+      - tests/regles-sessions/

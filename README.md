@@ -6,7 +6,9 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 ## Quoi
 
-Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local. Pas encore d’API Site ni d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
+
+Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -15,12 +17,135 @@ Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). Media
 
 Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
 
-## Lancer / arrêter
+## Configurer `.env`
+
+`.env` est ignoré par git : les secrets n’entrent jamais dans le dépôt. Les clés sont décrites dans `.env.example`.
 
 ```bash
-docker compose up -d --wait   # lance les Caméras simulées
-docker compose down           # arrête
+cp .env.example .env
+# dans .env : ARGOS_IDENTIFIANT=… et ARGOS_MOT_DE_PASSE=… (mot de passe long recommandé)
 ```
+
+`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En dev local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le protocole de lancement ci-dessous, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
+
+## Protocole de lancement
+
+Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identifiant et le mot de passe dans `.env` (voir ci-dessus) : rien à recopier à la main.
+
+**1. Démarrer la stack**
+
+```bash
+docker compose up -d --build --wait   # Caméras simulées (mediamtx), API (api) et base (db)
+docker compose ps                      # attendu : api et db « healthy », mediamtx « Up »
+```
+
+Au premier lancement, Docker construit l’image de l’API. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
+
+**2. Se connecter en tant qu’Administrateur**
+
+```bash
+set -a; . ./.env; set +a   # charge ARGOS_IDENTIFIANT et ARGOS_MOT_DE_PASSE dans le shell
+curl -s -o /dev/null -w '%{http_code}\n' -c cookies.txt -X POST http://localhost:8000/api/session \
+  -H 'Content-Type: application/json' \
+  -d "{\"identifiant\": \"$ARGOS_IDENTIFIANT\", \"mot_de_passe\": \"$ARGOS_MOT_DE_PASSE\"}"
+curl -s -b cookies.txt http://localhost:8000/api/moi   # attendu : {"identifiant":"…"}
+```
+
+Attendu : `204`. Un `401` veut dire que l’identifiant ou le mot de passe ne correspond pas à celui de l’API : `.env` a changé depuis le démarrage (refaire l’étape 1, qui recrée `api`), ou `. ./.env` n’a pas été lancé depuis la racine du dépôt. Un `429` : trop d’échecs, attendre 15 min ou `docker compose restart api`. Une connexion ratée vide `cookies.txt`.
+
+`cookies.txt` garde la session (24 h) pour les commandes suivantes ; il est ignoré par git. Sans terminal : ouvrir **http://localhost:8000/api/docs**, appeler `POST /api/session` (« Try it out »), le navigateur garde le cookie pour les autres routes.
+
+**3. Déclarer les trois Caméras simulées** (une seule fois : la base les garde ; relancer renvoie `409`)
+
+```bash
+for n in 1 2 3; do
+  curl -b cookies.txt -X POST http://localhost:8000/api/cameras \
+    -H 'Content-Type: application/json' \
+    -d "{\"nom\": \"Caméra simulée $n\", \"url_rtsp\": \"rtsp://mediamtx:8554/cam$n\"}"
+done
+```
+
+**4. Suivre l’état des Caméras** (dans un second terminal, **depuis la racine du dépôt** : c’est là qu’est `cookies.txt` ; Ctrl+C pour arrêter)
+
+```bash
+while true; do
+  clear
+  curl -s -b cookies.txt http://localhost:8000/api/cameras | python3 -c '
+import json, sys
+from datetime import datetime
+try:
+    cameras = json.load(sys.stdin)
+except ValueError:
+    sys.exit("API injoignable : la stack tourne-t-elle ? (étape 1)")
+if not isinstance(cameras, list):
+    sys.exit("Pas de session : lancer depuis la racine du dépôt, ou refaire l’étape 2")
+ligne = "{:>4}  {:<22}{:<9}{:<11}{}"
+print(ligne.format("id", "nom", "état", "vérifié à", "active"))
+for c in cameras:
+    verifie = c["etat_verifie_le"] and datetime.fromisoformat(c["etat_verifie_le"]).astimezone().strftime("%H:%M:%S")
+    print(ligne.format(c["id"], c["nom"], c["etat"], verifie or "-", "oui" if c["active"] else "non"))'
+  sleep 2
+done
+```
+
+Attendu : les trois Caméras passent de `unknown` à `online` en 15 s au plus.
+
+**5. Essais** (`<id>` = id affiché à l’étape 4)
+
+| Essai | Commande | Attendu |
+|---|---|---|
+| Couper les Caméras simulées | `docker compose stop mediamtx` | toutes `offline` en 15 s au plus |
+| Les rallumer | `docker compose start mediamtx` | retour à `online` |
+| Changer l’URL | `curl -b cookies.txt -X PATCH http://localhost:8000/api/cameras/<id> -H 'Content-Type: application/json' -d '{"url_rtsp": "rtsp://mediamtx:8554/cam404"}'` | `unknown` tout de suite, puis `offline` |
+| Désactiver | même `PATCH` avec `-d '{"active": false}'` | `unknown`, plus sondée |
+| Réactiver | même `PATCH` avec `-d '{"active": true}'` | de nouveau `online` |
+| Supprimer (désactivée d’abord) | `curl -b cookies.txt -X DELETE http://localhost:8000/api/cameras/<id>` | `204` ; `409` si la Caméra est encore active |
+
+Les Flux eux-mêmes se regardent dans un navigateur : `http://localhost:8889/cam1` (voir [Flux des Caméras simulées](#flux-des-caméras-simulées)).
+
+**6. Arrêter**
+
+```bash
+curl -b cookies.txt -X DELETE http://localhost:8000/api/session   # déconnexion (facultatif)
+docker compose down      # arrête ; Caméras et sessions restent dans le volume donnees-db
+docker compose down -v   # arrête et efface la base (repartir de zéro : refaire l’étape 3)
+```
+
+## API du Site
+
+Écoute sur `http://localhost:8000` (HTTP simple : voir [docs/securite.md](docs/securite.md)). Documentation OpenAPI interactive : **`http://localhost:8000/api/docs`**.
+
+| Route | Effet |
+|-------|-------|
+| `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
+| `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
+| `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
+| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) |
+| `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
+
+Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
+
+```bash
+curl -c cookies.txt -X POST http://localhost:8000/api/session \
+  -H 'Content-Type: application/json' \
+  -d '{"identifiant": "…", "mot_de_passe": "…"}'
+curl -b cookies.txt http://localhost:8000/api/moi
+curl -b cookies.txt -X DELETE http://localhost:8000/api/session
+```
+
+PostgreSQL n’a aucun port publié : seul `api` le joint. Pour l’inspecter : `docker compose exec db psql -U argos`.
+
+### Ajouter les Caméras simulées
+
+La base démarre vide : déclarer les Caméras simulées avec l’étape 3 du [protocole de lancement](#protocole-de-lancement).
+
+L’URL est `rtsp://mediamtx:8554/camN`, pas `rtsp://localhost:8554/camN` : c’est le conteneur `api` qui sonde la Caméra, et dans ce conteneur `localhost` désigne `api` lui-même. `mediamtx` est le nom du service MediaMTX sur le réseau interne de Docker Compose. Une vraie caméra se déclare avec son adresse sur le réseau local (`rtsp://user:motdepasse@192.168.1.50/...`).
+
+### État des Caméras
+
+L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : session RTSP (identifiants de l’URL pris en charge), puis attente d’**au moins un paquet vidéo** pendant 5 s au plus. Reçu → `etat` passe à `online`, sinon à `offline` ; `etat_verifie_le` dit quand. Une Caméra nouvelle, dont l’URL vient de changer, ou désactivée (plus sondée) est `unknown`. Intervalle et délai se règlent dans `.env` (`ARGOS_SONDE_INTERVALLE_S`, `ARGOS_SONDE_DELAI_S`, voir `.env.example`).
+
+`online` prouve que quelque chose diffuse de la vidéo à cette URL, pas que c’est la vraie caméra : voir [docs/securite.md](docs/securite.md#1-ce-que-prouve-létat-dune-caméra).
 
 ## Flux des Caméras simulées
 
@@ -70,7 +195,7 @@ Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offli
 - **WebRTC, en sortie** : candidat pour le Live (0.3.0 / 1.0.0), grâce à son faible retard. HLS reste une solution de secours.
 - **Contrat de la 0.1.0** : 3 URL RTSP stables, en H.264 1280×720, visibles dans un navigateur. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
 
-Pas encore décidé (à trancher à l’ouverture de la 0.2.0 / 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
+Pas encore décidé (reporté à l’ouverture de la 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
 
 ## Vérifier un Flux en CLI
 
@@ -86,25 +211,33 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`.
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans `tests/flux/` ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
+cd tests/api && uv run pytest
+cd tests/regles-sessions && uv run pytest
 ```
 
-Les tests démarrent la stack si elle ne tourne pas, puis vérifient chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
+- `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
+- `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `rtsp://mediamtx:8554/cam1`, `offline` sur une URL injoignable ou `cam404`, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
 
 ```
-compose.yaml              Stack Docker Compose (MediaMTX)
-.env.example              Clés de .env (WebRTC réseau local, Sonar)
+compose.yaml              Stack Docker Compose (mediamtx, api, db)
+.env.example              Clés de .env (Administrateur, WebRTC réseau local, Sonar)
+api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
 media/mediamtx.yml        Config MediaMTX : chemins cam1..cam3, ports
 media/simulated/          Vidéos des Caméras simulées (+ README : format, conversion)
 tests/flux/               Tests de bout en bout des Flux (pytest, uv)
+tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
+tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
 docs/dev/                 Feuille de route de dev
 docs/specs/               Specs de version et contexte initial
-CONTEXT.md                Glossaire (Caméra, Flux, Caméra simulée)
+docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
+CONTEXT.md                Glossaire (Site, Administrateur, Caméra, Flux…)
 AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 ```
 

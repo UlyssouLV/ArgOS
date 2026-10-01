@@ -13,3 +13,45 @@ services:
     environment:
       # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"  # API du Site (HTTP, voir docs/securite.md)
+    environment:
+      # Compte de l'Administrateur : voir .env.example.
+      ARGOS_IDENTIFIANT: ${ARGOS_IDENTIFIANT:-}
+      ARGOS_MOT_DE_PASSE: ${ARGOS_MOT_DE_PASSE:-}
+      ARGOS_URL_BASE: postgresql+psycopg://argos:argos@db:5432/argos
+      # Sonde de l'état des Caméras : voir .env.example.
+      ARGOS_SONDE_INTERVALLE_S: ${ARGOS_SONDE_INTERVALLE_S:-10}
+      ARGOS_SONDE_DELAI_S: ${ARGOS_SONDE_DELAI_S:-5}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  db:
+    image: postgres:18.6-alpine3.24
+    restart: unless-stopped
+    # Aucun port publié : seul api joint la base, par le réseau interne de Compose (docs/securite.md).
+    # Le mot de passe ne protège donc que ce réseau interne.
+    environment:
+      POSTGRES_USER: argos
+      POSTGRES_PASSWORD: argos
+      POSTGRES_DB: argos
+    volumes:
+      - donnees-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "argos", "-d", "argos"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  donnees-db:
