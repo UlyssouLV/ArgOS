@@ -1,15 +1,17 @@
-"""API du Site : connexion de l'Administrateur."""
+"""API du Site : connexion de l'Administrateur et gestion des Caméras."""
 
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import sessions
+from argos_api import cameras, sessions
+from argos_api.cameras import CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, charger
 from argos_api.frein import FreinForceBrute, TropDEchecs
 
@@ -91,4 +93,53 @@ def creer_app(
     def moi(identifiant: Annotated[str, Depends(administrateur_connecte)]) -> Moi:
         return Moi(identifiant=identifiant)
 
+    app.include_router(_routes_cameras(base, administrateur_connecte))
     return app
+
+
+def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connecte: Callable) -> APIRouter:
+    """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
+    Base = Annotated[Session, Depends(base)]
+    routes = APIRouter(prefix="/api/cameras", dependencies=[Depends(administrateur_connecte)])
+
+    @routes.get("")
+    def lister(base: Base) -> list[CameraLue]:
+        return cameras.lister(base)
+
+    @routes.post("", status_code=status.HTTP_201_CREATED)
+    def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
+        with _erreurs_cameras():
+            return cameras.creer(base, nouvelle)
+
+    @routes.get("/{id_camera}")
+    def lire(id_camera: int, base: Base) -> CameraLue:
+        with _erreurs_cameras():
+            return cameras.lire(base, id_camera)
+
+    @routes.patch("/{id_camera}")
+    def modifier(id_camera: int, modification: ModificationCamera, base: Base) -> CameraLue:
+        with _erreurs_cameras():
+            return cameras.modifier(base, id_camera, modification)
+
+    @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
+    def supprimer(id_camera: int, base: Base) -> None:
+        with _erreurs_cameras():
+            cameras.supprimer(base, id_camera)
+
+    return routes
+
+
+@contextmanager
+def _erreurs_cameras() -> Iterator[None]:
+    try:
+        yield
+    except cameras.CameraIntrouvable:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Caméra introuvable.") from None
+    except cameras.Doublon:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Une Caméra porte déjà ce nom ou cette URL (désactivée comprise)."
+        ) from None
+    except cameras.CameraActive:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Désactiver la Caméra avant de la supprimer."
+        ) from None
