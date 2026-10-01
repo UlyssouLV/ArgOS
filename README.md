@@ -8,7 +8,7 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
 
-Version **0.2.0** (en cours) : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -195,7 +195,7 @@ Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offli
 - **WebRTC, en sortie** : candidat pour le Live (0.3.0 / 1.0.0), grâce à son faible retard. HLS reste une solution de secours.
 - **Contrat de la 0.1.0** : 3 URL RTSP stables, en H.264 1280×720, visibles dans un navigateur. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
 
-Pas encore décidé (à trancher à l’ouverture de la 0.2.0 / 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
+Pas encore décidé (reporté à l’ouverture de la 0.3.0) : WebRTC ou HLS pour le Live ; et si l’API Site ajoute elle-même les Caméras comme chemins MediaMTX (API de contrôle de MediaMTX, source = URL RTSP de la caméra), avec un MediaMTX simulateur et un MediaMTX pont séparés ou non.
 
 ## Vérifier un Flux en CLI
 

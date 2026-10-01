@@ -18,6 +18,8 @@ Rendre disponibles un ou plusieurs flux RTSP de test via MediaMTX (et source vid
 
 ## 0.2.0 — API Site, auth et caméras
 
+**Livrée** ([PR #11](https://github.com/UlyssouLV/ArgOS/pull/11)).
+
 Exposer l’API d’un Site avec authentification locale, CRUD caméras (nom, URL RTSP, infos réseau) et lecture d’état `unknown` / `online` / `offline`.
 
 Les identifiants RTSP (dans l’URL) sont stockés **en clair** en base pour l’instant ; l’API les masque dans ses réponses.
