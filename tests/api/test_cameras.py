@@ -16,6 +16,11 @@ def unique(prefixe: str) -> str:
     return f"{prefixe}-{uuid.uuid4().hex[:12]}"
 
 
+def sans_etat(camera: dict) -> dict:
+    """La sonde peut changer l'état entre deux requêtes (tests/api/test_etat_cameras.py)."""
+    return {cle: valeur for cle, valeur in camera.items() if cle not in ("etat", "etat_verifie_le")}
+
+
 @pytest.fixture
 def connecte(client, administrateur) -> httpx.Client:
     assert se_connecter(client, **administrateur).status_code == 204
@@ -101,10 +106,10 @@ def test_liste_et_lecture(connecte, creer_camera):
     lue = connecte.get(f"/api/cameras/{premiere['id']}")
 
     assert liste.status_code == 200
-    assert premiere in liste.json()
-    assert seconde in liste.json()
+    assert sans_etat(premiere) in [sans_etat(c) for c in liste.json()]
+    assert sans_etat(seconde) in [sans_etat(c) for c in liste.json()]
     assert lue.status_code == 200
-    assert lue.json() == premiere
+    assert sans_etat(lue.json()) == sans_etat(premiere)
 
 
 def test_camera_inexistante_404(connecte, creer_camera):
@@ -206,7 +211,7 @@ def test_patch_partiel(connecte, creer_camera):
     reponse = connecte.patch(f"/api/cameras/{camera['id']}", json={"nom": nom})
 
     assert reponse.status_code == 200
-    assert reponse.json() == camera | {"nom": nom}
+    assert sans_etat(reponse.json()) == sans_etat(camera | {"nom": nom})
 
 
 def test_patch_de_l_url_rederive_hote_et_port(connecte, creer_camera):

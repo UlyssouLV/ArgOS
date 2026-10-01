@@ -27,6 +27,9 @@ services:
       ARGOS_IDENTIFIANT: ${ARGOS_IDENTIFIANT:-}
       ARGOS_MOT_DE_PASSE: ${ARGOS_MOT_DE_PASSE:-}
       ARGOS_URL_BASE: postgresql+psycopg://argos:argos@db:5432/argos
+      # Sonde de l'état des Caméras : voir .env.example.
+      ARGOS_SONDE_INTERVALLE_S: ${ARGOS_SONDE_INTERVALLE_S:-10}
+      ARGOS_SONDE_DELAI_S: ${ARGOS_SONDE_DELAI_S:-5}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
       interval: 2s

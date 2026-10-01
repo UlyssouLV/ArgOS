@@ -8,7 +8,7 @@ Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance �
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
 
-Version **0.2.0** (en cours) : l’**API du Site** (FastAPI + PostgreSQL). Pour l’instant, l’Administrateur s’y connecte et s’en déconnecte. Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.2.0** (en cours) : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`). Pas encore d’UI : voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -46,6 +46,8 @@ Au premier lancement, Docker construit l’image de l’API. Le schéma de la ba
 | `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
 | `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
 | `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
+| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) |
+| `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
 
 Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
 
@@ -58,6 +60,27 @@ curl -b cookies.txt -X DELETE http://localhost:8000/api/session
 ```
 
 PostgreSQL n’a aucun port publié : seul `api` le joint. Pour l’inspecter : `docker compose exec db psql -U argos`.
+
+### Ajouter les Caméras simulées
+
+La base démarre vide. Pour déclarer les trois Caméras simulées (après la connexion ci-dessus, qui remplit `cookies.txt`) :
+
+```bash
+for n in 1 2 3; do
+  curl -b cookies.txt -X POST http://localhost:8000/api/cameras \
+    -H 'Content-Type: application/json' \
+    -d "{\"nom\": \"Caméra simulée $n\", \"url_rtsp\": \"rtsp://mediamtx:8554/cam$n\"}"
+done
+curl -b cookies.txt http://localhost:8000/api/cameras
+```
+
+L’URL est `rtsp://mediamtx:8554/camN`, pas `rtsp://localhost:8554/camN` : c’est le conteneur `api` qui sonde la Caméra, et dans ce conteneur `localhost` désigne `api` lui-même. `mediamtx` est le nom du service MediaMTX sur le réseau interne de Docker Compose. Une vraie caméra se déclare avec son adresse sur le réseau local (`rtsp://user:motdepasse@192.168.1.50/...`).
+
+### État des Caméras
+
+L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : session RTSP (identifiants de l’URL pris en charge), puis attente d’**au moins un paquet vidéo** pendant 5 s au plus. Reçu → `etat` passe à `online`, sinon à `offline` ; `etat_verifie_le` dit quand. Une Caméra nouvelle, dont l’URL vient de changer, ou désactivée (plus sondée) est `unknown`. Intervalle et délai se règlent dans `.env` (`ARGOS_SONDE_INTERVALLE_S`, `ARGOS_SONDE_DELAI_S`, voir `.env.example`).
+
+`online` prouve que quelque chose diffuse de la vidéo à cette URL, pas que c’est la vraie caméra : voir [docs/securite.md](docs/securite.md#1-ce-que-prouve-létat-dune-caméra).
 
 ## Flux des Caméras simulées
 
@@ -132,7 +155,7 @@ cd tests/regles-sessions && uv run pytest
 ```
 
 - `tests/flux/` démarre la stack si elle ne tourne pas, puis vérifie chaque Caméra simulée vue de l’extérieur : RTSP en H.264 1280×720 décodable, playlist HLS, et refus de `cam404`. WebRTC n’est pas testé automatiquement.
-- `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`. Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
+- `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `rtsp://mediamtx:8554/cam1`, `offline` sur une URL injoignable ou `cam404`, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure

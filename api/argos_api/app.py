@@ -1,7 +1,7 @@
-"""API du Site : connexion de l'Administrateur et gestion des Caméras."""
+"""API du Site : connexion de l'Administrateur, gestion des Caméras et surveillance de leur état."""
 
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -10,10 +10,11 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, sessions
+from argos_api import cameras, sessions, sonde
 from argos_api.cameras import CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, charger
 from argos_api.frein import FreinForceBrute, TropDEchecs
+from argos_api.surveillance import Surveillance
 
 COOKIE_SESSION = "argos_session"
 
@@ -41,7 +42,17 @@ def creer_app(
     frein = FreinForceBrute(horloge)
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
 
+    @asynccontextmanager
+    async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
+        surveillance = Surveillance(
+            ouvrir_base, sonde.sonder, configuration.intervalle_sonde, configuration.delai_sonde, horloge
+        )
+        surveillance.demarrer()
+        yield
+        surveillance.arreter()
+
     app = FastAPI(
+        lifespan=cycle_de_vie,
         title="ArgOS — API du Site",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",

@@ -112,7 +112,8 @@ def creer(base: Session, nouvelle: NouvelleCamera) -> CameraLue:
 
 
 def modifier(base: Session, id_camera: int, modification: ModificationCamera) -> CameraLue:
-    camera = _trouver(base, id_camera)
+    # Ligne verrouillée : une sonde en cours n'écrit son état qu'après, et voit alors la nouvelle URL.
+    camera = _trouver(base, id_camera, verrouiller=True)
     champs = modification.model_dump(exclude_unset=True)
     url = champs.pop("url_rtsp", camera.url_rtsp)
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
@@ -135,8 +136,8 @@ def supprimer(base: Session, id_camera: int) -> None:
     base.commit()
 
 
-def _trouver(base: Session, id_camera: int) -> Camera:
-    camera = base.get(Camera, id_camera)
+def _trouver(base: Session, id_camera: int, verrouiller: bool = False) -> Camera:
+    camera = base.get(Camera, id_camera, with_for_update=verrouiller)
     if camera is None:
         raise CameraIntrouvable
     return camera
