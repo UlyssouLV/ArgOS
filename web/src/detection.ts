@@ -1,5 +1,5 @@
 import { appeler } from "./api";
-import { Refus } from "./cameras";
+import { Refus, type Camera } from "./cameras";
 
 /** Réglage de la Détection : `raison` dit pourquoi elle est indisponible (`null` : configurée). */
 export type EtatDetection = {
@@ -42,4 +42,31 @@ export async function lireEtatDetection(): Promise<EtatDetection> {
 /** Détection synchrone : une dizaine de secondes pour un /24 sur deux ports. */
 export async function lancerDetection(): Promise<ResultatDetection> {
   return lire(await appeler("/api/detection", { method: "POST" }));
+}
+
+/** Issue d'un essai : seul `flux_trouve` ouvre un Aperçu. */
+export type Issue = "flux_trouve" | "identifiants_requis" | "identifiants_refuses" | "flux_introuvable" | "injoignable";
+
+/** Résultat d'un essai ; `apercu` : chemin MediaMTX à lire en WebRTC, seulement si `flux_trouve`. */
+export type Essai = {
+  issue: Issue;
+  chemin: string | null;
+  codec: string | null;
+  apercu: string | null;
+};
+
+/** Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. */
+export async function essayer(ip: string, port: number): Promise<Essai> {
+  return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port }) }));
+}
+
+/** Retire l'essai en cours et son Aperçu (sans erreur s'il n'y en a pas). */
+export async function retirerEssai(): Promise<void> {
+  const reponse = await appeler("/api/essai", { method: "DELETE" });
+  if (!reponse.ok) await lire(reponse);
+}
+
+/** Crée une Caméra active à partir du Flux de l'essai, côté serveur ; un nom pris laisse l'essai ouvert. */
+export async function ajouterDepuisEssai(nom: string, emplacement: string | null): Promise<Camera> {
+  return lire(await appeler("/api/essai/camera", { method: "POST", body: JSON.stringify({ nom, emplacement }) }));
 }

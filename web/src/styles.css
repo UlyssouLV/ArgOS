@@ -232,3 +232,13 @@ button.danger {
   color: #fff;
   font-size: 1.2rem;
 }
+
+.ajout-candidat {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 40rem;
+}
+
+.ajout-candidat .lecteur {
+  max-height: 22rem;
+}

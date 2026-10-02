@@ -132,7 +132,7 @@ export function Administration() {
           </tbody>
         </table>
       )}
-      <DetecterCameras />
+      <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
     </section>
   );
 }

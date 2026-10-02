@@ -4,18 +4,20 @@ import logging
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import monotonic
+from ipaddress import IPv4Address
 from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, sessions, soi, sonde
+from argos_api import cameras, detection, essai, sessions, soi, sonde
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
@@ -76,6 +78,30 @@ class ResultatDetection(BaseModel):
     candidats: list[CandidatLu]
 
 
+class DemandeEssai(BaseModel):
+    ip: IPv4Address
+    port: int = Field(cameras.PORT_RTSP, gt=0, lt=65536)
+
+
+class EssaiLu(BaseModel):
+    issue: essai.Issue
+    chemin: str | None
+    codec: str | None
+    # Chemin MediaMTX de l'Aperçu, à lire en WebRTC ; seulement si `flux_trouve`.
+    apercu: str | None
+
+
+class AjoutDepuisEssai(BaseModel):
+    nom: str = Field(min_length=1)
+    emplacement: str | None = None
+
+
+@dataclass
+class EssaiOuvert:
+    resultat: essai.Resultat
+    apercu: str
+
+
 def creer_app(
     configuration: Configuration | None = None, horloge: Horloge = horloge_systeme
 ) -> FastAPI:
@@ -84,11 +110,11 @@ def creer_app(
     _journaux_sur_la_sortie()
     frein = FreinForceBrute(horloge)
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
+    pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
         surveillance = Surveillance(ouvrir_base, sonde.sonder, configuration.delai_sonde, horloge)
-        pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
@@ -177,6 +203,7 @@ def creer_app(
     app.include_router(
         _routes_detection(configuration.reglage_detection(), hote_pont, base, administrateur_connecte)
     )
+    app.include_router(_routes_essai(pont, configuration.delai_sonde, base, administrateur_connecte))
     return app
 
 
@@ -280,6 +307,59 @@ def _routes_detection(
                 for c in candidats
             ],
         )
+
+    return routes
+
+
+def _routes_essai(
+    pont: Pont, delai: float, base: Callable[[], Iterator[Session]], administrateur_connecte: Callable
+) -> APIRouter:
+    """Essai d'un Candidat et son Aperçu, réservés à une session valide.
+
+    Un seul essai pour le Site : un nouvel essai retire le précédent et son Aperçu. L'URL du Flux
+    (identifiants compris) reste côté serveur ; la Caméra est créée à partir d'elle.
+    """
+    Base = Annotated[Session, Depends(base)]
+    routes = APIRouter(prefix="/api/essai", dependencies=[Depends(administrateur_connecte)])
+    verrou = threading.Lock()
+    ouvert: list[EssaiOuvert] = []
+
+    def fermer() -> None:
+        while ouvert:
+            pont.retirer_apercu(ouvert.pop().apercu)
+
+    @routes.post("")
+    def essayer(demande: DemandeEssai) -> EssaiLu:
+        with verrou:
+            fermer()
+            resultat = essai.essayer(demande.ip, demande.port, delai)
+            apercu = None
+            if resultat.issue == essai.Issue.FLUX_TROUVE:
+                try:
+                    apercu = pont.ouvrir_apercu(resultat.url)
+                except OSError:
+                    raise HTTPException(
+                        status.HTTP_503_SERVICE_UNAVAILABLE, "Le pont MediaMTX n'a pas ouvert l'Aperçu."
+                    ) from None
+                ouvert.append(EssaiOuvert(resultat, apercu))
+        return EssaiLu(issue=resultat.issue, chemin=resultat.chemin, codec=resultat.codec, apercu=apercu)
+
+    @routes.delete("", status_code=status.HTTP_204_NO_CONTENT)
+    def retirer() -> None:
+        with verrou:
+            fermer()
+
+    @routes.post("/camera", status_code=status.HTTP_201_CREATED)
+    def ajouter(ajout: AjoutDepuisEssai, base: Base) -> CameraLue:
+        with verrou:
+            if not ouvert:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucun essai en cours avec un Flux trouvé.")
+            nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=ouvert[0].resultat.url, emplacement=ajout.emplacement)
+            # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
+            with _erreurs_cameras():
+                camera = cameras.creer(base, nouvelle)
+            fermer()
+        return camera
 
     return routes
 
