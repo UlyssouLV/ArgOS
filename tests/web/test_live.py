@@ -83,8 +83,8 @@ def connexions_ouvertes(page: Page) -> int:
 
 
 def test_live_ouvre_la_premiere_camera_active_par_nom_et_la_video_joue(seules_actives, creer, live: Page):
-    premiere = creer(url_simulee("cam1"), "Portail")
-    creer(url_simulee("cam2"))
+    premiere = creer(url_simulee(1), "Portail")
+    creer(url_simulee(2))
     live.reload()
 
     expect(camera_affichee(live)).to_have_text(premiere)
@@ -93,8 +93,8 @@ def test_live_ouvre_la_premiere_camera_active_par_nom_et_la_video_joue(seules_ac
 
 
 def test_suivant_et_fleche_droite_font_le_tour_des_cameras_actives(seules_actives, creer, live: Page):
-    premiere = creer(url_simulee("cam1"))
-    seconde = creer(url_simulee("cam2"))
+    premiere = creer(url_simulee(1))
+    seconde = creer(url_simulee(2))
     live.reload()
     expect(camera_affichee(live)).to_have_text(premiere)
     attendre_que_la_video_joue(live)

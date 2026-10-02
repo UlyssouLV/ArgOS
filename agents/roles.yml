@@ -37,3 +37,4 @@ roles:
       - tests/api/
       - tests/regles-sessions/
       - tests/web/
+      - tests/scripts/

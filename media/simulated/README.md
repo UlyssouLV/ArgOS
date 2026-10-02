@@ -1,22 +1,29 @@
-# Vidéos des Caméras simulées
+# Caméras simulées
 
-Fichiers de **dev** pour MediaMTX (`cam1`, `cam2`, `cam3`). Ce ne sont pas des enregistrements produit : à remplacer plus tard par de vraies caméras IP.
+Fichiers de **dev**, utilisés seulement par `compose.simulation.yaml` (jamais par la stack de prod). Ce ne sont pas des enregistrements produit : à remplacer plus tard par de vraies caméras IP.
 
-Chaque `camN.mp4` est diffusé en boucle par MediaMTX sur `rtsp://<hôte>:8554/camN` (config : [`../mediamtx.yml`](../mediamtx.yml)). Le nom du fichier donne le chemin.
+Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : un MediaMTX ([`camera-simulee.yml`](camera-simulee.yml)) où ffmpeg diffuse sa vidéo en boucle, sans réencodage, en RTSP sur le port **554**, sur le seul chemin `flux`. Les Caméras simulées vivent sur le réseau Compose `cameras-simulees` (`172.30.0.0/24`) et ne sont **pas publiées** sur la machine hôte : on les déclare comme Caméras (Administration), puis on les regarde dans le Live.
 
-## Fichiers
+| Caméra simulée     | URL RTSP (vue de `api` et du pont)                 | Vidéo      | Origine (source déposée)                                       |
+|--------------------|----------------------------------------------------|------------|----------------------------------------------------------------|
+| `camera-simulee-1` | `rtsp://camera-simulee-1/flux`                     | `cam1.mp4` | Security Camera (CCTV) Style Video in After Effects            |
+| `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/flux` | `cam2.mp4` | 8MP 4K Dahua CCTV System Sample Video — Night Time             |
+| `camera-simulee-3` | `rtsp://camera-simulee-3/flux`                     | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
 
-| Fichier     | Rôle                          | Origine (source déposée)                                      |
-|-------------|-------------------------------|----------------------------------------------------------------|
-| `cam1.mp4`  | Caméra simulée `cam1`         | Security Camera (CCTV) Style Video in After Effects            |
-| `cam2.mp4`  | Caméra simulée `cam2`         | 8MP 4K Dahua CCTV System Sample Video — Night Time             |
-| `cam3.mp4`  | Caméra simulée `cam3`         | Example of Hi-Definition Video Surveillance of a Factory Floor |
+## Identifiants de `camera-simulee-2`
+
+`camera-simulee-2` exige, comme beaucoup de vraies caméras, un identifiant et un mot de passe pour lire le Flux :
+
+- identifiant : `admin`
+- mot de passe : `argos-simulee`
+
+Identifiants **de dev**, publics dans le dépôt (définis dans `compose.simulation.yaml`). Sans eux, ou avec un mauvais mot de passe, la Caméra répond `401 Unauthorized`, et une Caméra déclarée sans eux reste `offline`. Une requête `OPTIONS` sans identifiants reçoit quand même une réponse RTSP.
 
 ## Format attendu
 
 - H.264, 1280×720, 15 i/s, **sans audio**, sans B-frames
 - Keyframe ~2 s, ≤ 50 Mo
-- Diffusion MediaMTX en **copie de flux** (`-c copy`), sans réencodage à la volée
+- Diffusion en **copie de flux** (`-c copy`), sans réencodage à la volée
 
 La conversion est faite **une fois**, avant commit (ffmpeg en conteneur, seul prérequis : Docker). État : `cam1.mp4`, `cam2.mp4` et `cam3.mp4` convertis.
 

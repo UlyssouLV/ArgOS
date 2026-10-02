@@ -1,8 +1,8 @@
 """MediaMTX en pont (docs/adr/0001-mediamtx-en-pont.md) : chaque Caméra active relayée par un chemin `camera-<id>`.
 
 Réconciliation : les Caméras actives voulues en entrée, les chemins `camera-*` de MediaMTX ajustés
-(ajoutés, source mise à jour, retirés) par son API de contrôle. Les autres chemins (`cam1`…) ne
-sont jamais touchés. Une erreur sur un chemin n'empêche pas les autres : le tour suivant rattrape.
+(ajoutés, source mise à jour, retirés) par son API de contrôle. Les autres chemins ne sont jamais
+touchés. Une erreur sur un chemin n'empêche pas les autres : le tour suivant rattrape.
 """
 
 import json

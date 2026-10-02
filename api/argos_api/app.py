@@ -1,9 +1,13 @@
-"""API du Site : connexion de l'Administrateur, gestion des Caméras, surveillance de leur état et pont MediaMTX."""
+"""API du Site : connexion de l'Administrateur, gestion et Détection des Caméras, surveillance de leur état et pont MediaMTX."""
 
+import logging
+import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +15,10 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, sessions, sonde
+from argos_api import cameras, detection, sessions, soi, sonde
 from argos_api.boucle import BoucleDeFond
-from argos_api.cameras import CameraLue, ModificationCamera, NouvelleCamera
-from argos_api.configuration import Configuration, charger
+from argos_api.cameras import CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
+from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
 from argos_api.surveillance import Surveillance
@@ -22,6 +26,11 @@ from argos_api.surveillance import Surveillance
 COOKIE_SESSION = "argos_session"
 # Réconciliation des Caméras actives avec les chemins MediaMTX, en secondes (docs/adr/0001-mediamtx-en-pont.md).
 INTERVALLE_PONT_S = 10
+# Délai de chaque sonde de la Détection (connexion puis réponse RTSP), en secondes.
+DELAI_DETECTION_S = 1.5
+DETECTION_EN_COURS = "Une Détection est déjà en cours : attendre son résultat avant d'en relancer une."
+
+journal = logging.getLogger("argos_api.detection")
 
 Horloge = Callable[[], datetime]
 
@@ -39,11 +48,40 @@ class Moi(BaseModel):
     identifiant: str
 
 
+class Instance(BaseModel):
+    instance: str
+
+
+class EtatDetection(BaseModel):
+    configuree: bool
+    sous_reseaux: list[str]
+    ports: list[int]
+    raison: str | None
+
+
+class CandidatLu(BaseModel):
+    ip: str
+    port: int
+    # Diagnostic, non affiché par l'UI : statut de la réponse à OPTIONS et en-tête `Server`.
+    statut_rtsp: int
+    serveur: str | None
+    # Caméra du Site (active ou désactivée) à la même IP résolue et au même port ; `None` : nouveau.
+    camera: CameraCorrespondante | None
+
+
+class ResultatDetection(BaseModel):
+    sous_reseaux: list[str]
+    ports: list[int]
+    duree_s: float
+    candidats: list[CandidatLu]
+
+
 def creer_app(
     configuration: Configuration | None = None, horloge: Horloge = horloge_systeme
 ) -> FastAPI:
     """Horloge et configuration injectables : les règles de temps et de mot de passe se testent sans attendre."""
     configuration = configuration or charger()
+    _journaux_sur_la_sortie()
     frein = FreinForceBrute(horloge)
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
 
@@ -129,8 +167,27 @@ def creer_app(
     def moi(identifiant: Annotated[str, Depends(administrateur_connecte)]) -> Moi:
         return Moi(identifiant=identifiant)
 
+    @app.get(soi.CHEMIN_INSTANCE)
+    def instance() -> Instance:
+        """Identité de cette instance, sans session : la Détection s'y reconnaît (argos_api/soi.py)."""
+        return Instance(instance=soi.JETON_INSTANCE)
+
     app.include_router(_routes_cameras(base, administrateur_connecte))
+    hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
+    app.include_router(
+        _routes_detection(configuration.reglage_detection(), hote_pont, base, administrateur_connecte)
+    )
     return app
+
+
+def _journaux_sur_la_sortie() -> None:
+    """uvicorn ne journalise que ses propres messages : ceux d'ArgOS (dès INFO) vont aussi sur la sortie."""
+    racine = logging.getLogger("argos_api")
+    if not racine.handlers:
+        sortie = logging.StreamHandler()
+        sortie.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+        racine.addHandler(sortie)
+        racine.setLevel(logging.INFO)
 
 
 def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connecte: Callable) -> APIRouter:
@@ -161,6 +218,68 @@ def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connec
     def supprimer(id_camera: int, base: Base) -> None:
         with _erreurs_cameras():
             cameras.supprimer(base, id_camera)
+
+    return routes
+
+
+def _routes_detection(
+    reglage: ReglageDetection,
+    hote_pont: str,
+    base: Callable[[], Iterator[Session]],
+    administrateur_connecte: Callable,
+) -> APIRouter:
+    """Détection réservée à une session valide : un inconnu du réseau ne fait pas balayer le réseau par ArgOS.
+
+    Une seule à la fois : deux Détections simultanées doubleraient le trafic envoyé au réseau du Site.
+    """
+    Base = Annotated[Session, Depends(base)]
+    routes = APIRouter(prefix="/api/detection", dependencies=[Depends(administrateur_connecte)])
+    sous_reseaux = [str(reseau) for reseau in reglage.sous_reseaux]
+    une_seule = threading.Lock()
+
+    @routes.get("")
+    def decrire() -> EtatDetection:
+        return EtatDetection(
+            configuree=reglage.raison is None, sous_reseaux=sous_reseaux, ports=reglage.ports, raison=reglage.raison
+        )
+
+    @routes.post("")
+    def detecter(base: Base) -> ResultatDetection:
+        if reglage.raison is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, reglage.raison)
+        if not une_seule.acquire(blocking=False):
+            raise HTTPException(status.HTTP_409_CONFLICT, DETECTION_EN_COURS)
+        try:
+            debut = monotonic()
+            exclues = soi.adresses_des_conteneurs([hote_pont])
+            trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, exclues, DELAI_DETECTION_S)
+            argos = soi.publient_cette_api({c.ip for c in trouves}, DELAI_DETECTION_S)
+            candidats = [c for c in trouves if c.ip not in argos]
+            duree_s = round(monotonic() - debut, 1)
+        finally:
+            une_seule.release()
+        connues = cameras.par_adresse(base)
+        for c in candidats:
+            journal.info("Détection : Candidat %s:%s RTSP %s Server %s", c.ip, c.port, c.statut_rtsp, c.serveur)
+        journal.info(
+            "Détection : bilan sous-réseaux %s, ports %s, %s s, %s Candidat(s)",
+            ",".join(sous_reseaux), ",".join(map(str, reglage.ports)), duree_s, len(candidats),
+        )
+        return ResultatDetection(
+            sous_reseaux=sous_reseaux,
+            ports=reglage.ports,
+            duree_s=duree_s,
+            candidats=[
+                CandidatLu(
+                    ip=str(c.ip),
+                    port=c.port,
+                    statut_rtsp=c.statut_rtsp,
+                    serveur=c.serveur,
+                    camera=connues.get((c.ip, c.port)),
+                )
+                for c in candidats
+            ],
+        )
 
     return routes
 

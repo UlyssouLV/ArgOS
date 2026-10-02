@@ -11,14 +11,18 @@ import httpx
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# La stack des tests porte la simulation : Caméras simulées superposées à la stack de prod.
+FICHIERS_COMPOSE = ("compose.yaml", "compose.simulation.yaml")
 URL_API = "http://localhost:8000"
 DELAI_PRET_S = 120
 CLES_ADMINISTRATEUR = ("ARGOS_IDENTIFIANT", "ARGOS_MOT_DE_PASSE")
+# Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
+IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
 
 
 def compose(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["docker", "compose", *args],
+        ["docker", "compose", *(option for fichier in FICHIERS_COMPOSE for option in ("-f", fichier)), *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -78,6 +82,27 @@ def identifiants_administrateur() -> dict[str, str]:
         "identifiant": env["ARGOS_IDENTIFIANT"],
         "mot_de_passe": env["ARGOS_MOT_DE_PASSE"],
     }
+
+
+def url_camera_simulee(numero: int, chemin: str, requete: str, identifiants: bool = True) -> str:
+    """URL d'une Caméra simulée, vue de `api` et du pont ; `identifiants` ne joue que pour camera-simulee-2.
+
+    La requête rend l'URL unique (l'URL est unique parmi les Caméras) ; la Caméra simulée l'ignore.
+    """
+    utilisateur = f"{IDENTIFIANTS_SIMULES[numero]}@" if identifiants and numero in IDENTIFIANTS_SIMULES else ""
+    return f"rtsp://{utilisateur}camera-simulee-{numero}/{chemin}?test={requete}"
+
+
+def adresses_ip(service: str) -> set[str]:
+    """Adresses IPv4 du conteneur d'un service, sur tous ses réseaux Compose."""
+    conteneur = compose("ps", "-q", service).stdout.strip()
+    inspection = subprocess.run(
+        ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", conteneur],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(inspection.stdout.split())
 
 
 def lancer_stack() -> None:

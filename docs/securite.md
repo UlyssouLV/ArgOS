@@ -45,9 +45,9 @@ Si on publiait le port (`ports: "5432:5432"`), PostgreSQL écouterait sur **tout
 
 Aujourd'hui, MediaMTX sert les Flux (RTSP, HLS, WebRTC) **sans authentification** sur tout le réseau local. Acceptable avec des Caméras simulées. Avec de vraies caméras, n'importe qui sur le Wi-Fi pourrait regarder sans passer par la connexion d'ArgOS : le login de l'API deviendrait décoratif.
 
-Depuis la 0.3.0, MediaMTX est le **pont** entre toute Caméra active et le navigateur ([ADR 0001](adr/0001-mediamtx-en-pont.md)) : l'API le configure pour relayer chaque Caméra active sur un chemin `camera-<id>`. Ces chemins sont lisibles **sans authentification par tout poste du réseau local**, comme `cam1`–`cam3` : la dette « Flux sans auth » couvre désormais **toutes** les Caméras du Site, pas seulement les simulées. Un chemin n'est retiré qu'au tour de réconciliation suivant (≤ 10 s) après la désactivation ou la suppression de la Caméra.
+Depuis la 0.3.0, MediaMTX est le **pont** entre toute Caméra active et le navigateur ([ADR 0001](adr/0001-mediamtx-en-pont.md)) : l'API le configure pour relayer chaque Caméra active sur un chemin `camera-<id>`. Ces chemins sont lisibles **sans authentification par tout poste du réseau local** : la dette « Flux sans auth » couvre désormais **toutes** les Caméras du Site, pas seulement les simulées. Un chemin n'est retiré qu'au tour de réconciliation suivant (≤ 10 s) après la désactivation ou la suppression de la Caméra.
 
-Seul ffmpeg, dans le conteneur `mediamtx`, peut publier un Flux (les Caméras simulées) : aucune publication n'est acceptée depuis le réseau.
+Le pont n'accepte aucune publication : il ne fait que tirer les Flux des Caméras. Les Caméras simulées (dev seulement, `compose.simulation.yaml`) sont des conteneurs à part, non publiés sur la machine hôte, où seul leur ffmpeg interne publie ; `camera-simulee-2` exige un identifiant et un mot de passe de dev, publics dans le dépôt.
 
 ### MediaMTX : API de contrôle non publiée
 
@@ -56,6 +56,19 @@ L'API de contrôle de MediaMTX (port 9997) permet d'ajouter, modifier ou retirer
 ### API : HTTP simple
 
 L'API écoute en HTTP sur le port 8000. Sur le Wi-Fi, le mot de passe de l'Administrateur et le cookie de session circulent **en clair** ; le cookie n'a pas l'attribut `Secure`. Il faut HTTPS avant tout usage réel.
+
+Seules routes sans session, hors connexion : la doc de l'API (`/api/docs`) et `GET /api/instance`, qui renvoie un jeton aléatoire tiré à chaque démarrage. Ce jeton n'ouvre rien : il sert à la Détection à se reconnaître elle-même (l'hôte du Site publie le pont, qui répond en RTSP comme une caméra) pour ne jamais se lister comme Candidat.
+
+### Détection : ArgOS agit sur le réseau
+
+Depuis la 0.4.0, ArgOS n'attend plus seulement les Caméras qu'on lui donne : la **Détection** frappe à toutes les portes des sous-réseaux autorisés. Explication complète : [Réseau du Site et Détection des Caméras](cameras/reseau-et-detection.md).
+
+- **Ce qu'elle envoie** : depuis le conteneur `api`, une connexion TCP vers chaque adresse des sous-réseaux, sur chaque port caméra (`ARGOS_DETECTION_CAMERAS_PORTS`, défaut `554,8554`) ; si elle est acceptée, une requête RTSP `OPTIONS` **sans chemin ni identifiants**. Puis, aux seuls hôtes qui ont répondu en RTSP, `GET /api/instance` sur le port 8000, pour écarter ArgOS lui-même. Aucun mot de passe n'est essayé, rien n'est écrit sur les appareils.
+- **À qui** : uniquement aux sous-réseaux de `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX`. Ils viennent de l'**hôte** : le script `scripts/cameras/configurer-detection.sh` les recalcule à chaque lancement depuis la ou les prises retenues pour les caméras ([ADR 0002](adr/0002-detection-depuis-le-reseau-bridge.md)), ou l'installateur les écrit à la main. Le fichier de simulation (dev) y ajoute `172.30.0.0/24`. L'API ne choisit jamais seule où chercher.
+- **Plafond** : **1024 adresses** au total ; au-delà, ou réglage invalide, la Détection est indisponible (le reste d'ArgOS tourne). 128 connexions simultanées au plus, 1,5 s par essai, **une seule Détection à la fois** (une seconde reçoit `409`).
+- **Réservée à l'Administrateur** : `GET` et `POST /api/detection` exigent une session (`401` sinon) : un inconnu du réseau ne peut pas faire balayer le réseau par ArgOS.
+- **Visible** : ce balayage ressemble à celui d'un attaquant. Un pare-feu, un IDS ou une caméra qui journalise peuvent le signaler ; prévenir qui gère le réseau du Site. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
+- **Ce qu'elle révèle** : les Candidats (IP, port, statut RTSP, en-tête `Server`, souvent marque et firmware) ne sont pas stockés, mais ils sont renvoyés à l'Administrateur et écrits dans les journaux.
 
 ### UI et API : deux origines, CORS avec credentials
 

@@ -156,6 +156,23 @@ input {
   gap: 0.4rem;
 }
 
+.detection button {
+  margin-bottom: 0.75rem;
+}
+
+.candidats {
+  width: auto;
+  min-width: 16rem;
+}
+
+.deja-configurees {
+  margin-top: 0.75rem;
+}
+
+.deja-configurees summary {
+  cursor: pointer;
+}
+
 .etat {
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
