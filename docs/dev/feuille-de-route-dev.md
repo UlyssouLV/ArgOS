@@ -34,9 +34,13 @@ La vidéo arrive dès cette version : le Live lit le Flux en **WebRTC** (client 
 
 ## 0.4.0 — Détection des Caméras sur le réseau
 
-Depuis l’Administration, lancer une détection sur le(s) sous-réseau(x) autorisé(s) du Site et afficher la **liste des candidats** repérés (hôtes qui répondent sur RTSP / ports standards), sans encore les ajouter comme Caméras ArgOS ni exiger d’identifiants.
+Spec : [v0.4.0](../specs/v0.4.0-detection-des-cameras.md).
 
-La détection ne lit pas le switch (non géré) : elle voit ce qui est joignable depuis le serveur ArgOS. Entrée manuelle (« appareil non détecté ») hors scope de cette version.
+Depuis l’Administration, lancer une **Détection** sur le(s) sous-réseau(x) autorisé(s) du Site et afficher la liste des **Candidats** : hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ceux qui correspondent déjà à une Caméra du Site sont rangés dans « Déjà configurées », repliée. Rien n’est ajouté ni stocké ; ArgOS lui-même n’est jamais Candidat. Détection réservée à une session, une seule à la fois, 1024 adresses au plus.
+
+L’API, dans Docker, ne voit pas les prises de la machine ([ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md)) : le script hôte `scripts/cameras/configurer-detection.sh` demande une fois la prise des caméras, puis recalcule à chaque lancement ses sous-réseaux dans `.env`. Les Caméras simulées deviennent trois conteneurs RTSP sur le port 554 (l’un avec identifiants), sur leur propre réseau, déclarés par `compose.simulation.yaml`, absent de la prod. Doc pédagogique : [Réseau du Site et Détection des Caméras](../cameras/reseau-et-detection.md).
+
+La Détection ne lit pas le switch (non géré) : elle voit ce qui est joignable depuis le serveur ArgOS. Entrée manuelle (« appareil non détecté ») hors scope de cette version.
 
 ## 0.4.1 — Auth RTSP à l’ajout (401 et credentials)
 

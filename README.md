@@ -12,7 +12,7 @@ Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrate
 
 Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
 
-Version **0.4.0** (en cours) : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.4.0** (en cours) : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -37,7 +37,7 @@ cp .env.example .env
 
 Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
-1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ;
+1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ; puis lance `scripts/cameras/configurer-detection.sh` (sous-réseaux de la [Détection](#détection-des-caméras), prise demandée au premier lancement s’il y en a plusieurs) ;
 2. démarre Docker Desktop s’il ne tourne pas, et attend que le moteur réponde ;
 3. lance la stack **avec la simulation** : `docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait` ;
 4. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `http://localhost:8080`.
@@ -152,7 +152,8 @@ L’onglet **Administration** couvre toute la gestion des Caméras :
 - **Modifier** : nom, URL, emplacement. L’URL s’affiche masquée (`rtsp://user:***@…`) : la laisser telle quelle conserve le mot de passe RTSP enregistré ;
 - un refus de l’API s’affiche dans le formulaire : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
 - **Désactiver** / **Réactiver** ;
-- **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression**.
+- **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression** ;
+- **Détecter des Caméras** : voir [Détection des Caméras](#détection-des-caméras).
 
 **Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). Dans **Nouvelle Caméra**, créer :
 
@@ -207,6 +208,9 @@ npm run dev     # http://localhost:5173, rechargement à chaud
 | `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
 | `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) |
 | `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
+| `GET /api/detection` | État de la Détection : `configuree`, `sous_reseaux`, `ports`, `raison` si indisponible |
+| `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |
+| `GET /api/instance` | Sans session : jeton tiré à chaque démarrage, pour que la Détection reconnaisse ArgOS lui-même |
 
 Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
 
@@ -231,6 +235,21 @@ L’URL est `rtsp://camera-simulee-N/flux` (port RTSP par défaut, 554), pas `lo
 L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : session RTSP (identifiants de l’URL pris en charge), puis attente d’**au moins un paquet vidéo** pendant 5 s au plus. Reçu → `etat` passe à `online`, sinon à `offline` ; `etat_verifie_le` dit quand. Une Caméra nouvelle, dont l’URL vient de changer, ou désactivée (plus sondée) est `unknown`. Intervalle et délai se règlent dans `.env` (`ARGOS_SONDE_INTERVALLE_S`, `ARGOS_SONDE_DELAI_S`, voir `.env.example`).
 
 `online` prouve que quelque chose diffuse de la vidéo à cette URL, pas que c’est la vraie caméra : voir [docs/securite.md](docs/securite.md#1-ce-que-prouve-létat-dune-caméra).
+
+## Détection des Caméras
+
+Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. Rien n’est ajouté ni stocké (ajout depuis un Candidat : 0.4.1). ArgOS lui-même n’apparaît jamais.
+
+Les sous-réseaux viennent de la machine hôte : l’API, dans Docker, ne voit pas ses prises réseau ([ADR 0002](docs/adr/0002-detection-depuis-le-reseau-bridge.md)). Le script **`scripts/cameras/configurer-detection.sh`** (Linux et macOS), lancé depuis la racine du dépôt avant la stack, demande une fois la ou les prises qui relient les caméras, puis recalcule à chaque lancement leur(s) sous-réseau(x) dans `.env` :
+
+```bash
+scripts/cameras/configurer-detection.sh   # écrit ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX dans .env
+docker compose up -d --wait               # recrée api avec ce réglage
+```
+
+`lancer-argos.command` l’appelle tout seul. En repli, écrire `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=192.168.1.0/24` à la main dans `.env` (1024 adresses au plus, voir `.env.example`). Réglage vide ou invalide : l’Administration affiche la raison, le reste d’ArgOS marche. En dev, `compose.simulation.yaml` ajoute `172.30.0.0/24` : la Détection trouve les trois Caméras simulées, et aussi tout appareil RTSP du réseau de la box. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
+
+Adresse IP, sous-réseau, trouver le sien sur la machine Linux, DHCP et adresses d’usine des caméras, démarrage automatique (service systemd) : **[Réseau du Site et Détection des Caméras](docs/cameras/reseau-et-detection.md)**. Ce que la Détection envoie sur le réseau : [docs/securite.md](docs/securite.md#détection--argos-agit-sur-le-réseau).
 
 ## Caméras simulées
 
@@ -300,13 +319,14 @@ Attendu : `codec_name=h264`, `width=1280`, `height=720`. (`argos` est le nom du 
 
 ## Tests
 
-`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`, `tests/web/`) ; à la main :
+`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`, `tests/web/`, `tests/scripts/`) ; à la main :
 
 ```bash
 cd tests/flux && uv run pytest
 cd tests/api && uv run pytest
 cd tests/regles-sessions && uv run pytest
 cd tests/web && uv run pytest
+cd tests/scripts && uv run pytest
 ```
 
 `tests/web/` a besoin de Chromium pour Playwright, à installer une fois :
@@ -321,6 +341,8 @@ Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f 
 - `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `camera-simulee-1`, et sur `camera-simulee-2` avec ses identifiants, `offline` sans, sur une URL injoignable ou un chemin inconnu, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
 - `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : Caméra créée sur `camera-simulee-1` qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active) ; Live : première Caméra active par nom dont la `<video>` joue vraiment (`currentTime` qui avance), Suivant puis flèche droite qui font le tour en gardant une seule connexion WebRTC ouverte, message avec lien vers Administration sans Caméra active, « Flux indisponible » sur une URL injoignable. Les tests Live désactivent les Caméras actives existantes le temps du test, puis les réactivent. Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
 - `tests/api/` couvre aussi le pont (Caméra simulée, avec ou sans identifiants, relue en H.264 sur `camera-<id>`) et le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
+- `tests/api/` et `tests/web/` couvrent la Détection : les trois Caméras simulées trouvées (dont celle à identifiants), ni la base ni le pont parmi les Candidats, Caméra correspondante sur un Candidat déjà déclaré, `409` pour une seconde Détection simultanée, `401` sans session ; dans l’UI, chargement, liste des Candidats, « Déjà configurées » repliée puis dépliée.
+- `tests/scripts/` lance `scripts/cameras/configurer-detection.sh` avec de fausses sorties `ip` / `ifconfig` et un `.env` temporaire : une seule prise sans question, sous-réseau recalculé, Docker, boucle locale et `169.254` écartés, prise sans adresse, plage de plus de 1024 adresses refusée.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
@@ -328,7 +350,8 @@ Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f 
 ```
 compose.yaml              Stack Docker Compose de prod (mediamtx, api, db, web)
 compose.simulation.yaml   Simulation de dev, superposée : Caméras simulées, réseau cameras-simulees
-lancer-argos.command      Lanceur macOS (double-clic) : .env, Docker Desktop, stack, UI
+lancer-argos.command      Lanceur macOS (double-clic) : .env, Détection, Docker Desktop, stack, UI
+scripts/cameras/          Script hôte : sous-réseaux de la Détection depuis la prise des caméras
 .env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
 api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
 web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
@@ -338,9 +361,12 @@ tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
 tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
 tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
+tests/scripts/            Tests du script de configuration de la Détection (fausses sorties ip / ifconfig)
+docs/cameras/             Réseau du Site et Détection des Caméras (doc pédagogique)
 docs/dev/                 Feuille de route de dev, schéma des Flux (Mermaid)
 docs/specs/               Specs de version et contexte initial
-docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
+docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge)
+docs/securite.md          Sécurité : limites connues, exposition réseau, Détection, dettes
 CONTEXT.md                Glossaire (Site, Administrateur, Caméra, Flux…)
 AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 ```
