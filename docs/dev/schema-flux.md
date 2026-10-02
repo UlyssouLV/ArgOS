@@ -12,7 +12,7 @@ flowchart LR
 
     subgraph HOTE["Machine hôte · Docker Desktop · ports publiés sur toutes ses interfaces"]
         subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
-            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 /flux · -2 avec identifiants<br/>non publiées"]
+            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 · chemins Hikvision, Dahua, /flux · -2 avec identifiants<br/>non publiées"]
         end
         subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service"]
             subgraph MTX["mediamtx"]
@@ -52,7 +52,7 @@ flowchart LR
 
 | De → vers | Protocole · port | Quand | Ce qui passe |
 |---|---|---|---|
-| ffmpeg → Caméra simulée (`flux`) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` (dev) | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
+| ffmpeg → Caméra simulée (son chemin) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` (dev) | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
 | `api` → `db` | SQL · `db:5432` | à chaque requête | Caméras, sessions, états |
 | `api` → `mediamtx` | HTTP · `mediamtx:9997` (API de contrôle) | toutes les 10 s | ajoute / modifie / retire les chemins `camera-<id>` selon les Caméras actives ; rien d’autre n’est touché |
 | `api` → chaque adresse des sous-réseaux autorisés | TCP · ports caméra (`554,8554` par défaut), puis RTSP `OPTIONS` | à chaque Détection (clic dans l’Administration), une dizaine de secondes | connexion, puis `OPTIONS` sans chemin ni identifiants ; une ligne de statut RTSP en retour → Candidat |

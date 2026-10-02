@@ -18,6 +18,8 @@ DELAI_PRET_S = 120
 CLES_ADMINISTRATEUR = ("ARGOS_IDENTIFIANT", "ARGOS_MOT_DE_PASSE")
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
+# Chemins de vraies caméras des Caméras simulées (media/simulated/README.md).
+CHEMINS_SIMULES = {1: "Streaming/Channels/101", 2: "cam/realmonitor?channel=1&subtype=0", 3: "flux"}
 
 
 def compose(*args: str) -> subprocess.CompletedProcess[str]:
@@ -84,13 +86,16 @@ def identifiants_administrateur() -> dict[str, str]:
     }
 
 
-def url_camera_simulee(numero: int, chemin: str, requete: str, identifiants: bool = True) -> str:
+def url_camera_simulee(numero: int, requete: str, identifiants: bool = True, chemin: str | None = None) -> str:
     """URL d'une Caméra simulée, vue de `api` et du pont ; `identifiants` ne joue que pour camera-simulee-2.
 
-    La requête rend l'URL unique (l'URL est unique parmi les Caméras) ; la Caméra simulée l'ignore.
+    `chemin` remplace son chemin de vraie caméra. La requête rend l'URL unique (l'URL est unique parmi
+    les Caméras) ; la Caméra simulée l'ignore.
     """
     utilisateur = f"{IDENTIFIANTS_SIMULES[numero]}@" if identifiants and numero in IDENTIFIANTS_SIMULES else ""
-    return f"rtsp://{utilisateur}camera-simulee-{numero}/{chemin}?test={requete}"
+    chemin = chemin or CHEMINS_SIMULES[numero]
+    separateur = "&" if "?" in chemin else "?"
+    return f"rtsp://{utilisateur}camera-simulee-{numero}/{chemin}{separateur}test={requete}"
 
 
 def adresses_ip(service: str) -> set[str]:

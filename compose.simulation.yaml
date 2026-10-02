@@ -1,17 +1,20 @@
 # Simulation de dev, superposée à compose.yaml (jamais en prod) :
 #   docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait
 # Trois Caméras simulées, trois hôtes distincts comme de vraies caméras : chacune diffuse sa vidéo
-# (media/simulated/camN.mp4) en boucle, sans réencodage, sur rtsp://camera-simulee-N/flux (port 554).
+# (media/simulated/camN.mp4) en boucle, sans réencodage, en RTSP (port 554), sur un chemin de vraie caméra :
+# style Hikvision (1), style Dahua avec identifiants (2), chemin exotique `flux` (3).
 # Aucun port publié : on les regarde par le Live, une fois déclarées comme Caméras (media/simulated/README.md).
 
 x-camera-simulee: &camera-simulee
   image: bluenviron/mediamtx:1.21.1-ffmpeg
   restart: unless-stopped
+  # Remplit le gabarit camera-simulee.yml avec le chemin de la Caméra simulée, puis lance MediaMTX.
+  entrypoint: ["/bin/sh", "-c", "sed \"s|^  CHEMIN_FLUX:|  $$CHEMIN_FLUX:|\" /camera-simulee.yml > /mediamtx.yml && exec /mediamtx"]
   networks:
     - cameras-simulees
   healthcheck:
     # Prête quand la vidéo est diffusée sur son chemin.
-    test: ["CMD", "ffprobe", "-v", "error", "-rtsp_transport", "tcp", "rtsp://localhost/flux"]
+    test: ["CMD-SHELL", "ffprobe -v error -rtsp_transport tcp \"rtsp://localhost/$$CHEMIN_FLUX\""]
     interval: 10s
     timeout: 5s
     start_period: 30s
@@ -21,15 +24,19 @@ services:
   camera-simulee-1:
     <<: *camera-simulee
     volumes:
-      - ./media/simulated/camera-simulee.yml:/mediamtx.yml:ro
+      - ./media/simulated/camera-simulee.yml:/camera-simulee.yml:ro
       - ./media/simulated/cam1.mp4:/media/video.mp4:ro
+    environment:
+      CHEMIN_FLUX: Streaming/Channels/101
 
   camera-simulee-2:
     <<: *camera-simulee
     volumes:
-      - ./media/simulated/camera-simulee.yml:/mediamtx.yml:ro
+      - ./media/simulated/camera-simulee.yml:/camera-simulee.yml:ro
       - ./media/simulated/cam2.mp4:/media/video.mp4:ro
     environment:
+      # Lu sur rtsp://camera-simulee-2/cam/realmonitor?channel=1&subtype=0 : MediaMTX ignore la requête.
+      CHEMIN_FLUX: cam/realmonitor
       # Lecture avec identifiant et mot de passe de dev (media/simulated/README.md).
       MTX_AUTHINTERNALUSERS_0_USER: admin
       MTX_AUTHINTERNALUSERS_0_PASS: argos-simulee
@@ -37,8 +44,10 @@ services:
   camera-simulee-3:
     <<: *camera-simulee
     volumes:
-      - ./media/simulated/camera-simulee.yml:/mediamtx.yml:ro
+      - ./media/simulated/camera-simulee.yml:/camera-simulee.yml:ro
       - ./media/simulated/cam3.mp4:/media/video.mp4:ro
+    environment:
+      CHEMIN_FLUX: flux
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:
