@@ -93,6 +93,18 @@ def url_camera_simulee(numero: int, chemin: str, requete: str, identifiants: boo
     return f"rtsp://{utilisateur}camera-simulee-{numero}/{chemin}?test={requete}"
 
 
+def adresses_ip(service: str) -> set[str]:
+    """Adresses IPv4 du conteneur d'un service, sur tous ses réseaux Compose."""
+    conteneur = compose("ps", "-q", service).stdout.strip()
+    inspection = subprocess.run(
+        ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", conteneur],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(inspection.stdout.split())
+
+
 def lancer_stack() -> None:
     # --build : les tests visent toujours le code courant, pas une image périmée.
     compose("up", "-d", "--build", "--wait")

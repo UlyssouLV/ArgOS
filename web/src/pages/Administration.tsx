@@ -9,6 +9,7 @@ import {
   type Camera,
   type SaisieCamera,
 } from "../cameras";
+import { DetecterCameras } from "./DetecterCameras";
 
 const RAFRAICHISSEMENT_MS = 10_000;
 const SAISIE_VIDE: SaisieCamera = { nom: "", url_rtsp: "", emplacement: null };
@@ -131,6 +132,7 @@ export function Administration() {
           </tbody>
         </table>
       )}
+      <DetecterCameras />
     </section>
   );
 }

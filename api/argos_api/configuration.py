@@ -1,5 +1,8 @@
 """Configuration du Site, lue dans l'environnement (`.env` via Docker Compose)."""
 
+from dataclasses import dataclass
+from ipaddress import IPv4Network
+
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings
 
@@ -23,8 +26,52 @@ class Configuration(BaseSettings):
         "http://localhost:8080,http://localhost:5173", validation_alias="ARGOS_ORIGINES_AUTORISEES"
     )
 
+    # Détection des Caméras : sous-réseaux IPv4 (CIDR) et ports sondés, séparés par des virgules.
+    # Réglage vide ou invalide : l'API démarre, seule la Détection est indisponible.
+    detection_sous_reseaux: str = Field("", validation_alias="ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX")
+    detection_ports: str = Field("554,8554", validation_alias="ARGOS_DETECTION_CAMERAS_PORTS")
+
     def liste_origines_autorisees(self) -> list[str]:
         return [origine.strip() for origine in self.origines_autorisees.split(",") if origine.strip()]
+
+    def reglage_detection(self) -> "ReglageDetection":
+        try:
+            ports = [int(port) for port in _elements(self.detection_ports)]
+        except ValueError:
+            ports = []
+        if not ports or not all(0 < port < 65536 for port in ports):
+            return ReglageDetection([], [], f"{INVALIDE} : ports « {self.detection_ports} » (ex. 554,8554).")
+        if not _elements(self.detection_sous_reseaux):
+            return ReglageDetection([], ports, NON_CONFIGUREE)
+        sous_reseaux = []
+        for element in _elements(self.detection_sous_reseaux):
+            try:
+                sous_reseaux.append(IPv4Network(element, strict=False))
+            except ValueError:
+                return ReglageDetection(
+                    [], ports, f"{INVALIDE} : « {element} » n'est pas un sous-réseau IPv4 (ex. 192.168.1.0/24)."
+                )
+        return ReglageDetection(sous_reseaux, ports, None)
+
+
+NON_CONFIGUREE = (
+    "Détection non configurée : aucun sous-réseau autorisé (ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX). "
+    "Lancer scripts/cameras/configurer-detection.sh sur la machine du Site, puis relancer ArgOS ; "
+    "voir docs/cameras/reseau-et-detection.md."
+)
+INVALIDE = "Configuration de la Détection invalide (ARGOS_DETECTION_CAMERAS_*)"
+
+
+@dataclass(frozen=True)
+class ReglageDetection:
+    sous_reseaux: list[IPv4Network]
+    ports: list[int]
+    # Pourquoi la Détection est indisponible ; `None` : configurée.
+    raison: str | None
+
+
+def _elements(liste: str) -> list[str]:
+    return [element.strip() for element in liste.split(",") if element.strip()]
 
 
 def charger() -> Configuration:

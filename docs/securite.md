@@ -57,6 +57,8 @@ L'API de contrôle de MediaMTX (port 9997) permet d'ajouter, modifier ou retirer
 
 L'API écoute en HTTP sur le port 8000. Sur le Wi-Fi, le mot de passe de l'Administrateur et le cookie de session circulent **en clair** ; le cookie n'a pas l'attribut `Secure`. Il faut HTTPS avant tout usage réel.
 
+Seules routes sans session, hors connexion : la doc de l'API (`/api/docs`) et `GET /api/instance`, qui renvoie un jeton aléatoire tiré à chaque démarrage. Ce jeton n'ouvre rien : il sert à la Détection à se reconnaître elle-même (l'hôte du Site publie le pont, qui répond en RTSP comme une caméra) pour ne jamais se lister comme Candidat.
+
 ### UI et API : deux origines, CORS avec credentials
 
 L'UI (`web`, port 8080) et l'API (port 8000) sont deux **origines** différentes sur le même hôte. Le front appelle l'API avec `credentials: 'include'` : le navigateur joint le cookie de session, et l'API doit l'autoriser par CORS.

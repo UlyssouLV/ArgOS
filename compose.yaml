@@ -33,6 +33,9 @@ services:
       ARGOS_SONDE_DELAI_S: ${ARGOS_SONDE_DELAI_S:-5}
       # Origines de l'UI autorisées à appeler l'API avec le cookie : voir .env.example.
       ARGOS_ORIGINES_AUTORISEES: ${ARGOS_ORIGINES_AUTORISEES:-http://localhost:8080,http://localhost:5173}
+      # Détection des Caméras : sous-réseaux autorisés et ports sondés, voir .env.example. Vide : non configurée.
+      ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:-}
+      ARGOS_DETECTION_CAMERAS_PORTS: ${ARGOS_DETECTION_CAMERAS_PORTS:-554,8554}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
       interval: 2s
