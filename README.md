@@ -31,6 +31,17 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En dev local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le protocole de lancement ci-dessous, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
+## Lanceur macOS
+
+Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
+
+1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ;
+2. démarre Docker Desktop s’il ne tourne pas, et attend que le moteur réponde ;
+3. lance `docker compose up -d --build --wait` ;
+4. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `http://localhost:8080`.
+
+Fermer les fenêtres n’arrête pas la stack : `docker compose down` (voir l’étape 6 ci-dessous). Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
+
 ## Protocole de lancement
 
 Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identifiant et le mot de passe dans `.env` (voir ci-dessus) : rien à recopier à la main.
@@ -296,6 +307,7 @@ cd tests/web && uv sync && uv run playwright install chromium
 
 ```
 compose.yaml              Stack Docker Compose (mediamtx, api, db, web)
+lancer-argos.command      Lanceur macOS (double-clic) : .env, Docker Desktop, stack, UI
 .env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
 api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
 web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
@@ -305,7 +317,7 @@ tests/flux/               Tests de bout en bout des Flux (pytest, uv)
 tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
 tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
 tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
-docs/dev/                 Feuille de route de dev
+docs/dev/                 Feuille de route de dev, schéma des Flux (Mermaid)
 docs/specs/               Specs de version et contexte initial
 docs/securite.md          Sécurité : limites connues, exposition réseau, dettes
 CONTEXT.md                Glossaire (Site, Administrateur, Caméra, Flux…)

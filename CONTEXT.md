@@ -25,8 +25,16 @@ La vidéo RTSP que produit une Caméra.
 _Avoid_ : Stream, feed
 
 **Caméra simulée** :
-Caméra dont le Flux est produit par MediaMTX à partir d’une vidéo de dev, en remplacement d’un appareil réel.
+Caméra de dev qui diffuse en boucle une vidéo de dev, en remplacement d’un appareil réel.
 _Avoid_ : Flux simulé, fausse caméra, mock
+
+**Détection** :
+Action, lancée par l’Administrateur, qui cherche sur le réseau du Site les appareils pouvant devenir des Caméras.
+_Avoid_ : scan, découverte
+
+**Candidat** :
+Hôte trouvé par une Détection qui répond en RTSP, et n’est pas (encore) une Caméra du Site.
+_Avoid_ : appareil détecté, device
 
 **Live** :
 La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à la suivante.

@@ -32,11 +32,31 @@ Livrer le frontend React (conteneur `web`) branché sur l’API : connexion, ong
 
 La vidéo arrive dès cette version : le Live lit le Flux en **WebRTC** (client WHEP dans le front), depuis **MediaMTX en pont** : l’API réconcilie les Caméras actives avec des chemins MediaMTX `camera-<id>` qui relaient leur URL RTSP, sans réencodage ([ADR 0001](../adr/0001-mediamtx-en-pont.md)).
 
+## 0.4.0 — Détection des Caméras sur le réseau
+
+Depuis l’Administration, lancer une détection sur le(s) sous-réseau(x) autorisé(s) du Site et afficher la **liste des candidats** repérés (hôtes qui répondent sur RTSP / ports standards), sans encore les ajouter comme Caméras ArgOS ni exiger d’identifiants.
+
+La détection ne lit pas le switch (non géré) : elle voit ce qui est joignable depuis le serveur ArgOS. Entrée manuelle (« appareil non détecté ») hors scope de cette version.
+
+## 0.4.1 — Auth RTSP à l’ajout (401 et credentials)
+
+Sur un candidat détecté, tenter un accès au Flux : si la caméra répond **sans auth**, enchaîner vers la preview ; si elle répond **401 / Unauthorized**, afficher identifiant + mot de passe, retester, puis montrer la preview pour nommer / situer et finaliser l’ajout — sans coller une URL RTSP à la main (chemin dérivé ou sondé).
+
+Le filet « appareil non détecté → saisir une IP / URL » peut arriver dans cette version ou la suivante, selon le découpage des tickets.
+
+## 0.4.2 — Identité stable par adresse MAC
+
+Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue à la détection ou à l’ajout) pour la reconnaître si son IP change (DHCP), mettre à jour l’URL RTSP en conséquence, et éviter de traiter le même appareil physique comme une nouvelle Caméra.
+
 ## 1.0.0 — Fil rouge Site → Live RTSP
 
 **À redéfinir** : la vidéo arrive en 0.3.0.
 
 Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras.
+
+## Plus tard — Configuration initiale du Site
+
+Régler depuis l’Administration, au premier lancement, ce qui vit aujourd’hui dans `.env` : sous-réseaux et ports de la Détection des Caméras, origines autorisées de l’UI, etc.
 
 ## Plus tard — Enregistrement sans réencodage
 
@@ -76,4 +96,4 @@ Personnes / véhicules sur substream, après le cœur live.
 
 ## Plus tard — ONVIF et PTZ
 
-Découverte, capacités, pilotage et tracking éventuel.
+Au-delà de la détection RTSP (0.4.x) : profils média ONVIF, capacités, pilotage PTZ et tracking éventuel.
