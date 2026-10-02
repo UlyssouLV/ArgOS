@@ -34,6 +34,8 @@ La vidéo arrive dès cette version : le Live lit le Flux en **WebRTC** (client 
 
 ## 0.4.0 — Détection des Caméras sur le réseau
 
+**Livrée** ([PR #24](https://github.com/UlyssouLV/ArgOS/pull/24)).
+
 Spec : [v0.4.0](../specs/v0.4.0-detection-des-cameras.md).
 
 Depuis l’Administration, lancer une **Détection** sur le(s) sous-réseau(x) autorisé(s) du Site et afficher la liste des **Candidats** : hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ceux qui correspondent déjà à une Caméra du Site sont rangés dans « Déjà configurées », repliée. Rien n’est ajouté ni stocké ; ArgOS lui-même n’est jamais Candidat. Détection réservée à une session, une seule à la fois, 1024 adresses au plus.

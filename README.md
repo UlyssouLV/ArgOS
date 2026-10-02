@@ -12,7 +12,7 @@ Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrate
 
 Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
 
-Version **0.4.0** (en cours) : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
