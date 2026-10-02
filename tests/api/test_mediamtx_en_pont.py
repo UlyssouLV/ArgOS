@@ -1,8 +1,8 @@
 """MediaMTX en pont (docs/adr/0001-mediamtx-en-pont.md), vu de l'extérieur de la stack.
 
 Toute Caméra active est relayée sur `rtsp://<hôte>:8554/<chemin_flux>` après un tour de
-réconciliation (10 s). Les Caméras simulées s'y déclarent avec `rtsp://mediamtx:8554/camN` :
-c'est le conteneur `mediamtx` qui tire le Flux.
+réconciliation (10 s). Les Caméras simulées s'y déclarent avec `rtsp://camera-simulee-N/flux` :
+c'est le conteneur `mediamtx`, rattaché à leur réseau, qui tire le Flux.
 """
 
 import json
@@ -66,13 +66,19 @@ def test_chemin_flux_d_une_camera_active_puis_null_apres_desactivation(connecte,
 
 
 def test_camera_simulee_relayee_en_h264(creer_camera):
-    camera = creer_camera(url_rtsp=url_simulee("cam1")).json()
+    camera = creer_camera(url_rtsp=url_simulee(1)).json()
+
+    attendre_lisible(camera["chemin_flux"], True)
+
+
+def test_camera_simulee_a_identifiants_relayee_en_h264(creer_camera):
+    camera = creer_camera(url_rtsp=url_simulee(2)).json()
 
     attendre_lisible(camera["chemin_flux"], True)
 
 
 def test_camera_desactivee_plus_relayee(connecte, creer_camera):
-    camera = creer_camera(url_rtsp=url_simulee("cam1")).json()
+    camera = creer_camera(url_rtsp=url_simulee(1)).json()
     attendre_lisible(camera["chemin_flux"], True)
 
     connecte.patch(f"/api/cameras/{camera['id']}", json={"active": False})
@@ -81,11 +87,11 @@ def test_camera_desactivee_plus_relayee(connecte, creer_camera):
 
 
 def test_le_relais_suit_le_changement_d_url(connecte, creer_camera):
-    camera = creer_camera(url_rtsp=url_simulee("cam404")).json()
+    camera = creer_camera(url_rtsp=url_simulee(1, "inconnu")).json()
     # Chemin réconcilié, mais sa source n'existe pas.
     time.sleep(12)
     assert not lisible(camera["chemin_flux"])
 
-    connecte.patch(f"/api/cameras/{camera['id']}", json={"url_rtsp": url_simulee("cam2")})
+    connecte.patch(f"/api/cameras/{camera['id']}", json={"url_rtsp": url_simulee(2)})
 
     attendre_lisible(camera["chemin_flux"], True)

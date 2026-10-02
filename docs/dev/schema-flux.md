@@ -1,6 +1,6 @@
 # Schéma des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.3.0, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml`, `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md). Limites de sécurité : [docs/securite.md](../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.4.0, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md). Limites de sécurité : [docs/securite.md](../securite.md).
 
 Lecture : trait plein = flux continu ou à la demande ; trait épais = vidéo vers le navigateur ; pointillés = sonde et pilotage ; double flèche = requête / réponse. Les deux cadres « Réseau local du Site » sont **le même** réseau, coupé en deux pour que la vidéo se lise de gauche à droite.
 
@@ -11,10 +11,11 @@ flowchart LR
     end
 
     subgraph HOTE["Machine hôte · Docker Desktop · ports publiés sur toutes ses interfaces"]
+        subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
+            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 /flux · -2 avec identifiants<br/>non publiées"]
+        end
         subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service"]
             subgraph MTX["mediamtx"]
-                FF["ffmpeg ×3<br/>camN.mp4 en boucle<br/>-c copy"]
-                SIM["cam1 · cam2 · cam3<br/>Caméras simulées"]
                 PONT["camera-&lt;id&gt;<br/>une par Caméra active<br/>sourceOnDemand"]
                 CTRL["API de contrôle :9997<br/>non publiée"]
             end
@@ -29,14 +30,13 @@ flowchart LR
         VLC["VLC / ffprobe<br/>debug"]
     end
 
-    FF -- "RTSP publish<br/>127.0.0.1:8554 · continu" --> SIM
-    SIM -- "RTSP :8554 · à la demande" --> PONT
+    SIM -- "RTSP :554 · à la demande" --> PONT
     CAMR -- "RTSP :554 · à la demande" --> PONT
     PONT == "WebRTC UDP :8189 · SRTP H.264<br/>continu pendant le Live, < 1 s" ==> NAV
-    SIM -- "RTSP :8554 · HLS :8888<br/>sans auth" --> VLC
+    PONT -- "RTSP :8554 · HLS :8888<br/>sans auth" --> VLC
 
     CAMR <-. "sonde RTSP :554 · 10 s" .-> API
-    SIM <-. "sonde RTSP :8554 · 10 s<br/>1 paquet puis TEARDOWN" .-> API
+    SIM <-. "sonde RTSP :554 · 10 s<br/>1 paquet puis TEARDOWN" .-> API
     API -- "HTTP :9997 · 10 s<br/>add / patch / delete" --> CTRL
     CTRL -. configure .-> PONT
     API <-- "SQL :5432" --> DB
@@ -50,20 +50,21 @@ flowchart LR
 
 | De → vers | Protocole · port | Quand | Ce qui passe |
 |---|---|---|---|
-| ffmpeg → `mediamtx` (`camN`) | RTSP · `127.0.0.1:8554`, dans le conteneur | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
+| ffmpeg → Caméra simulée (`flux`) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` (dev) | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
 | `api` → `db` | SQL · `db:5432` | à chaque requête | Caméras, sessions, états |
 | `api` → `mediamtx` | HTTP · `mediamtx:9997` (API de contrôle) | toutes les 10 s | ajoute / modifie / retire les chemins `camera-<id>` selon les Caméras actives ; rien d’autre n’est touché |
-| `api` → chaque Caméra active | RTSP/TCP · `mediamtx:8554` (simulée) ou `:554` (réelle) | toutes les 10 s, quelques ms | `DESCRIBE`, `SETUP`, `PLAY`, un paquet vidéo, `TEARDOWN` → `online` / `offline` |
+| `api` → chaque Caméra active | RTSP/TCP · `:554` (`camera-simulee-N` en dev, IP du réseau local pour une réelle) | toutes les 10 s, quelques ms | `DESCRIBE`, `SETUP`, `PLAY`, un paquet vidéo, `TEARDOWN` → `online` / `offline` |
 | `mediamtx` (`camera-<id>`) → source de la Caméra | RTSP/TCP | seulement pendant qu’un navigateur regarde | le Flux de la Caméra, relayé sans réencodage |
 | navigateur → `web` | HTTP · `:8080` | au chargement | `index.html` et le JS de l’UI |
 | navigateur → `api` | HTTP · `:8000` | connexion, Administration (10 s), Live (10 s) | JSON, cookie `argos_session` |
 | navigateur → `mediamtx` | HTTP · `:8889` (WHEP) | à chaque Caméra affichée dans le Live | négociation SDP et candidats ICE |
 | `mediamtx` → navigateur | WebRTC · UDP `:8189` | pendant le Live, une connexion à la fois | vidéo H.264 en SRTP |
-| VLC / ffprobe → `mediamtx` | RTSP `:8554`, HLS `:8888` | à la demande | lecture directe de `cam1`…`cam3` et `camera-<id>` (debug) |
+| VLC / ffprobe → `mediamtx` | RTSP `:8554`, HLS `:8888` | à la demande | lecture directe des `camera-<id>` (debug) ; les Caméras simulées ne sont pas publiées |
 
 ## Réseaux
 
 - **Réseau Compose `argos_default`** : un réseau Docker privé, créé par `docker compose`. Les conteneurs s’y joignent par leur nom de service (`db`, `mediamtx`, `api`, `web`). Il est **le seul** à voir `db:5432` et `mediamtx:9997`.
+- **Réseau Compose `cameras-simulees`** (dev seulement, `compose.simulation.yaml`) : sous-réseau fixe `172.30.0.0/24`, où vivent les trois Caméras simulées. `api` (sonde, Détection) et `mediamtx` (pont) le rejoignent et les y joignent comme de vraies caméras, sur le port 554. Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX`. La stack de prod (`compose.yaml` seul) n’a ni ce réseau ni Caméras simulées.
 - **Ports publiés** sur la machine hôte, donc joignables depuis tout le réseau local : `8080` (UI), `8000` (API), `8889/tcp` + `8189/udp` (WebRTC), `8554` (RTSP), `8888` (HLS).
 - **Réseau local du Site** (Wi-Fi ou Ethernet) : les navigateurs y joignent la machine hôte par son IP, et la machine hôte y joint les Caméras réelles. Docker Desktop fait sortir `api` et `mediamtx` vers ce réseau par la machine hôte (NAT).
 - **WebRTC hors de la machine hôte** : MediaMTX doit annoncer l’IP de la machine (`MTX_WEBRTCADDITIONALHOSTS` dans `.env`), et l’origine de l’UI doit figurer dans `ARGOS_ORIGINES_AUTORISEES`.

@@ -1,6 +1,6 @@
-# MediaMTX : Caméras simulées de dev, et pont vers le navigateur pour toute Caméra active (docs/adr/0001-mediamtx-en-pont.md).
-# Chaque chemin camN diffuse media/simulated/camN.mp4 en boucle, sans réencodage.
-# Les chemins camera-<id> ne sont pas ici : l'API du Site les réconcilie par l'API de contrôle.
+# MediaMTX : pont vers le navigateur pour toute Caméra active (docs/adr/0001-mediamtx-en-pont.md).
+# Aucun chemin ici : l'API du Site réconcilie les chemins camera-<id> par l'API de contrôle.
+# Les Caméras simulées de dev sont des hôtes à part (compose.simulation.yaml).
 
 rtspAddress: :8554
 hlsAddress: :8888
@@ -24,29 +24,9 @@ authInternalUsers:
     permissions:
       - action: read
       - action: playback
-  # Seul ffmpeg, dans le conteneur, publie les Caméras simulées.
-  - user: any
-    pass:
-    ips: ["127.0.0.1", "::1"]
-    permissions:
-      - action: publish
   # API de contrôle ouverte à tout le réseau Compose : seul le port non publié la protège.
   - user: any
     pass:
     ips: []
     permissions:
       - action: api
-
-paths:
-  cam1:
-    runOnInit: &diffuser-en-boucle >-
-      ffmpeg -hide_banner -loglevel error
-      -re -stream_loop -1 -i /media/simulated/$MTX_PATH.mp4
-      -c copy -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
-    runOnInitRestart: yes
-  cam2:
-    runOnInit: *diffuser-en-boucle
-    runOnInitRestart: yes
-  cam3:
-    runOnInit: *diffuser-en-boucle
-    runOnInitRestart: yes

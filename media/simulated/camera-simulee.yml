@@ -1,0 +1,35 @@
+# Caméra simulée de dev (compose.simulation.yaml) : un hôte qui diffuse sa vidéo (media/simulated/camN.mp4,
+# montée en /media/video.mp4) en boucle, sans réencodage, en RTSP sur le port 554, sur le seul chemin `flux`.
+# Lecture sans identifiants par défaut ; camera-simulee-2 les exige (MTX_AUTHINTERNALUSERS_0_* dans compose.simulation.yaml).
+
+rtspAddress: :554
+rtsp: yes
+hls: no
+webrtc: no
+rtmp: no
+srt: no
+moq: no
+api: no
+
+authInternalUsers:
+  # Lecture : remplacé pour camera-simulee-2 (identifiant et mot de passe de dev, media/simulated/README.md).
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+  # Dans le conteneur seulement : ffmpeg publie la vidéo, le healthcheck la lit sans identifiants.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: read
+
+paths:
+  flux:
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel error
+      -re -stream_loop -1 -i /media/video.mp4
+      -c copy -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes

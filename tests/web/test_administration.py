@@ -11,7 +11,7 @@ import httpx
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from stack_compose import URL_API
+from stack_compose import URL_API, url_camera_simulee
 from test_connexion import se_connecter
 
 # Intervalle (10 s) + délai (5 s) de sonde, plus le rafraîchissement de la liste (10 s), avec de la marge.
@@ -22,9 +22,8 @@ def unique(prefixe: str) -> str:
     return f"{prefixe}-{uuid.uuid4().hex[:12]}"
 
 
-def url_simulee(chemin: str) -> str:
-    """La requête rend l'URL unique (l'URL est unique parmi les Caméras) ; MediaMTX l'ignore."""
-    return f"rtsp://mediamtx:8554/{chemin}?test={unique('ui')}"
+def url_simulee(numero: int) -> str:
+    return url_camera_simulee(numero, "flux", unique("ui"))
 
 
 def url_injoignable() -> str:
@@ -85,11 +84,11 @@ def ligne(page: Page, nom: str) -> Locator:
 def test_camera_creee_apparait_puis_passe_online_sans_recharger(administration: Page, noms):
     nom = noms()
 
-    creer(administration, nom, url_simulee("cam1"), "Portail")
+    creer(administration, nom, url_simulee(1), "Portail")
 
     camera = ligne(administration, nom)
     expect(camera).to_contain_text("Portail")
-    expect(camera).to_contain_text("mediamtx:8554")
+    expect(camera).to_contain_text("camera-simulee-1")
     expect(camera).to_contain_text("active")
     expect(camera).to_contain_text("online", timeout=DELAI_ONLINE_MS)
 

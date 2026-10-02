@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Lance ArgOS sur macOS : double-clic dans le Finder.
-# Démarre Docker Desktop au besoin, puis la stack (mediamtx, api, db, web),
-# ouvre une fenêtre Terminal de logs et l'UI dans le navigateur.
+# Démarre Docker Desktop au besoin, puis la stack de dev (mediamtx, api, db, web
+# et les Caméras simulées de compose.simulation.yaml), ouvre une fenêtre Terminal
+# de logs et l'UI dans le navigateur.
 set -u
 cd "$(dirname "$0")"
 
 URL_UI="http://localhost:8080"
+# Stack de prod + simulation de dev (Caméras simulées).
+export COMPOSE_FILE="compose.yaml:compose.simulation.yaml"
 
 pause_et_quitter() {
     echo
@@ -84,7 +87,7 @@ if ! docker info >/dev/null 2>&1; then
     done
 fi
 
-echo "[3/4] Démarrage de la stack (mediamtx, api, db, web)..."
+echo "[3/4] Démarrage de la stack (mediamtx, api, db, web, Caméras simulées)..."
 echo "      (premier lancement : construction des images, plusieurs minutes)"
 if ! docker compose up -d --build --wait; then
     echo
@@ -96,7 +99,7 @@ echo "[4/4] Fenêtre de logs et ouverture de l'UI..."
 osascript - "$(pwd)" <<'APPLESCRIPT' >/dev/null
 on run argv
     tell application "Terminal"
-        do script "cd " & quoted form of (item 1 of argv) & " && docker compose logs -f --tail 20"
+        do script "cd " & quoted form of (item 1 of argv) & " && COMPOSE_FILE=compose.yaml:compose.simulation.yaml docker compose logs -f --tail 20"
         activate
     end tell
 end run
@@ -105,5 +108,5 @@ open "$URL_UI"
 
 echo
 echo "ArgOS tourne : UI sur $URL_UI (identifiant et mot de passe dans .env)."
-echo "Arrêter : docker compose down (fermer les fenêtres ne suffit pas)."
+echo "Arrêter : docker compose -f compose.yaml -f compose.simulation.yaml down (fermer les fenêtres ne suffit pas)."
 pause_et_quitter 0
