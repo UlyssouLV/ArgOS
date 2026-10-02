@@ -1,6 +1,8 @@
 """Caméras du Site : URL RTSP (validation, masquage, hôte et port) et règles de gestion."""
 
+import socket
 from datetime import datetime
+from ipaddress import IPv4Address
 from typing import Annotated, Literal
 from urllib.parse import SplitResult, urlsplit
 
@@ -109,6 +111,32 @@ def urls_actives(base: Session) -> dict[int, str]:
     """URL RTSP stockée (mot de passe compris) de chaque Caméra active, par id."""
     lignes = base.execute(select(Camera.id, Camera.url_rtsp).where(Camera.active))
     return {id_camera: url for id_camera, url in lignes}
+
+
+class CameraCorrespondante(BaseModel):
+    id: int
+    nom: str
+
+
+def par_adresse(base: Session) -> dict[tuple[IPv4Address, int], CameraCorrespondante]:
+    """Caméras (actives ou désactivées) par IP résolue de l'hôte de leur URL et port.
+
+    Plusieurs Caméras à la même adresse (chemins différents) : la plus ancienne. Hôte introuvable : ignoré.
+    """
+    adresses: dict[tuple[IPv4Address, int], CameraCorrespondante] = {}
+    for camera in base.scalars(select(Camera).order_by(Camera.id)):
+        morceaux = _decouper(camera.url_rtsp)
+        correspondante = CameraCorrespondante(id=camera.id, nom=camera.nom)
+        for ip in _resoudre(morceaux.hostname):
+            adresses.setdefault((ip, morceaux.port or PORT_RTSP), correspondante)
+    return adresses
+
+
+def _resoudre(hote: str) -> set[IPv4Address]:
+    try:
+        return {IPv4Address(info[4][0]) for info in socket.getaddrinfo(hote, None, socket.AF_INET)}
+    except OSError:
+        return set()
 
 
 def lire(base: Session, id_camera: int) -> CameraLue:

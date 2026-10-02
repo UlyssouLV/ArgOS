@@ -51,9 +51,20 @@ class Configuration(BaseSettings):
                 return ReglageDetection(
                     [], ports, f"{INVALIDE} : « {element} » n'est pas un sous-réseau IPv4 (ex. 192.168.1.0/24)."
                 )
+        # Même compte que scripts/cameras/configurer-detection.sh : un sous-réseau répété compte une fois.
+        total = sum(reseau.num_addresses for reseau in set(sous_reseaux))
+        if total > PLAFOND_ADRESSES:
+            return ReglageDetection(
+                [],
+                ports,
+                f"{INVALIDE} : {self.detection_sous_reseaux} couvre {total} adresses, plus que le plafond "
+                f"de {PLAFOND_ADRESSES} (une Détection ne tiendrait pas en une dizaine de secondes).",
+            )
         return ReglageDetection(sous_reseaux, ports, None)
 
 
+# Adresses sondées au plus par une Détection, tous sous-réseaux confondus.
+PLAFOND_ADRESSES = 1024
 NON_CONFIGUREE = (
     "Détection non configurée : aucun sous-réseau autorisé (ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX). "
     "Lancer scripts/cameras/configurer-detection.sh sur la machine du Site, puis relancer ArgOS ; "

@@ -9,8 +9,17 @@ export type EtatDetection = {
   raison: string | null;
 };
 
-/** Hôte qui répond en RTSP sur un port caméra, et n'est pas (encore) une Caméra du Site. */
-export type Candidat = { ip: string; port: number };
+/**
+ * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) à la même
+ * IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic, l'UI ne les montre pas.
+ */
+export type Candidat = {
+  ip: string;
+  port: number;
+  statut_rtsp: number;
+  serveur: string | null;
+  camera: { id: number; nom: string } | null;
+};
 
 export type ResultatDetection = {
   sous_reseaux: string[];

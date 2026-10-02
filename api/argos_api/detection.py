@@ -10,19 +10,29 @@ import socket
 import time
 from collections.abc import Collection, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network
 
 # Sondes simultanées : un /24 sur deux ports (508 sondes) tient en quelques tours de délai.
 CONCURRENCE = 128
-STATUT_RTSP = re.compile(rb"^RTSP/\d\.\d \d{3}")
-TAILLE_LIGNE_MAX = 256
+STATUT_RTSP = re.compile(rb"^RTSP/\d\.\d (\d{3})")
+SERVEUR = re.compile(rb"^server:[ \t]*(.*?)[ \t]*\r?$", re.IGNORECASE | re.MULTILINE)
+# Ligne de statut puis en-têtes : une réponse à OPTIONS tient largement dedans.
+TAILLE_ENTETES_MAX = 4096
 
 
 @dataclass(frozen=True, order=True)
-class Candidat:
+class Cible:
     ip: IPv4Address
     port: int
+
+
+@dataclass(frozen=True, order=True)
+class Candidat(Cible):
+    """Diagnostic en plus de l'adresse : statut de la réponse à `OPTIONS` et en-tête `Server` annoncé."""
+
+    statut_rtsp: int = field(compare=False)
+    serveur: str | None = field(compare=False)
 
 
 def detecter(
@@ -30,36 +40,50 @@ def detecter(
 ) -> list[Candidat]:
     """Candidats des sous-réseaux, triés par IP puis port ; `delai` borne chaque sonde, en secondes."""
     cibles = sorted({
-        Candidat(ip, port)
+        Cible(ip, port)
         for reseau in sous_reseaux
         for ip in reseau.hosts()
         if ip not in exclues
         for port in ports
     })
     with ThreadPoolExecutor(CONCURRENCE) as sondes:
-        repondent = list(sondes.map(lambda cible: _repond_en_rtsp(cible, delai), cibles))
-    return [cible for cible, repond in zip(cibles, repondent, strict=True) if repond]
+        candidats = list(sondes.map(lambda cible: _sonder(cible, delai), cibles))
+    return [candidat for candidat in candidats if candidat is not None]
 
 
-def _repond_en_rtsp(cible: Candidat, delai: float) -> bool:
+def _sonder(cible: Cible, delai: float) -> Candidat | None:
     echeance = time.monotonic() + delai
     try:
         with socket.create_connection((str(cible.ip), cible.port), timeout=delai) as connexion:
             requete = f"OPTIONS rtsp://{cible.ip}:{cible.port} RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: ArgOS\r\n\r\n"
             connexion.sendall(requete.encode())
-            return STATUT_RTSP.match(_premiere_ligne(connexion, echeance)) is not None
+            entetes = _entetes(connexion, echeance)
     except OSError:
-        return False
+        return None
+    statut = STATUT_RTSP.match(entetes)
+    if statut is None:
+        return None
+    serveur = SERVEUR.search(entetes.partition(b"\r\n\r\n")[0])
+    return Candidat(
+        cible.ip,
+        cible.port,
+        int(statut.group(1)),
+        serveur.group(1).decode(errors="replace") if serveur else None,
+    )
 
 
-def _premiere_ligne(connexion: socket.socket, echeance: float) -> bytes:
+def _entetes(connexion: socket.socket, echeance: float) -> bytes:
+    """Ligne de statut et en-têtes ; une réponse tronquée (délai, fermeture, taille) garde ce qui est arrivé."""
     recu = b""
-    while b"\r\n" not in recu and len(recu) < TAILLE_LIGNE_MAX:
+    while b"\r\n\r\n" not in recu and len(recu) < TAILLE_ENTETES_MAX:
         restant = echeance - time.monotonic()
         if restant <= 0:
-            raise TimeoutError
+            break
         connexion.settimeout(restant)
-        morceau = connexion.recv(TAILLE_LIGNE_MAX)
+        try:
+            morceau = connexion.recv(TAILLE_ENTETES_MAX)
+        except TimeoutError:
+            break
         if not morceau:
             break
         recu += morceau
