@@ -60,6 +60,10 @@ if [ -z "$(valeur_env ARGOS_IDENTIFIANT)" ] || [ -z "$(valeur_env ARGOS_MOT_DE_P
     ecrire_env ARGOS_IDENTIFIANT "$identifiant"
     ecrire_env ARGOS_MOT_DE_PASSE "$mot_de_passe"
 fi
+# Sous-réseaux de la Détection des Caméras, recalculés à chaque lancement (prise demandée une fois).
+if ! scripts/cameras/configurer-detection.sh; then
+    echo "      Détection des Caméras non configurée : ArgOS démarre quand même."
+fi
 
 echo "[2/4] Vérification / démarrage de Docker..."
 if ! command -v docker >/dev/null 2>&1; then

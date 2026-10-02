@@ -1,0 +1,16 @@
+[project]
+name = "argos-tests-scripts"
+version = "0.4.0"
+description = "Tests des scripts lancés sur la machine hôte (fausse commande réseau, .env temporaire)."
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+addopts = "-ra"
