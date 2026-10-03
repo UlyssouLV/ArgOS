@@ -12,7 +12,12 @@ FICHIER_SIMULATION = "compose.simulation.yaml"
 RESEAU_SIMULATION = "cameras-simulees"
 SOUS_RESEAU_SIMULATION = "172.30.0.0/24"
 CAMERAS_SIMULEES = ["camera-simulee-1", "camera-simulee-2", "camera-simulee-3"]
-CHEMIN = "flux"
+# Chemins de vraies caméras : style Hikvision, style Dahua (requête comprise), chemin exotique.
+CHEMINS = {
+    "camera-simulee-1": "Streaming/Channels/101",
+    "camera-simulee-2": "cam/realmonitor?channel=1&subtype=0",
+    "camera-simulee-3": "flux",
+}
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS = {"camera-simulee-2": "admin:argos-simulee"}
 

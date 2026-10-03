@@ -86,8 +86,8 @@ def correspondance(connecte, numero: int) -> dict | None:
 
 def test_candidat_deja_configure_porte_sa_camera_active_ou_desactivee(connecte, creer_camera):
     # camera-simulee-1 déclarée par son nom Compose, active ; camera-simulee-2 désactivée.
-    assert creer_camera(url_rtsp=url_camera_simulee(1, "flux", unique("detection"))).status_code == 201
-    desactivee = creer_camera(url_rtsp=url_camera_simulee(2, "flux", unique("detection"))).json()
+    assert creer_camera(url_rtsp=url_camera_simulee(1, unique("detection"))).status_code == 201
+    desactivee = creer_camera(url_rtsp=url_camera_simulee(2, unique("detection"))).json()
     assert connecte.patch(f"/api/cameras/{desactivee['id']}", json={"active": False}).status_code == 200
     attendues = {ip_de(n): correspondance(connecte, n) for n in (1, 2, 3)}
 

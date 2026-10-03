@@ -1,7 +1,7 @@
 """État des Caméras par sonde RTSP, vu de l'extérieur de la stack.
 
 La sonde tourne dans le conteneur `api`, rattaché au réseau des Caméras simulées : elles s'y
-déclarent comme de vraies caméras, `rtsp://camera-simulee-N/flux` (port 554).
+déclarent comme de vraies caméras, sur leur chemin de vraie caméra (port 554).
 """
 
 import time
@@ -15,8 +15,8 @@ from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 DELAI_ETAT_S = 40
 
 
-def url_simulee(numero: int, chemin: str = "flux", identifiants: bool = True) -> str:
-    return url_camera_simulee(numero, chemin, unique("etat"), identifiants)
+def url_simulee(numero: int, chemin: str | None = None, identifiants: bool = True) -> str:
+    return url_camera_simulee(numero, unique("etat"), identifiants, chemin)
 
 
 def attendre_etat(client: httpx.Client, id_camera: int, etat: str) -> dict:

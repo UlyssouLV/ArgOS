@@ -1,7 +1,7 @@
 """MediaMTX en pont (docs/adr/0001-mediamtx-en-pont.md), vu de l'extérieur de la stack.
 
 Toute Caméra active est relayée sur `rtsp://<hôte>:8554/<chemin_flux>` après un tour de
-réconciliation (10 s). Les Caméras simulées s'y déclarent avec `rtsp://camera-simulee-N/flux` :
+réconciliation (10 s). Les Caméras simulées s'y déclarent sur leur chemin de vraie caméra :
 c'est le conteneur `mediamtx`, rattaché à leur réseau, qui tire le Flux.
 """
 

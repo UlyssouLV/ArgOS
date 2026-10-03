@@ -6,16 +6,18 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from time import monotonic
+from ipaddress import IPv4Address, IPv4Network
 from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, sessions, soi, sonde
+from argos_api import cameras, detection, essai, sessions, soi, sonde
+from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
@@ -29,8 +31,17 @@ INTERVALLE_PONT_S = 10
 # Délai de chaque sonde de la Détection (connexion puis réponse RTSP), en secondes.
 DELAI_DETECTION_S = 1.5
 DETECTION_EN_COURS = "Une Détection est déjà en cours : attendre son résultat avant d'en relancer une."
+# Retrait des Aperçus expirés, en secondes.
+INTERVALLE_APERCU_S = 1
+# Réseau local : seules ces adresses (RFC 1918) peuvent être essayées. Plages jamais jointes, seulement
+# comparées à l'IP demandée.
+RESEAUX_LOCAUX = [IPv4Network(r) for r in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]  # NOSONAR
+HORS_RESEAU_LOCAL = "Adresse hors du réseau local (10.x, 172.16-31.x, 192.168.x) : ArgOS n'essaie que les caméras du Site."
+ADRESSE_D_ARGOS = "Cette adresse est celle d'ArgOS, pas d'une caméra."
+ESSAI_EN_COURS = "Un essai est déjà en cours : attendre son résultat avant d'en lancer un autre."
 
 journal = logging.getLogger("argos_api.detection")
+journal_essai = logging.getLogger("argos_api.essai")
 
 Horloge = Callable[[], datetime]
 
@@ -76,6 +87,31 @@ class ResultatDetection(BaseModel):
     candidats: list[CandidatLu]
 
 
+class DemandeEssai(BaseModel):
+    ip: IPv4Address
+    port: int = Field(cameras.PORT_RTSP, gt=0, lt=65536)
+    # Portés par l'URL de l'essai, puis de la Caméra ajoutée ; jamais renvoyés au navigateur.
+    identifiant: str | None = None
+    mot_de_passe: str | None = Field(None, repr=False)
+    # Saisi quand aucun chemin courant ne répond (`flux_introuvable`) : seul ce chemin est essayé.
+    chemin: str | None = None
+
+
+class EssaiLu(BaseModel):
+    issue: essai.Issue
+    chemin: str | None
+    codec: str | None
+    # Chemin MediaMTX de l'Aperçu, à lire en WebRTC ; seulement si `flux_trouve`.
+    apercu: str | None
+    # Sans `POST /api/essai/renouveler` pendant ce délai, l'Aperçu est retiré.
+    expiration_s: float
+
+
+class AjoutDepuisEssai(BaseModel):
+    nom: str = Field(min_length=1)
+    emplacement: str | None = None
+
+
 def creer_app(
     configuration: Configuration | None = None, horloge: Horloge = horloge_systeme
 ) -> FastAPI:
@@ -84,11 +120,12 @@ def creer_app(
     _journaux_sur_la_sortie()
     frein = FreinForceBrute(horloge)
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
+    pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
+    apercus = Apercus(pont, configuration.expiration_apercu)
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
         surveillance = Surveillance(ouvrir_base, sonde.sonder, configuration.delai_sonde, horloge)
-        pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
@@ -98,6 +135,7 @@ def creer_app(
         boucles = [
             BoucleDeFond("surveillance-cameras", surveillance.sonder_tout, configuration.intervalle_sonde),
             BoucleDeFond("pont-mediamtx", reconcilier, INTERVALLE_PONT_S),
+            BoucleDeFond("apercus", apercus.entretenir, INTERVALLE_APERCU_S),
         ]
         for boucle in boucles:
             boucle.demarrer()
@@ -176,6 +214,9 @@ def creer_app(
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
     app.include_router(
         _routes_detection(configuration.reglage_detection(), hote_pont, base, administrateur_connecte)
+    )
+    app.include_router(
+        _routes_essai(apercus, configuration, hote_pont, base, administrateur_connecte)
     )
     return app
 
@@ -282,6 +323,98 @@ def _routes_detection(
         )
 
     return routes
+
+
+def _routes_essai(
+    apercus: Apercus,
+    configuration: Configuration,
+    hote_pont: str,
+    base: Callable[[], Iterator[Session]],
+    administrateur_connecte: Callable,
+) -> APIRouter:
+    """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
+    pas pour deviner des mots de passe.
+
+    Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS. Un nouvel essai retire
+    le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
+    la Caméra est créée à partir d'elle.
+    """
+    Base = Annotated[Session, Depends(base)]
+    routes = APIRouter(prefix="/api/essai", dependencies=[Depends(administrateur_connecte)])
+    un_seul = threading.Lock()
+
+    @routes.post("")
+    def essayer(demande: DemandeEssai) -> EssaiLu:
+        if not any(demande.ip in reseau for reseau in RESEAUX_LOCAUX):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, HORS_RESEAU_LOCAL)
+        if not un_seul.acquire(blocking=False):
+            raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
+        try:
+            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) or soi.publient_cette_api(
+                [demande.ip], DELAI_DETECTION_S
+            ):
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ADRESSE_D_ARGOS)
+            generation = apercus.debuter()
+            resultat = essai.essayer(
+                demande.ip,
+                demande.port,
+                configuration.delai_sonde,
+                identifiant=demande.identifiant,
+                mot_de_passe=demande.mot_de_passe,
+                chemin=demande.chemin,
+            )
+            journal_essai.info(
+                "Essai : %s:%s issue %s chemin %s codec %s",
+                demande.ip, demande.port, resultat.issue.value, resultat.chemin, resultat.codec,
+            )
+            apercu = None
+            if resultat.issue == essai.Issue.FLUX_TROUVE:
+                try:
+                    apercu = apercus.ouvrir(generation, resultat)
+                except EssaiAnnule:
+                    raise HTTPException(status.HTTP_409_CONFLICT, "Essai annulé pendant la recherche du Flux.") from None
+                except OSError:
+                    raise HTTPException(
+                        status.HTTP_503_SERVICE_UNAVAILABLE, "Le pont MediaMTX n'a pas ouvert l'Aperçu."
+                    ) from None
+        finally:
+            un_seul.release()
+        return EssaiLu(
+            issue=resultat.issue,
+            chemin=resultat.chemin,
+            codec=resultat.codec,
+            apercu=apercu,
+            expiration_s=configuration.expiration_apercu,
+        )
+
+    @routes.post("/renouveler", status_code=status.HTTP_204_NO_CONTENT)
+    def renouveler() -> None:
+        with _sans_apercu_404():
+            apercus.renouveler()
+
+    @routes.delete("", status_code=status.HTTP_204_NO_CONTENT)
+    def retirer() -> None:
+        apercus.annuler()
+
+    @routes.post("/camera", status_code=status.HTTP_201_CREATED)
+    def ajouter(ajout: AjoutDepuisEssai, base: Base) -> CameraLue:
+        def creer(url: str) -> CameraLue:
+            # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
+            with _erreurs_cameras():
+                return cameras.creer(base, NouvelleCamera(nom=ajout.nom, url_rtsp=url, emplacement=ajout.emplacement))
+
+        with _sans_apercu_404():
+            return apercus.ajouter(creer)
+
+    return routes
+
+
+@contextmanager
+def _sans_apercu_404() -> Iterator[None]:
+    try:
+        yield
+    except AucunApercu:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucun essai en cours avec un Flux trouvé.") from None
 
 
 @contextmanager

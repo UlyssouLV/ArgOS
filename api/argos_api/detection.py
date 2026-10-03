@@ -47,11 +47,12 @@ def detecter(
         for port in ports
     })
     with ThreadPoolExecutor(CONCURRENCE) as sondes:
-        candidats = list(sondes.map(lambda cible: _sonder(cible, delai), cibles))
+        candidats = list(sondes.map(lambda cible: interroger(cible, delai), cibles))
     return [candidat for candidat in candidats if candidat is not None]
 
 
-def _sonder(cible: Cible, delai: float) -> Candidat | None:
+def interroger(cible: Cible, delai: float) -> Candidat | None:
+    """La cible comme Candidat si elle répond en RTSP à `OPTIONS` dans `delai` secondes ; `None` sinon."""
     echeance = time.monotonic() + delai
     try:
         with socket.create_connection((str(cible.ip), cible.port), timeout=delai) as connexion:

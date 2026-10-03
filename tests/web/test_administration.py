@@ -23,7 +23,7 @@ def unique(prefixe: str) -> str:
 
 
 def url_simulee(numero: int) -> str:
-    return url_camera_simulee(numero, "flux", unique("ui"))
+    return url_camera_simulee(numero, unique("ui"))
 
 
 def url_injoignable() -> str:

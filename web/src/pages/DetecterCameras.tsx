@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
-import { messageEchec } from "../cameras";
+import { messageEchec, type Camera } from "../cameras";
 import {
   lancerDetection,
   lireEtatDetection,
@@ -8,6 +8,7 @@ import {
   type EtatDetection,
   type ResultatDetection,
 } from "../detection";
+import { AjoutCandidat } from "./AjoutCandidat";
 
 function couverture(sous_reseaux: string[], ports: number[]): string {
   return `${sous_reseaux.join(", ")} — ports ${ports.join(", ")}`;
@@ -17,8 +18,11 @@ function cle(candidat: Candidat): string {
   return `${candidat.ip}:${candidat.port}`;
 }
 
-/** Section de l'Administration : lance une Détection et montre les Candidats. Rien n'est ajouté ni stocké. */
-export function DetecterCameras() {
+/**
+ * Section de l'Administration : lance une Détection, montre les Candidats et ajoute l'un d'eux comme Caméra.
+ * `onCameraAjoutee` : la liste des Caméras est à relire.
+ */
+export function DetecterCameras({ onCameraAjoutee }: Readonly<{ onCameraAjoutee: () => void }>) {
   const [etat, setEtat] = useState<EtatDetection | null>(null);
   const [resultat, setResultat] = useState<ResultatDetection | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -29,6 +33,19 @@ export function DetecterCameras() {
       .then(setEtat)
       .catch((e) => setErreur(messageEchec(e)));
   }, []);
+
+  /** Le Candidat passe dans « Déjà configurées » sans relancer de Détection. */
+  function ajoutee(candidat: Candidat, camera: Camera) {
+    setResultat((courant) =>
+      courant && {
+        ...courant,
+        candidats: courant.candidats.map((c) =>
+          cle(c) === cle(candidat) ? { ...c, camera: { id: camera.id, nom: camera.nom } } : c,
+        ),
+      },
+    );
+    onCameraAjoutee();
+  }
 
   async function detecter() {
     setEnCours(true);
@@ -57,13 +74,22 @@ export function DetecterCameras() {
           {erreur}
         </p>
       )}
-      {resultat && <Candidats resultat={resultat} />}
+      {resultat && <Candidats resultat={resultat} onAjoutee={ajoutee} />}
     </section>
   );
 }
 
-/** Nouveaux Candidats en tableau ; ceux déjà configurés à part, repliés, avec le nom de leur Caméra. */
-function Candidats({ resultat }: { resultat: ResultatDetection }) {
+type PropsCandidats = Readonly<{
+  resultat: ResultatDetection;
+  onAjoutee: (candidat: Candidat, camera: Camera) => void;
+}>;
+
+/**
+ * Nouveaux Candidats en tableau, chacun avec « Ajouter » : un seul panneau d'ajout ouvert à la fois, sous sa ligne.
+ * Ceux déjà configurés à part, repliés, avec le nom de leur Caméra.
+ */
+function Candidats({ resultat, onAjoutee }: PropsCandidats) {
+  const [enAjout, setEnAjout] = useState<string | null>(null);
   const nouveaux = resultat.candidats.filter((candidat) => candidat.camera === null);
   const configures = resultat.candidats.filter((candidat) => candidat.camera !== null);
   return (
@@ -79,14 +105,36 @@ function Candidats({ resultat }: { resultat: ResultatDetection }) {
             <tr>
               <th>IP</th>
               <th>Port</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {nouveaux.map((candidat) => (
-              <tr key={cle(candidat)}>
-                <td>{candidat.ip}</td>
-                <td>{candidat.port}</td>
-              </tr>
+              <Fragment key={cle(candidat)}>
+                <tr>
+                  <td>{candidat.ip}</td>
+                  <td>{candidat.port}</td>
+                  <td>
+                    <button type="button" disabled={enAjout === cle(candidat)} onClick={() => setEnAjout(cle(candidat))}>
+                      Ajouter
+                    </button>
+                  </td>
+                </tr>
+                {enAjout === cle(candidat) && (
+                  <tr>
+                    <td colSpan={3}>
+                      <AjoutCandidat
+                        candidat={candidat}
+                        onAjoutee={(camera) => {
+                          setEnAjout(null);
+                          onAjoutee(candidat, camera);
+                        }}
+                        onFermer={() => setEnAjout(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

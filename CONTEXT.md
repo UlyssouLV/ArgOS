@@ -33,8 +33,12 @@ Action, lancée par l’Administrateur, qui cherche sur le réseau du Site les a
 _Avoid_ : scan, découverte
 
 **Candidat** :
-Hôte trouvé par une Détection qui répond en RTSP, et n’est pas (encore) une Caméra du Site.
+Hôte trouvé par une Détection, ou saisi par son IP, qui répond en RTSP et n’est pas (encore) une Caméra du Site.
 _Avoid_ : appareil détecté, device
+
+**Aperçu** :
+Flux d’un Candidat montré dans l’Administration pendant son ajout, avant qu’il soit une Caméra.
+_Avoid_ : preview, prévisualisation
 
 **Live** :
 La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à la suivante.

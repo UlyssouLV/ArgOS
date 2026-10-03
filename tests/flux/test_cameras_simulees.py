@@ -10,7 +10,7 @@ import pytest
 
 from conftest import (
     CAMERAS_SIMULEES,
-    CHEMIN,
+    CHEMINS,
     FICHIER_PROD,
     FICHIER_SIMULATION,
     IDENTIFIANTS,
@@ -24,8 +24,8 @@ from conftest import (
 IMAGE_FFPROBE = "linuxserver/ffmpeg:version-7.1-cli"
 
 
-def url(camera: str, chemin: str = CHEMIN, identifiants: str | None = None) -> str:
-    return f"rtsp://{identifiants + '@' if identifiants else ''}{camera}:554/{chemin}"
+def url(camera: str, chemin: str | None = None, identifiants: str | None = None) -> str:
+    return f"rtsp://{identifiants + '@' if identifiants else ''}{camera}:554/{chemin or CHEMINS[camera]}"
 
 
 def ffprobe(reseau: str, url_rtsp: str) -> subprocess.CompletedProcess[str]:
@@ -75,8 +75,9 @@ def test_camera_simulee_2_refusee_avec_un_mauvais_mot_de_passe(reseau_simulation
     assert "401" in resultat.stderr, resultat.stderr
 
 
-def test_un_seul_chemin_par_camera_simulee(reseau_simulation):
-    resultat = ffprobe(reseau_simulation, url("camera-simulee-1", chemin="inconnu"))
+@pytest.mark.parametrize("chemin", ["inconnu", "flux"])
+def test_un_seul_chemin_par_camera_simulee(reseau_simulation, chemin):
+    resultat = ffprobe(reseau_simulation, url("camera-simulee-1", chemin=chemin))
 
     assert resultat.returncode != 0
     assert "Server returned 4" in resultat.stderr, resultat.stderr

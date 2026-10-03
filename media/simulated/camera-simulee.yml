@@ -1,5 +1,7 @@
 # Caméra simulée de dev (compose.simulation.yaml) : un hôte qui diffuse sa vidéo (media/simulated/camN.mp4,
-# montée en /media/video.mp4) en boucle, sans réencodage, en RTSP sur le port 554, sur le seul chemin `flux`.
+# montée en /media/video.mp4) en boucle, sans réencodage, en RTSP sur le port 554, sur un seul chemin.
+# Gabarit : au démarrage, CHEMIN_FLUX y est remplacé par le chemin propre à chaque Caméra simulée
+# (variable CHEMIN_FLUX dans compose.simulation.yaml), MediaMTX ne sachant pas nommer un chemin à `/` par variable.
 # Lecture sans identifiants par défaut ; camera-simulee-2 les exige (MTX_AUTHINTERNALUSERS_0_* dans compose.simulation.yaml).
 
 rtspAddress: :554
@@ -27,7 +29,7 @@ authInternalUsers:
       - action: read
 
 paths:
-  flux:
+  CHEMIN_FLUX:
     runOnInit: >-
       ffmpeg -hide_banner -loglevel error
       -re -stream_loop -1 -i /media/video.mp4

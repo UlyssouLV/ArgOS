@@ -2,11 +2,15 @@
 
 Réconciliation : les Caméras actives voulues en entrée, les chemins `camera-*` de MediaMTX ajustés
 (ajoutés, source mise à jour, retirés) par son API de contrôle. Les autres chemins ne sont jamais
-touchés. Une erreur sur un chemin n'empêche pas les autres : le tour suivant rattrape.
+touchés, `apercu-*` compris. Une erreur sur un chemin n'empêche pas les autres : le tour suivant rattrape.
+
+Aperçu : chemin éphémère `apercu-<jeton aléatoire>` qui relaie le Flux d'un Candidat pendant son ajout
+(sa vie : argos_api/apercu.py).
 """
 
 import json
 import logging
+import secrets
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
@@ -14,6 +18,7 @@ from collections.abc import Mapping
 journal = logging.getLogger(__name__)
 
 PREFIXE = "camera-"
+PREFIXE_APERCU = "apercu-"
 CHEMINS_PAR_PAGE = 100
 
 
@@ -44,13 +49,35 @@ class Pont:
                 # Sans l'URL : elle peut porter le mot de passe RTSP de la Caméra.
                 journal.warning("Pont MediaMTX : %s %s refusé (%s)", methode, route, _raison(erreur))
 
+    def ouvrir_apercu(self, url: str) -> str:
+        """Ajoute un chemin d'Aperçu qui relaie `url` et renvoie son nom. Lève `OSError` si MediaMTX le refuse."""
+        nom = f"{PREFIXE_APERCU}{secrets.token_hex(16)}"
+        self._appeler("POST", f"add/{nom}", {"source": url, "sourceOnDemand": True})
+        return nom
+
+    def retirer_apercu(self, nom: str) -> None:
+        """Sans lever : un Aperçu déjà absent est retiré, une erreur est journalisée."""
+        try:
+            self._appeler("DELETE", f"delete/{nom}")
+        except OSError as erreur:
+            if not (isinstance(erreur, urllib.error.HTTPError) and erreur.code == 404):
+                journal.warning("Pont MediaMTX : retrait de %s refusé (%s)", nom, _raison(erreur))
+
+    def retirer_apercus(self, sauf: str | None) -> None:
+        """Retire tous les chemins d'Aperçu sauf `sauf`. Lève `OSError` si MediaMTX ne répond pas à la liste."""
+        for nom in self._chemins(PREFIXE_APERCU).keys() - {sauf}:
+            self.retirer_apercu(nom)
+
     def _chemins_camera(self) -> dict[str, dict]:
+        return self._chemins(PREFIXE)
+
+    def _chemins(self, prefixe: str) -> dict[str, dict]:
         chemins: dict[str, dict] = {}
         page, pages = 0, 1
         while page < pages:
             liste = self._appeler("GET", f"list?itemsPerPage={CHEMINS_PAR_PAGE}&page={page}")
             for chemin in liste["items"]:
-                if chemin["name"].startswith(PREFIXE):
+                if chemin["name"].startswith(prefixe):
                     chemins[chemin["name"]] = {
                         "source": chemin["source"],
                         "sourceOnDemand": chemin["sourceOnDemand"],
