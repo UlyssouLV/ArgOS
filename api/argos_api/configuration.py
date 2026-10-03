@@ -21,6 +21,8 @@ class Configuration(BaseSettings):
     # API de contrôle de MediaMTX (réseau Compose seulement) et délai de ses réponses, en secondes.
     url_api_mediamtx: str = Field("http://mediamtx:9997", validation_alias="ARGOS_MEDIAMTX_API")
     delai_mediamtx: float = Field(5, gt=0, validation_alias="ARGOS_MEDIAMTX_DELAI_S")
+    # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes (réglable pour les tests).
+    expiration_apercu: float = Field(120, gt=0, validation_alias="ARGOS_APERCU_EXPIRATION_S")
     # Origines exactes (séparées par des virgules) autorisées à appeler l'API avec le cookie de session.
     origines_autorisees: str = Field(
         "http://localhost:8080,http://localhost:5173", validation_alias="ARGOS_ORIGINES_AUTORISEES"

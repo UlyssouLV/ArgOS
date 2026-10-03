@@ -3,6 +3,7 @@
 Importé par les `conftest.py` de `tests/api/` et `tests/web/` (sans dépendance : stdlib, pytest, httpx).
 """
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -16,6 +17,8 @@ FICHIERS_COMPOSE = ("compose.yaml", "compose.simulation.yaml")
 URL_API = "http://localhost:8000"
 DELAI_PRET_S = 120
 CLES_ADMINISTRATEUR = ("ARGOS_IDENTIFIANT", "ARGOS_MOT_DE_PASSE")
+# Délai d'expiration d'un Aperçu sans renouvellement, raccourci pour les tests (2 minutes en prod).
+EXPIRATION_APERCU_S = 30
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
 # Chemins de vraies caméras des Caméras simulées (media/simulated/README.md).
@@ -26,6 +29,7 @@ def compose(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["docker", "compose", *(option for fichier in FICHIERS_COMPOSE for option in ("-f", fichier)), *args],
         cwd=REPO_ROOT,
+        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S)},
         capture_output=True,
         text=True,
         check=True,

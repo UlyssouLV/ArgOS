@@ -4,6 +4,7 @@ import { messageEchec, type Camera } from "../cameras";
 import {
   ajouterDepuisEssai,
   essayer,
+  renouvelerEssai,
   retirerEssai,
   type Candidat,
   type DemandeEssai,
@@ -22,6 +23,11 @@ const MESSAGES: Record<Exclude<Issue, "flux_trouve">, string> = {
 /** Identifiant le plus courant des caméras ; prérempli, modifiable. */
 const IDENTIFIANT_PAR_DEFAUT = "admin";
 
+/** Renouvellements par délai d'expiration : un renouvellement perdu ne fait pas expirer l'Aperçu. */
+const RENOUVELLEMENTS_PAR_EXPIRATION = 4;
+
+const APERCU_RETIRE = "L'Aperçu a été retiré (délai dépassé) : annuler puis recommencer.";
+
 type PropsAjout = Readonly<{
   candidat: Candidat;
   onAjoutee: (camera: Camera) => void;
@@ -32,7 +38,8 @@ type PropsAjout = Readonly<{
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
  * Caméra à mot de passe : identifiant et mot de passe, puis « Réessayer ».
  * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Réessayer ».
- * « Annuler » retire l'essai et son Aperçu ; l'ajout les retire côté serveur.
+ * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
+ * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
 export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   const [essai, setEssai] = useState<Essai | null>(null);
@@ -94,6 +101,22 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   const apercu = essai?.issue === "flux_trouve" ? essai.apercu : null;
   const identifiantsDemandes = essai?.issue === "identifiants_requis" || essai?.issue === "identifiants_refuses";
   const cheminDemande = essai?.issue === "flux_introuvable";
+  const expirationS = essai?.expiration_s;
+
+  useEffect(() => {
+    if (!apercu || !expirationS) return;
+    const minuterie = setInterval(() => {
+      renouvelerEssai()
+        .then((encore) => {
+          if (encore) return;
+          clearInterval(minuterie);
+          setErreur(APERCU_RETIRE);
+        })
+        // Coupure passagère : le renouvellement suivant réessaie avant l'expiration.
+        .catch(() => {});
+    }, (expirationS * 1000) / RENOUVELLEMENTS_PAR_EXPIRATION);
+    return () => clearInterval(minuterie);
+  }, [apercu, expirationS]);
 
   function soumettre(evenement: FormEvent) {
     evenement.preventDefault();

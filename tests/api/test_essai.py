@@ -3,13 +3,19 @@
 L'essai cherche seul le Flux d'un Candidat sur les chemins courants des caméras, puis l'ouvre en
 Aperçu : un chemin MediaMTX `apercu-<jeton>`, lu ici comme le Live le lirait. L'Aperçu devient une
 Caméra par `POST /api/essai/camera`. Un seul essai pour le Site : chaque test retire le sien.
+Sans renouvellement, l'Aperçu expire : délai raccourci pour les tests (tests/stack_compose.py).
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
+import httpx
 import pytest
 
+from stack_compose import EXPIRATION_APERCU_S, URL_API, adresses_ip, compose, redemarrer_api
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
+from test_connexion import se_connecter
 from test_detection import ip_de
 from test_etat_cameras import attendre_etat
 from test_mediamtx_en_pont import attendre_lisible, lisible
@@ -19,6 +25,12 @@ MOT_DE_PASSE_SIMULEE_2 = "argos-simulee"
 
 # Un tour de réconciliation du pont, avec de la marge.
 APRES_RECONCILIATION_S = 12
+# Le retrait d'un Aperçu expiré passe au plus une seconde après l'échéance : large marge.
+APRES_EXPIRATION_S = EXPIRATION_APERCU_S + 5
+# Adresse privée du sous-réseau de simulation où aucun conteneur ne répond.
+IP_SANS_CAMERA = "172.30.0.250"
+# Sans réponse, l'essai attend la fin du délai de la sonde : large marge.
+DELAI_ESSAI_S = 30
 
 
 @pytest.fixture
@@ -51,6 +63,7 @@ def essai(connecte):
     [
         ("POST", "/api/essai", {"ip": "172.30.0.2", "port": 554}),
         ("DELETE", "/api/essai", None),
+        ("POST", "/api/essai/renouveler", None),
         ("POST", "/api/essai/camera", {"nom": "Entrée"}),
     ],
 )
@@ -166,3 +179,116 @@ def test_flux_introuvable_puis_trouve_par_le_chemin_saisi(essai):
     assert trouve["issue"] == "flux_trouve"
     assert trouve["chemin"] == "/flux"
     attendre_lisible(trouve["apercu"], True)
+
+
+def test_un_nouvel_essai_retire_l_apercu_precedent(essai):
+    premier = essai(1)["apercu"]
+    attendre_lisible(premier, True)
+
+    second = essai(1)["apercu"]
+
+    assert second != premier
+    assert not lisible(premier)
+    assert lisible(second)
+
+
+def test_sans_renouvellement_l_apercu_expire(connecte, essai):
+    apercu = essai(1)["apercu"]
+
+    time.sleep(APRES_EXPIRATION_S)
+
+    assert not lisible(apercu)
+    assert connecte.post("/api/essai/renouveler").status_code == 404
+    assert connecte.post("/api/essai/camera", json={"nom": unique("Essai")}).status_code == 404
+
+
+def test_le_renouvellement_prolonge_l_apercu(connecte, essai):
+    apercu = essai(1)["apercu"]
+
+    fin = time.monotonic() + APRES_EXPIRATION_S
+    while time.monotonic() < fin:
+        assert connecte.post("/api/essai/renouveler").status_code == 204
+        time.sleep(EXPIRATION_APERCU_S / 4)
+
+    assert lisible(apercu)
+
+
+def test_renouveler_sans_essai_404(connecte):
+    connecte.delete("/api/essai")
+
+    assert connecte.post("/api/essai/renouveler").status_code == 404
+
+
+def test_renouveler_un_essai_sans_flux_404(connecte, essai):
+    assert essai(2)["issue"] == "identifiants_requis"
+
+    assert connecte.post("/api/essai/renouveler").status_code == 404
+
+
+def test_les_apercus_orphelins_sont_retires_au_demarrage_de_l_api(essai):
+    apercu = essai(1)["apercu"]
+    attendre_lisible(apercu, True)
+
+    redemarrer_api()
+
+    attendre_lisible(apercu, False)
+
+
+def test_ip_privee_sans_camera_injoignable(connecte):
+    reponse = connecte.post("/api/essai", json={"ip": IP_SANS_CAMERA}, timeout=DELAI_ESSAI_S)
+
+    assert reponse.status_code == 200
+    assert reponse.json()["issue"] == "injoignable"
+    assert reponse.json()["apercu"] is None
+
+
+def test_essai_simultane_409(administrateur):
+    def essayer() -> httpx.Response:
+        # Une session par appel : deux onglets.
+        with httpx.Client(base_url=URL_API, timeout=DELAI_ESSAI_S) as client:
+            assert se_connecter(client, **administrateur).status_code == 204
+            return client.post("/api/essai", json={"ip": IP_SANS_CAMERA})
+
+    with ThreadPoolExecutor(2) as appels:
+        reponses = list(appels.map(lambda _: essayer(), range(2)))
+
+    assert sorted(r.status_code for r in reponses) == [200, 409]
+    refus = next(r for r in reponses if r.status_code == 409)
+    assert "Un essai est déjà en cours" in refus.json()["detail"]
+
+
+@pytest.mark.parametrize("ip", ["8.8.8.8", "100.64.0.1", "169.254.1.1", "127.0.0.1"])
+def test_ip_hors_du_reseau_local_422(connecte, ip):
+    reponse = connecte.post("/api/essai", json={"ip": ip})
+
+    assert reponse.status_code == 422
+    assert "réseau local" in reponse.json()["detail"]
+
+
+@pytest.mark.parametrize("service", ["api", "mediamtx"])
+def test_ip_d_argos_422(connecte, service):
+    ip = next(ip for ip in adresses_ip(service) if ip.startswith("172.30."))
+
+    reponse = connecte.post("/api/essai", json={"ip": ip}, timeout=DELAI_ESSAI_S)
+
+    assert reponse.status_code == 422
+    assert "ArgOS" in reponse.json()["detail"]
+
+
+def test_journaux_une_ligne_par_essai_sans_identifiant(essai):
+    depuis = datetime.now(UTC).isoformat()
+
+    essai(2)
+    essai(2, identifiant="admin", mot_de_passe=MOT_DE_PASSE_SIMULEE_2)
+
+    journaux = compose("logs", "--no-log-prefix", "--since", depuis, "api").stdout
+    requis, trouve = [ligne for ligne in journaux.splitlines() if "Essai :" in ligne]
+    assert f" {ip_de(2)}:554 " in requis
+    assert "identifiants_requis" in requis
+    assert f" {ip_de(2)}:554 " in trouve
+    assert "flux_trouve" in trouve
+    assert "/cam/realmonitor?channel=1&subtype=0" in trouve
+    assert "H264" in trouve
+    assert MOT_DE_PASSE_SIMULEE_2 not in journaux
+    assert "admin:" not in journaux
+    assert "rtsp://" not in journaux

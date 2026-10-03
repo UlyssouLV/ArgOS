@@ -47,12 +47,16 @@ export async function lancerDetection(): Promise<ResultatDetection> {
 /** Issue d'un essai : seul `flux_trouve` ouvre un Aperçu. */
 export type Issue = "flux_trouve" | "identifiants_requis" | "identifiants_refuses" | "flux_introuvable" | "injoignable";
 
-/** Résultat d'un essai ; `apercu` : chemin MediaMTX à lire en WebRTC, seulement si `flux_trouve`. */
+/**
+ * Résultat d'un essai ; `apercu` : chemin MediaMTX à lire en WebRTC, seulement si `flux_trouve`.
+ * Sans renouvellement pendant `expiration_s`, l'API retire l'Aperçu.
+ */
 export type Essai = {
   issue: Issue;
   chemin: string | null;
   codec: string | null;
   apercu: string | null;
+  expiration_s: number;
 };
 
 /** Portés par l'URL de la Caméra ajoutée, côté serveur ; l'API ne les renvoie jamais. */
@@ -64,6 +68,14 @@ export type DemandeEssai = Partial<Identifiants> & { chemin?: string };
 /** Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. */
 export async function essayer(ip: string, port: number, demande: DemandeEssai = {}): Promise<Essai> {
   return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port, ...demande }) }));
+}
+
+/** Prolonge l'Aperçu de l'essai ; `false` s'il a déjà été retiré (expiré ou remplacé). */
+export async function renouvelerEssai(): Promise<boolean> {
+  const reponse = await appeler("/api/essai/renouveler", { method: "POST" });
+  if (reponse.status === 404) return false;
+  if (!reponse.ok) await lire(reponse);
+  return true;
 }
 
 /** Retire l'essai en cours et son Aperçu (sans erreur s'il n'y en a pas). */
