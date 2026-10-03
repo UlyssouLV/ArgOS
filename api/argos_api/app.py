@@ -33,8 +33,9 @@ DELAI_DETECTION_S = 1.5
 DETECTION_EN_COURS = "Une Détection est déjà en cours : attendre son résultat avant d'en relancer une."
 # Retrait des Aperçus expirés, en secondes.
 INTERVALLE_APERCU_S = 1
-# Réseau local : seules ces adresses (RFC 1918) peuvent être essayées.
-RESEAUX_LOCAUX = [IPv4Network(r) for r in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
+# Réseau local : seules ces adresses (RFC 1918) peuvent être essayées. Plages jamais jointes, seulement
+# comparées à l'IP demandée.
+RESEAUX_LOCAUX = [IPv4Network(r) for r in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]  # NOSONAR
 HORS_RESEAU_LOCAL = "Adresse hors du réseau local (10.x, 172.16-31.x, 192.168.x) : ArgOS n'essaie que les caméras du Site."
 ADRESSE_D_ARGOS = "Cette adresse est celle d'ArgOS, pas d'une caméra."
 ESSAI_EN_COURS = "Un essai est déjà en cours : attendre son résultat avant d'en lancer un autre."

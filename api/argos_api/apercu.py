@@ -10,14 +10,11 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic
-from typing import TypeVar
 
 from argos_api import essai
 from argos_api.pont import Pont
 
 journal = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 class AucunApercu(Exception):
@@ -72,7 +69,7 @@ class Apercus:
         with self._verrou:
             self._ouvert_valide().echeance = self._horloge() + self._expiration_s
 
-    def ajouter(self, creer: Callable[[str], T]) -> T:
+    def ajouter[T](self, creer: Callable[[str], T]) -> T:
         """`creer` reçoit l'URL du Flux (identifiants compris) ; s'il lève, l'Aperçu reste ouvert."""
         with self._verrou:
             camera = creer(self._ouvert_valide().resultat.url)
