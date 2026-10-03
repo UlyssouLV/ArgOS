@@ -58,9 +58,12 @@ export type Essai = {
 /** Portés par l'URL de la Caméra ajoutée, côté serveur ; l'API ne les renvoie jamais. */
 export type Identifiants = { identifiant: string; mot_de_passe: string };
 
+/** Chemin RTSP saisi quand aucun chemin courant ne répond : seul ce chemin est essayé. */
+export type DemandeEssai = Partial<Identifiants> & { chemin?: string };
+
 /** Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. */
-export async function essayer(ip: string, port: number, identifiants?: Identifiants): Promise<Essai> {
-  return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port, ...identifiants }) }));
+export async function essayer(ip: string, port: number, demande: DemandeEssai = {}): Promise<Essai> {
+  return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port, ...demande }) }));
 }
 
 /** Retire l'essai en cours et son Aperçu (sans erreur s'il n'y en a pas). */

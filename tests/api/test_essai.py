@@ -154,3 +154,15 @@ def test_ajout_sans_essai_404(connecte):
     connecte.delete("/api/essai")
 
     assert connecte.post("/api/essai/camera", json={"nom": unique("Essai")}).status_code == 404
+
+
+def test_flux_introuvable_puis_trouve_par_le_chemin_saisi(essai):
+    introuvable = essai(3)
+    assert introuvable["issue"] == "flux_introuvable"
+    assert introuvable["apercu"] is None
+
+    trouve = essai(3, chemin="/flux")
+
+    assert trouve["issue"] == "flux_trouve"
+    assert trouve["chemin"] == "/flux"
+    attendre_lisible(trouve["apercu"], True)

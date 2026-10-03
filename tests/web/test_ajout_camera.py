@@ -103,3 +103,30 @@ def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page
     expect(ligne).to_be_visible()
     expect(ligne).not_to_contain_text(MOT_DE_PASSE_SIMULEE_2)
     expect(panneau).to_have_count(0)
+
+
+def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_essai):
+    (ip,) = adresses_ip("camera-simulee-3")
+    nom = noms("Ajout")
+    section = administration.get_by_role("region", name="Détecter des Caméras")
+    section.get_by_role("button", name="Détecter des Caméras").click()
+    candidats = section.get_by_role("table", name="Candidats")
+    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+
+    expect(panneau.get_by_text("Flux introuvable")).to_be_visible(timeout=DELAI_APERCU_MS)
+    panneau.get_by_label("Chemin RTSP").fill("/flux")
+    panneau.get_by_role("button", name="Réessayer").click()
+
+    apercu = panneau.locator("video")
+    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
+    administration.wait_for_function(
+        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
+    )
+    expect(panneau.get_by_label("Chemin RTSP")).to_have_count(0)
+    panneau.get_by_label("Nom").fill(nom)
+    panneau.get_by_role("button", name="Ajouter la Caméra").click()
+
+    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
+    expect(panneau).to_have_count(0)

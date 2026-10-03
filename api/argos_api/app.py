@@ -84,6 +84,8 @@ class DemandeEssai(BaseModel):
     # Portés par l'URL de l'essai, puis de la Caméra ajoutée ; jamais renvoyés au navigateur.
     identifiant: str | None = None
     mot_de_passe: str | None = Field(None, repr=False)
+    # Saisi quand aucun chemin courant ne répond (`flux_introuvable`) : seul ce chemin est essayé.
+    chemin: str | None = None
 
 
 class EssaiLu(BaseModel):
@@ -336,7 +338,12 @@ def _routes_essai(
         with verrou:
             fermer()
             resultat = essai.essayer(
-                demande.ip, demande.port, delai, identifiant=demande.identifiant, mot_de_passe=demande.mot_de_passe
+                demande.ip,
+                demande.port,
+                delai,
+                identifiant=demande.identifiant,
+                mot_de_passe=demande.mot_de_passe,
+                chemin=demande.chemin,
             )
             apercu = None
             if resultat.issue == essai.Issue.FLUX_TROUVE:

@@ -1,7 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { messageEchec, type Camera } from "../cameras";
-import { ajouterDepuisEssai, essayer, retirerEssai, type Candidat, type Essai, type Issue } from "../detection";
+import {
+  ajouterDepuisEssai,
+  essayer,
+  retirerEssai,
+  type Candidat,
+  type DemandeEssai,
+  type Essai,
+  type Issue,
+} from "../detection";
 import { LecteurFlux } from "../LecteurFlux";
 
 const MESSAGES: Record<Exclude<Issue, "flux_trouve">, string> = {
@@ -23,6 +31,7 @@ type PropsAjout = Readonly<{
 /**
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
  * Caméra à mot de passe : identifiant et mot de passe, puis « Réessayer ».
+ * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Réessayer ».
  * « Annuler » retire l'essai et son Aperçu ; l'ajout les retire côté serveur.
  */
 export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
@@ -34,6 +43,9 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
 
   const [identifiant, setIdentifiant] = useState(IDENTIFIANT_PAR_DEFAUT);
   const [motDePasse, setMotDePasse] = useState("");
+  // Vrai dès que des identifiants ont été envoyés : ils accompagnent ensuite chaque essai.
+  const [avecIdentifiants, setAvecIdentifiants] = useState(false);
+  const [chemin, setChemin] = useState("");
 
   useEffect(() => {
     let abandonne = false;
@@ -50,7 +62,11 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
     setEssai(null);
     setErreur(null);
     try {
-      const resultat = await essayer(candidat.ip, candidat.port, { identifiant, mot_de_passe: motDePasse });
+      const envoieIdentifiants = avecIdentifiants || identifiantsDemandes;
+      setAvecIdentifiants(envoieIdentifiants);
+      const demande: DemandeEssai = envoieIdentifiants ? { identifiant, mot_de_passe: motDePasse } : {};
+      if (chemin.trim()) demande.chemin = chemin.trim();
+      const resultat = await essayer(candidat.ip, candidat.port, demande);
       if (resultat.issue === "flux_trouve") setMotDePasse("");
       setEssai(resultat);
     } catch (e) {
@@ -77,11 +93,12 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
 
   const apercu = essai?.issue === "flux_trouve" ? essai.apercu : null;
   const identifiantsDemandes = essai?.issue === "identifiants_requis" || essai?.issue === "identifiants_refuses";
+  const cheminDemande = essai?.issue === "flux_introuvable";
 
   function soumettre(evenement: FormEvent) {
     evenement.preventDefault();
     if (apercu) void ajouter();
-    else if (identifiantsDemandes) void reessayer();
+    else if (identifiantsDemandes || cheminDemande) void reessayer();
   }
 
   return (
@@ -106,6 +123,19 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
           </label>
         </>
       )}
+      {cheminDemande && (
+        <label>
+          <span>Chemin RTSP</span>
+          <input
+            name="chemin"
+            required
+            autoComplete="off"
+            placeholder="/chemin/du/flux"
+            value={chemin}
+            onChange={(e) => setChemin(e.target.value)}
+          />
+        </label>
+      )}
       {apercu && (
         <>
           <LecteurFlux cheminFlux={apercu} />
@@ -125,7 +155,7 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
             Ajouter la Caméra
           </button>
         )}
-        {identifiantsDemandes && <button type="submit">Réessayer</button>}
+        {(identifiantsDemandes || cheminDemande) && <button type="submit">Réessayer</button>}
         <button type="button" onClick={annuler}>
           Annuler
         </button>
