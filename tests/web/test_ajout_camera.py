@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from stack_compose import EXPIRATION_APERCU_S, adresses_ip
 from test_administration import administration, api, noms  # noqa: F401 (fixtures)
@@ -38,6 +38,7 @@ def test_ajout_depuis_un_candidat_au_flux_ouvert(administration: Page, noms, san
     administration.wait_for_function(
         "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
     )
+    expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)
 
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_label("Emplacement").fill("Portail")
@@ -158,6 +159,36 @@ def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_
         "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
     )
     expect(panneau.get_by_label("Chemin RTSP")).to_have_count(0)
+    panneau.get_by_label("Nom").fill(nom)
+    panneau.get_by_role("button", name="Ajouter la Caméra").click()
+
+    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
+    expect(panneau).to_have_count(0)
+
+
+def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: Page, noms, sans_essai):
+    (ip,) = adresses_ip("camera-simulee-1")
+    nom = noms("Ajout")
+
+    def en_h265(route: Route):
+        # Le vrai essai ouvre l'Aperçu ; seul le codec annoncé change, comme une caméra en H.265.
+        reponse = route.fetch()
+        route.fulfill(response=reponse, json={**reponse.json(), "codec": "H265"})
+
+    administration.route("**/api/essai", lambda route: en_h265(route) if route.request.method == "POST" else route.continue_())
+    section = administration.get_by_role("region", name="Détecter des Caméras")
+    section.get_by_role("button", name="Détecter des Caméras").click()
+    candidats = section.get_by_role("table", name="Candidats")
+    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+
+    expect(
+        panneau.get_by_text(
+            "Cette caméra émet en H.265, que le navigateur ne sait pas lire. La Caméra peut être ajoutée ; "
+            "la lecture viendra dans une version future."
+        )
+    ).to_be_visible(timeout=DELAI_APERCU_MS)
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 

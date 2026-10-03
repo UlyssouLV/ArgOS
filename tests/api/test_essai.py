@@ -142,6 +142,7 @@ def test_camera_a_mot_de_passe_requis_puis_refuse_puis_trouve(essai):
     trouve = essai(2, identifiant="admin", mot_de_passe=MOT_DE_PASSE_SIMULEE_2)
     assert trouve["issue"] == "flux_trouve"
     assert trouve["chemin"] == "/cam/realmonitor?channel=1&subtype=0"
+    assert trouve["codec"] == "H264"
     attendre_lisible(trouve["apercu"], True)
 
 
@@ -178,6 +179,7 @@ def test_flux_introuvable_puis_trouve_par_le_chemin_saisi(essai):
 
     assert trouve["issue"] == "flux_trouve"
     assert trouve["chemin"] == "/flux"
+    assert trouve["codec"] == "H264"
     attendre_lisible(trouve["apercu"], True)
 
 

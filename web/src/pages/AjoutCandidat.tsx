@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { messageEchec, type Camera } from "../cameras";
 import {
@@ -11,7 +11,7 @@ import {
   type Essai,
   type Issue,
 } from "../detection";
-import { LecteurFlux } from "../LecteurFlux";
+import { LecteurFlux, type EtatLecteur } from "../LecteurFlux";
 
 const MESSAGES: Record<Exclude<Issue, "flux_trouve">, string> = {
   identifiants_requis: "Cette caméra demande un mot de passe.",
@@ -26,6 +26,16 @@ const IDENTIFIANT_PAR_DEFAUT = "admin";
 /** Renouvellements par délai d'expiration : un renouvellement perdu ne fait pas expirer l'Aperçu. */
 const RENOUVELLEMENTS_PAR_EXPIRATION = 4;
 
+/** Seul codec vidéo que les navigateurs lisent tous en WebRTC. */
+const CODEC_LISIBLE = "H264";
+
+/** Codec nommé comme on l'écrit (`H265` → « en H.265 ») ; inconnu : « dans un codec ». */
+function messageCodec(codec: string | null): string {
+  let nom = "dans un codec";
+  if (codec) nom = `en ${codec.replace(/^H(\d{3})$/, "H.$1")}`;
+  return `Cette caméra émet ${nom}, que le navigateur ne sait pas lire. La Caméra peut être ajoutée ; la lecture viendra dans une version future.`;
+}
+
 const APERCU_RETIRE = "L'Aperçu a été retiré (délai dépassé) : annuler puis recommencer.";
 
 type PropsAjout = Readonly<{
@@ -38,6 +48,7 @@ type PropsAjout = Readonly<{
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
  * Caméra à mot de passe : identifiant et mot de passe, puis « Réessayer ».
  * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Réessayer ».
+ * Codec autre que H.264, ou Aperçu qui ne démarre pas : message nommant le codec ; l'ajout reste permis.
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
@@ -53,6 +64,8 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   // Vrai dès que des identifiants ont été envoyés : ils accompagnent ensuite chaque essai.
   const [avecIdentifiants, setAvecIdentifiants] = useState(false);
   const [chemin, setChemin] = useState("");
+  // L'Aperçu a-t-il déjà joué, ou échoué avant de jouer ? Remis à zéro à chaque essai.
+  const [lecture, setLecture] = useState<"attente" | "lue" | "echec">("attente");
 
   useEffect(() => {
     let abandonne = false;
@@ -68,6 +81,7 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   async function reessayer() {
     setEssai(null);
     setErreur(null);
+    setLecture("attente");
     try {
       const envoieIdentifiants = avecIdentifiants || identifiantsDemandes;
       setAvecIdentifiants(envoieIdentifiants);
@@ -102,6 +116,13 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   const identifiantsDemandes = essai?.issue === "identifiants_requis" || essai?.issue === "identifiants_refuses";
   const cheminDemande = essai?.issue === "flux_introuvable";
   const expirationS = essai?.expiration_s;
+  const codec = essai?.codec ?? null;
+  const codecIllisible = apercu !== null && (codec !== CODEC_LISIBLE || lecture === "echec");
+
+  const suivreLecture = useCallback((etat: EtatLecteur) => {
+    if (etat === "lecture") setLecture("lue");
+    else if (etat === "indisponible") setLecture((avant) => (avant === "lue" ? avant : "echec"));
+  }, []);
 
   useEffect(() => {
     if (!apercu || !expirationS) return;
@@ -161,7 +182,8 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
       )}
       {apercu && (
         <>
-          <LecteurFlux cheminFlux={apercu} />
+          <LecteurFlux cheminFlux={apercu} onEtat={suivreLecture} />
+          {codecIllisible && <p className="erreur">{messageCodec(codec)}</p>}
           <label>
             <span>Nom</span>
             <input name="nom" required value={nom} onChange={(e) => setNom(e.target.value)} />
