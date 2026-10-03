@@ -80,13 +80,13 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
 
   function soumettre(evenement: FormEvent) {
     evenement.preventDefault();
-    if (apercu) ajouter();
-    else if (identifiantsDemandes) reessayer();
+    if (apercu) void ajouter();
+    else if (identifiantsDemandes) void reessayer();
   }
 
   return (
     <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={soumettre}>
-      {essai === null && erreur === null && <p role="status">Recherche du Flux…</p>}
+      {essai === null && erreur === null && <output>Recherche du Flux…</output>}
       {essai && essai.issue !== "flux_trouve" && <p className="erreur">{MESSAGES[essai.issue]}</p>}
       {identifiantsDemandes && (
         <>
