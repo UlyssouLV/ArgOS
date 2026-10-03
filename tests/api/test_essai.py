@@ -14,6 +14,9 @@ from test_detection import ip_de
 from test_etat_cameras import attendre_etat
 from test_mediamtx_en_pont import attendre_lisible, lisible
 
+# media/simulated/README.md
+MOT_DE_PASSE_SIMULEE_2 = "argos-simulee"
+
 # Un tour de réconciliation du pont, avec de la marge.
 APRES_RECONCILIATION_S = 12
 
@@ -23,8 +26,8 @@ def essai(connecte):
     """Ouvre l'essai d'une Caméra simulée ; l'essai et les Caméras ajoutées sont retirés à la fin."""
     ajoutees: list[int] = []
 
-    def _essayer(numero: int) -> dict:
-        reponse = connecte.post("/api/essai", json={"ip": ip_de(numero), "port": 554}, timeout=30)
+    def _essayer(numero: int, **champs) -> dict:
+        reponse = connecte.post("/api/essai", json={"ip": ip_de(numero), "port": 554, **champs}, timeout=30)
         assert reponse.status_code == 200
         return reponse.json()
 
@@ -112,6 +115,39 @@ def test_ajout_d_un_nom_pris_409_et_l_essai_reste_ouvert(essai, creer_camera):
     assert reponse.json()["detail"] == "Une Caméra porte déjà ce nom ou cette URL (désactivée comprise)."
     assert lisible(apercu)
     assert essai.ajouter(nom=unique("Essai")).status_code == 201
+
+
+def test_camera_a_mot_de_passe_requis_puis_refuse_puis_trouve(essai):
+    requis = essai(2)
+    assert requis["issue"] == "identifiants_requis"
+    assert requis["apercu"] is None
+
+    refuse = essai(2, identifiant="admin", mot_de_passe="mauvais")
+    assert refuse["issue"] == "identifiants_refuses"
+    assert refuse["apercu"] is None
+
+    trouve = essai(2, identifiant="admin", mot_de_passe=MOT_DE_PASSE_SIMULEE_2)
+    assert trouve["issue"] == "flux_trouve"
+    assert trouve["chemin"] == "/cam/realmonitor?channel=1&subtype=0"
+    attendre_lisible(trouve["apercu"], True)
+
+
+def test_les_identifiants_ne_reviennent_jamais_au_navigateur(essai):
+    resultat = essai(2, identifiant="admin", mot_de_passe=MOT_DE_PASSE_SIMULEE_2)
+
+    assert MOT_DE_PASSE_SIMULEE_2 not in str(resultat)
+
+
+def test_ajout_a_mot_de_passe_conserve_les_identifiants_et_masque_l_url(connecte, essai):
+    essai(2, identifiant="admin", mot_de_passe=MOT_DE_PASSE_SIMULEE_2)
+
+    reponse = essai.ajouter(nom=unique("Essai"))
+
+    assert reponse.status_code == 201
+    camera = reponse.json()
+    assert camera["url_rtsp"] == f"rtsp://admin:***@{ip_de(2)}:554/cam/realmonitor?channel=1&subtype=0"
+    assert MOT_DE_PASSE_SIMULEE_2 not in connecte.get(f"/api/cameras/{camera['id']}").text
+    attendre_etat(connecte, camera["id"], "online")
 
 
 def test_ajout_sans_essai_404(connecte):

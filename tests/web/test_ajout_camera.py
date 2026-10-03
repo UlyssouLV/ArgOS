@@ -12,6 +12,9 @@ from test_detection import DELAI_DETECTION_MS
 # Essai, puis démarrage à la demande du relais de l'Aperçu, avec de la marge.
 DELAI_APERCU_MS = 45_000
 
+# media/simulated/README.md
+MOT_DE_PASSE_SIMULEE_2 = "argos-simulee"
+
 
 @pytest.fixture
 def sans_essai(api):
@@ -64,3 +67,39 @@ def test_annuler_ferme_le_panneau_sans_rien_creer(administration: Page, api, san
     expect(panneau).to_have_count(0)
     expect(candidats.get_by_role("row").filter(has_text=ip)).to_be_visible()
     assert len(api.get("/api/cameras").json()) == avant
+
+
+def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page, noms, sans_essai):
+    (ip,) = adresses_ip("camera-simulee-2")
+    nom = noms("Ajout")
+    section = administration.get_by_role("region", name="Détecter des Caméras")
+    section.get_by_role("button", name="Détecter des Caméras").click()
+    candidats = section.get_by_role("table", name="Candidats")
+    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+
+    expect(panneau.get_by_text("Cette caméra demande un mot de passe")).to_be_visible(timeout=DELAI_APERCU_MS)
+    expect(panneau.get_by_label("Identifiant")).to_have_value("admin")
+    panneau.get_by_label("Mot de passe").fill("mauvais")
+    panneau.get_by_role("button", name="Réessayer").click()
+
+    expect(panneau.get_by_text("Identifiant ou mot de passe refusé par la caméra")).to_be_visible(
+        timeout=DELAI_APERCU_MS
+    )
+    panneau.get_by_label("Mot de passe").fill(MOT_DE_PASSE_SIMULEE_2)
+    panneau.get_by_role("button", name="Réessayer").click()
+
+    apercu = panneau.locator("video")
+    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
+    administration.wait_for_function(
+        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
+    )
+    expect(panneau.get_by_label("Mot de passe")).to_have_count(0)
+    panneau.get_by_label("Nom").fill(nom)
+    panneau.get_by_role("button", name="Ajouter la Caméra").click()
+
+    ligne = administration.get_by_role("row").filter(has_text=nom).first
+    expect(ligne).to_be_visible()
+    expect(ligne).not_to_contain_text(MOT_DE_PASSE_SIMULEE_2)
+    expect(panneau).to_have_count(0)

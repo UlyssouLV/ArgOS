@@ -11,6 +11,9 @@ const MESSAGES: Record<Exclude<Issue, "flux_trouve">, string> = {
   injoignable: "Aucune caméra ne répond à cette adresse.",
 };
 
+/** Identifiant le plus courant des caméras ; prérempli, modifiable. */
+const IDENTIFIANT_PAR_DEFAUT = "admin";
+
 type PropsAjout = Readonly<{
   candidat: Candidat;
   onAjoutee: (camera: Camera) => void;
@@ -19,6 +22,7 @@ type PropsAjout = Readonly<{
 
 /**
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
+ * Caméra à mot de passe : identifiant et mot de passe, puis « Réessayer ».
  * « Annuler » retire l'essai et son Aperçu ; l'ajout les retire côté serveur.
  */
 export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
@@ -27,6 +31,9 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   const [emplacement, setEmplacement] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+
+  const [identifiant, setIdentifiant] = useState(IDENTIFIANT_PAR_DEFAUT);
+  const [motDePasse, setMotDePasse] = useState("");
 
   useEffect(() => {
     let abandonne = false;
@@ -38,8 +45,20 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
     };
   }, [candidat.ip, candidat.port]);
 
-  async function ajouter(evenement: FormEvent) {
-    evenement.preventDefault();
+  /** Un seul essai d'identifiants par clic : ArgOS ne réessaie jamais seul. */
+  async function reessayer() {
+    setEssai(null);
+    setErreur(null);
+    try {
+      const resultat = await essayer(candidat.ip, candidat.port, { identifiant, mot_de_passe: motDePasse });
+      if (resultat.issue === "flux_trouve") setMotDePasse("");
+      setEssai(resultat);
+    } catch (e) {
+      setErreur(messageEchec(e));
+    }
+  }
+
+  async function ajouter() {
     setEnvoi(true);
     setErreur(null);
     try {
@@ -57,10 +76,36 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   }
 
   const apercu = essai?.issue === "flux_trouve" ? essai.apercu : null;
+  const identifiantsDemandes = essai?.issue === "identifiants_requis" || essai?.issue === "identifiants_refuses";
+
+  function soumettre(evenement: FormEvent) {
+    evenement.preventDefault();
+    if (apercu) ajouter();
+    else if (identifiantsDemandes) reessayer();
+  }
+
   return (
-    <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={ajouter}>
+    <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={soumettre}>
       {essai === null && erreur === null && <p role="status">Recherche du Flux…</p>}
       {essai && essai.issue !== "flux_trouve" && <p className="erreur">{MESSAGES[essai.issue]}</p>}
+      {identifiantsDemandes && (
+        <>
+          <label>
+            <span>Identifiant</span>
+            <input name="identifiant" required autoComplete="off" value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} />
+          </label>
+          <label>
+            <span>Mot de passe</span>
+            <input
+              name="mot_de_passe"
+              type="password"
+              autoComplete="new-password"
+              value={motDePasse}
+              onChange={(e) => setMotDePasse(e.target.value)}
+            />
+          </label>
+        </>
+      )}
       {apercu && (
         <>
           <LecteurFlux cheminFlux={apercu} />
@@ -80,6 +125,7 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
             Ajouter la Caméra
           </button>
         )}
+        {identifiantsDemandes && <button type="submit">Réessayer</button>}
         <button type="button" onClick={annuler}>
           Annuler
         </button>

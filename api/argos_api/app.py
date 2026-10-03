@@ -81,6 +81,9 @@ class ResultatDetection(BaseModel):
 class DemandeEssai(BaseModel):
     ip: IPv4Address
     port: int = Field(cameras.PORT_RTSP, gt=0, lt=65536)
+    # Portés par l'URL de l'essai, puis de la Caméra ajoutée ; jamais renvoyés au navigateur.
+    identifiant: str | None = None
+    mot_de_passe: str | None = Field(None, repr=False)
 
 
 class EssaiLu(BaseModel):
@@ -332,7 +335,9 @@ def _routes_essai(
     def essayer(demande: DemandeEssai) -> EssaiLu:
         with verrou:
             fermer()
-            resultat = essai.essayer(demande.ip, demande.port, delai)
+            resultat = essai.essayer(
+                demande.ip, demande.port, delai, identifiant=demande.identifiant, mot_de_passe=demande.mot_de_passe
+            )
             apercu = None
             if resultat.issue == essai.Issue.FLUX_TROUVE:
                 try:
