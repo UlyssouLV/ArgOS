@@ -49,10 +49,6 @@ export async function listerCameras(): Promise<Camera[]> {
   return (await envoyer("/api/cameras", "GET")).json();
 }
 
-export async function creerCamera(saisie: SaisieCamera): Promise<void> {
-  await envoyer("/api/cameras", "POST", saisie);
-}
-
 /** L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe RTSP est conservé. */
 export async function modifierCamera(id: number, modification: Partial<SaisieCamera & { active: boolean }>): Promise<void> {
   await envoyer(`/api/cameras/${id}`, "PATCH", modification);

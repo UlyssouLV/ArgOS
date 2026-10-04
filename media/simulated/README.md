@@ -2,13 +2,13 @@
 
 Fichiers de **dev**, utilisés seulement par `compose.simulation.yaml` (jamais par la stack de prod). Ce ne sont pas des enregistrements produit : à remplacer plus tard par de vraies caméras IP.
 
-Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : un MediaMTX ([`camera-simulee.yml`](camera-simulee.yml)) où ffmpeg diffuse sa vidéo en boucle, sans réencodage, en RTSP sur le port **554**, sur le seul chemin `flux`. Les Caméras simulées vivent sur le réseau Compose `cameras-simulees` (`172.30.0.0/24`) et ne sont **pas publiées** sur la machine hôte : on les déclare comme Caméras (Administration), puis on les regarde dans le Live.
+Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : un MediaMTX ([`camera-simulee.yml`](camera-simulee.yml)) où ffmpeg diffuse sa vidéo en boucle, sans réencodage, en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra (variable `CHEMIN_FLUX` dans `compose.simulation.yaml`, qui remplit le gabarit `camera-simulee.yml`). Les Caméras simulées vivent sur le réseau Compose `cameras-simulees` (`172.30.0.0/24`) et ne sont **pas publiées** sur la machine hôte : on les déclare comme Caméras (Administration), puis on les regarde dans le Live.
 
-| Caméra simulée     | URL RTSP (vue de `api` et du pont)                 | Vidéo      | Origine (source déposée)                                       |
-|--------------------|----------------------------------------------------|------------|----------------------------------------------------------------|
-| `camera-simulee-1` | `rtsp://camera-simulee-1/flux`                     | `cam1.mp4` | Security Camera (CCTV) Style Video in After Effects            |
-| `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/flux` | `cam2.mp4` | 8MP 4K Dahua CCTV System Sample Video — Night Time             |
-| `camera-simulee-3` | `rtsp://camera-simulee-3/flux`                     | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
+| Caméra simulée     | URL RTSP (vue de `api` et du pont) | Style du chemin | Vidéo      | Origine (source déposée)                                       |
+|--------------------|------------------------------------|-----------------|------------|----------------------------------------------------------------|
+| `camera-simulee-1` | `rtsp://camera-simulee-1/Streaming/Channels/101` | Hikvision | `cam1.mp4` | Security Camera (CCTV) Style Video in After Effects            |
+| `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` | Dahua | `cam2.mp4` | 8MP 4K Dahua CCTV System Sample Video — Night Time             |
+| `camera-simulee-3` | `rtsp://camera-simulee-3/flux` | exotique (aucun chemin courant) | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
 
 ## Identifiants de `camera-simulee-2`
 

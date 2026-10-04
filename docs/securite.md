@@ -70,6 +70,17 @@ Depuis la 0.4.0, ArgOS n'attend plus seulement les Caméras qu'on lui donne : la
 - **Visible** : ce balayage ressemble à celui d'un attaquant. Un pare-feu, un IDS ou une caméra qui journalise peuvent le signaler ; prévenir qui gère le réseau du Site. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
 - **Ce qu'elle révèle** : les Candidats (IP, port, statut RTSP, en-tête `Server`, souvent marque et firmware) ne sont pas stockés, mais ils sont renvoyés à l'Administrateur et écrits dans les journaux.
 
+### Ajout d'une Caméra : ArgOS essaie un Flux
+
+Depuis la 0.4.1, **Ajouter** sur un Candidat (ou **Ajouter par adresse IP**) fait chercher son Flux par ArgOS : `OPTIONS`, puis `DESCRIBE` sur une liste de chemins courants, avec les identifiants saisis s'il y en a, puis la sonde (un paquet vidéo). Déroulé complet : [Ajouter une Caméra](cameras/ajouter-une-camera.md).
+
+- **Garde-fous de l'essai** : réservé à une session (`401` sinon), pour qu'un inconnu du réseau ne s'en serve pas pour deviner des mots de passe ; **un seul essai à la fois** pour le Site (un second reçoit `409`) ; IP du **réseau local** seulement (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, sinon `422`), jamais ArgOS lui-même (`422`) ni une Caméra déjà configurée (`409`).
+- **Pas de force brute par ArgOS** : un seul essai d'identifiants par demande. Au premier `401`, l'essai s'arrête, sans autre chemin, sans réessai automatique, sans mots de passe par défaut : ArgOS ne fait pas verrouiller la caméra.
+- **Mot de passe en clair sur le réseau** : tant qu'il n'y a pas HTTPS, l'identifiant et le mot de passe de la caméra passent en clair du navigateur à l'API (`POST /api/essai`), comme le mot de passe de l'Administrateur. Vers la caméra, RTSP les envoie en Digest ou en Basic selon ce qu'elle demande : en Basic, ils sont lisibles sur le réseau des caméras.
+- **En clair en base** : la Caméra ajoutée garde ses identifiants dans son URL RTSP, en clair en base, masqués (`***`) dans les réponses de l'API (§ 3). Une fois envoyé, le mot de passe ne revient jamais au navigateur : l'URL de l'essai reste côté serveur, et la Caméra est créée à partir d'elle.
+- **Journaux** : une ligne par essai (IP, port, issue, chemin, codec), jamais d'identifiant ni d'URL complète.
+- **Aperçu lisible sans authentification** : pendant l'ajout, le pont relaie le Flux sur `apercu-<jeton aléatoire>`, lisible comme les autres Flux **par tout poste du réseau local** qui connaît son nom (dette « Flux sans auth »). Le jeton aléatoire n'est donné qu'à l'Administrateur : il ne se devine pas, mais circule en clair (HTTP, WHEP) tant qu'il n'y a pas HTTPS. Un seul Aperçu à la fois, retiré à l'ajout, à l'annulation, au remplacement, ou 2 minutes sans renouvellement (`ARGOS_APERCU_EXPIRATION_S`) ; les `apercu-*` orphelins sont retirés au démarrage de l'API.
+
 ### UI et API : deux origines, CORS avec credentials
 
 L'UI (`web`, port 8080) et l'API (port 8000) sont deux **origines** différentes sur le même hôte. Le front appelle l'API avec `credentials: 'include'` : le navigateur joint le cookie de session, et l'API doit l'autoriser par CORS.
@@ -88,7 +99,7 @@ Passer par un **VPN** (WireGuard, Tailscale…) plutôt que par une redirection 
 |---|---|---|---|
 | Identifiants RTSP stockés **en clair** en base (masqués dans les réponses de l'API) | 0.2.0 | Lecture de la base → accès à toutes les caméras | Chiffrement des identifiants RTSP |
 | Pas de HTTPS (API, Live) | 0.2.0 | Mot de passe et session lisibles sur le Wi-Fi | HTTPS |
-| Flux MediaMTX sans authentification (`camN`, et `camera-<id>` pour toute Caméra active depuis la 0.3.0) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
+| Flux MediaMTX sans authentification (`camN`, `camera-<id>` pour toute Caméra active depuis la 0.3.0, `apercu-*` pendant un ajout depuis la 0.4.1) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
 | Mot de passe de l'Administrateur en clair dans `.env` | 0.2.0 | Lecture du serveur → accès à ArgOS | À revoir avec les comptes multiples |
 | Frein à la force brute en mémoire | 0.2.0 | Remis à zéro à chaque redémarrage de l'API | À revoir avec HTTPS / comptes multiples |
 

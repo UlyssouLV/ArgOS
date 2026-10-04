@@ -1,6 +1,6 @@
 # Schéma des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.4.0, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md). Limites de sécurité : [docs/securite.md](../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.4.1, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md). Limites de sécurité : [docs/securite.md](../securite.md).
 
 Lecture : trait plein = flux continu ou à la demande ; trait épais = vidéo vers le navigateur ; pointillés = sonde et pilotage ; double flèche = requête / réponse. Les deux cadres « Réseau local du Site » sont **le même** réseau, coupé en deux pour que la vidéo se lise de gauche à droite.
 
@@ -12,11 +12,12 @@ flowchart LR
 
     subgraph HOTE["Machine hôte · Docker Desktop · ports publiés sur toutes ses interfaces"]
         subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
-            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 /flux · -2 avec identifiants<br/>non publiées"]
+            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 · chemins Hikvision, Dahua, /flux · -2 avec identifiants<br/>non publiées"]
         end
         subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service"]
             subgraph MTX["mediamtx"]
                 PONT["camera-&lt;id&gt;<br/>une par Caméra active<br/>sourceOnDemand"]
+                APERCU["apercu-&lt;jeton&gt;<br/>Aperçu, un seul, pendant un ajout<br/>2 min sans renouvellement"]
                 CTRL["API de contrôle :9997<br/>non publiée"]
             end
             API["api · FastAPI :8000<br/>sonde 10 s · pont 10 s"]
@@ -32,6 +33,8 @@ flowchart LR
 
     SIM -- "RTSP :554 · à la demande" --> PONT
     CAMR -- "RTSP :554 · à la demande" --> PONT
+    CAMR -- "RTSP :554 · pendant un ajout" --> APERCU
+    APERCU == "WebRTC · Aperçu dans l'Administration" ==> NAV
     PONT == "WebRTC UDP :8189 · SRTP H.264<br/>continu pendant le Live, < 1 s" ==> NAV
     PONT -- "RTSP :8554 · HLS :8888<br/>sans auth" --> VLC
 
@@ -42,6 +45,7 @@ flowchart LR
     API <-- "SQL :5432" --> DB
     API -. "Détection, au clic · TCP :554 / :8554<br/>puis RTSP OPTIONS · sous-réseaux autorisés" .-> CAMR
     API -. "Détection · TCP :554<br/>puis RTSP OPTIONS" .-> SIM
+    API -. "Essai, à l'ajout · OPTIONS, DESCRIBE<br/>chemins courants, identifiants saisis" .-> CAMR
 
     PONT <-- "HTTP :8889 · WHEP<br/>offre / réponse SDP" --> NAV
     API <-- "HTTP :8000 · JSON + cookie<br/>CORS avec credentials" --> NAV
@@ -52,18 +56,21 @@ flowchart LR
 
 | De → vers | Protocole · port | Quand | Ce qui passe |
 |---|---|---|---|
-| ffmpeg → Caméra simulée (`flux`) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` (dev) | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
+| ffmpeg → Caméra simulée (son chemin) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` (dev) | en continu | la vidéo de dev, sans réencodage : seul flux vidéo permanent du Site |
 | `api` → `db` | SQL · `db:5432` | à chaque requête | Caméras, sessions, états |
 | `api` → `mediamtx` | HTTP · `mediamtx:9997` (API de contrôle) | toutes les 10 s | ajoute / modifie / retire les chemins `camera-<id>` selon les Caméras actives ; rien d’autre n’est touché |
 | `api` → chaque adresse des sous-réseaux autorisés | TCP · ports caméra (`554,8554` par défaut), puis RTSP `OPTIONS` | à chaque Détection (clic dans l’Administration), une dizaine de secondes | connexion, puis `OPTIONS` sans chemin ni identifiants ; une ligne de statut RTSP en retour → Candidat |
 | `api` → chaque Candidat | HTTP · `:8000` `GET /api/instance` | à chaque Détection, Candidats seulement | jeton d’instance : celui qui renvoie le jeton de cette API est ArgOS lui-même, écarté |
+| `api` → un Candidat (ou une IP saisie) | RTSP/TCP · son port (`554` par défaut) | à chaque essai d’ajout (« Ajouter » dans l’Administration), un à la fois | `OPTIONS`, puis `DESCRIBE` sur les chemins courants (identifiants saisis compris) jusqu’au premier `200`, puis la sonde ([Ajouter une Caméra](../cameras/ajouter-une-camera.md)) |
+| `api` → `mediamtx` | HTTP · `mediamtx:9997` | au Flux trouvé, à l’ajout, à l’annulation, à l’expiration | ajoute / retire le chemin `apercu-<jeton>` ; la réconciliation des `camera-<id>` n’y touche pas |
 | `api` → chaque Caméra active | RTSP/TCP · `:554` (`camera-simulee-N` en dev, IP du réseau local pour une réelle) | toutes les 10 s, quelques ms | `DESCRIBE`, `SETUP`, `PLAY`, un paquet vidéo, `TEARDOWN` → `online` / `offline` |
 | `mediamtx` (`camera-<id>`) → source de la Caméra | RTSP/TCP | seulement pendant qu’un navigateur regarde | le Flux de la Caméra, relayé sans réencodage |
+| `mediamtx` (`apercu-<jeton>`) → Candidat | RTSP/TCP | pendant qu’un ajout montre l’Aperçu | le Flux du Candidat, relayé sans réencodage, identifiants de l’essai compris |
 | navigateur → `web` | HTTP · `:8080` | au chargement | `index.html` et le JS de l’UI |
-| navigateur → `api` | HTTP · `:8000` | connexion, Administration (10 s), Live (10 s), Détection (`POST /api/detection`, synchrone) | JSON, cookie `argos_session` |
-| navigateur → `mediamtx` | HTTP · `:8889` (WHEP) | à chaque Caméra affichée dans le Live | négociation SDP et candidats ICE |
-| `mediamtx` → navigateur | WebRTC · UDP `:8189` | pendant le Live, une connexion à la fois | vidéo H.264 en SRTP |
-| VLC / ffprobe → `mediamtx` | RTSP `:8554`, HLS `:8888` | à la demande | lecture directe des `camera-<id>` (debug) ; les Caméras simulées ne sont pas publiées |
+| navigateur → `api` | HTTP · `:8000` | connexion, Administration (10 s), Live (10 s), Détection (`POST /api/detection`, synchrone), ajout (`/api/essai`, renouvelé tant que le panneau est ouvert) | JSON, cookie `argos_session` |
+| navigateur → `mediamtx` | HTTP · `:8889` (WHEP) | à chaque Caméra affichée dans le Live, et à l’Aperçu d’un ajout | négociation SDP et candidats ICE |
+| `mediamtx` → navigateur | WebRTC · UDP `:8189` | pendant le Live ou l’Aperçu, une connexion à la fois par vue | vidéo H.264 en SRTP |
+| VLC / ffprobe → `mediamtx` | RTSP `:8554`, HLS `:8888` | à la demande | lecture directe des `camera-<id>` (debug), et de l’`apercu-<jeton>` pendant un ajout ; les Caméras simulées ne sont pas publiées |
 
 ## Réseaux
 

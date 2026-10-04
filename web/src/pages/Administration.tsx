@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
-  creerCamera,
   listerCameras,
   messageEchec,
   modifierCamera,
@@ -12,7 +11,6 @@ import {
 import { DetecterCameras } from "./DetecterCameras";
 
 const RAFRAICHISSEMENT_MS = 10_000;
-const SAISIE_VIDE: SaisieCamera = { nom: "", url_rtsp: "", emplacement: null };
 
 function dateVerification(camera: Camera): string {
   return camera.etat_verifie_le ? new Date(camera.etat_verifie_le).toLocaleString("fr-FR") : "—";
@@ -50,11 +48,6 @@ export function Administration() {
     await rafraichir();
   }
 
-  async function creer(saisie: SaisieCamera) {
-    await creerCamera(saisie);
-    await rafraichir();
-  }
-
   async function enregistrer(id: number, saisie: SaisieCamera) {
     await modifierCamera(id, saisie);
     setEnEdition(null);
@@ -64,15 +57,13 @@ export function Administration() {
   return (
     <section className="administration">
       <h1>Administration</h1>
-      <h2>Nouvelle Caméra</h2>
-      <FormulaireCamera titre="Nouvelle Caméra" initiale={SAISIE_VIDE} libelle="Créer" viderApres onValider={creer} />
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}
         </p>
       )}
-      {cameras?.length === 0 && <p>Aucune Caméra : en créer une ci-dessus.</p>}
       <h2>Caméras</h2>
+      {cameras?.length === 0 && <p>Aucune Caméra : en ajouter une depuis « Détecter des Caméras » ci-dessous.</p>}
       {cameras && cameras.length > 0 && (
         <table className="cameras">
           <thead>
@@ -132,7 +123,7 @@ export function Administration() {
           </tbody>
         </table>
       )}
-      <DetecterCameras />
+      <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
     </section>
   );
 }
@@ -188,13 +179,12 @@ type PropsFormulaire = Readonly<{
   titre: string;
   initiale: SaisieCamera;
   libelle: string;
-  viderApres?: boolean;
   onValider: (saisie: SaisieCamera) => Promise<void>;
   onAnnuler?: () => void;
 }>;
 
-/** Création ou modification : un refus de l'API (409 doublon, 422 URL invalide) s'affiche dans le formulaire. */
-function FormulaireCamera({ titre, initiale, libelle, viderApres = false, onValider, onAnnuler }: PropsFormulaire) {
+/** Modification : un refus de l'API (409 doublon, 422 URL invalide) s'affiche dans le formulaire. */
+function FormulaireCamera({ titre, initiale, libelle, onValider, onAnnuler }: PropsFormulaire) {
   const [nom, setNom] = useState(initiale.nom);
   // En modification, l'URL masquée est renvoyée telle quelle si elle n'est pas touchée.
   const [url, setUrl] = useState(initiale.url_rtsp);
@@ -208,11 +198,6 @@ function FormulaireCamera({ titre, initiale, libelle, viderApres = false, onVali
     setErreur(null);
     try {
       await onValider({ nom, url_rtsp: url, emplacement: emplacement.trim() || null });
-      if (viderApres) {
-        setNom("");
-        setUrl("");
-        setEmplacement("");
-      }
     } catch (e) {
       setErreur(messageEchec(e));
     } finally {

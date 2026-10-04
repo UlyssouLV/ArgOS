@@ -10,6 +10,7 @@ import re
 import secrets
 import socket
 import time
+from dataclasses import dataclass
 from urllib.parse import unquote, urlsplit
 
 PORT_RTSP = 554
@@ -28,6 +29,25 @@ def sonder(url: str, delai: float) -> bool:
             return session.recoit_de_la_video()
     except (OSError, ValueError, _Echec):
         return False
+
+
+@dataclass(frozen=True)
+class Description:
+    """Réponse à `DESCRIBE` : son statut et, si `200`, le codec de la première piste vidéo du SDP."""
+
+    statut: int
+    codec: str | None
+
+
+def decrire(url: str, delai: float) -> Description | None:
+    """`DESCRIBE` sur `url` dans `delai` secondes ; `None` sans réponse RTSP, sans lever."""
+    try:
+        with _SessionRtsp(url, time.monotonic() + delai) as session:
+            reponse = session.decrire()
+    except (OSError, ValueError, _Echec):
+        return None
+    codec = _codec_video(reponse.corps.decode(errors="replace")) if reponse.statut == 200 else None
+    return Description(reponse.statut, codec)
 
 
 class _SessionRtsp:
@@ -62,8 +82,13 @@ class _SessionRtsp:
         finally:
             self._socket.close()
 
+    def decrire(self) -> "_Reponse":
+        return self._echanger("DESCRIBE", self._url, {"Accept": "application/sdp"})
+
     def recoit_de_la_video(self) -> bool:
-        description = self._requete("DESCRIBE", self._url, {"Accept": "application/sdp"})
+        description = self.decrire()
+        if description.statut != 200:
+            raise _Echec(f"DESCRIBE : {description.statut}")
         base = description.entetes.get("content-base") or description.entetes.get("content-location") or self._url
         piste = _piste_video(description.corps.decode(errors="replace"), base)
         configuration = self._requete(
@@ -82,14 +107,19 @@ class _SessionRtsp:
     # Requêtes et réponses
 
     def _requete(self, methode: str, url: str, entetes: dict[str, str]) -> "_Reponse":
+        reponse = self._echanger(methode, url, entetes)
+        if reponse.statut != 200:
+            raise _Echec(f"{methode} : {reponse.statut}")
+        return reponse
+
+    def _echanger(self, methode: str, url: str, entetes: dict[str, str]) -> "_Reponse":
+        """Requête et réponse, quel qu'en soit le statut ; identifiants présentés une fois si la Caméra les demande."""
         self._envoyer(methode, url, entetes)
         reponse = self._lire_reponse()
         if reponse.statut == 401 and self._defi is None and self._utilisateur:
             self._defi = _lire_defi(reponse.entetes.get("www-authenticate", ""))
             self._envoyer(methode, url, entetes)
             reponse = self._lire_reponse()
-        if reponse.statut != 200:
-            raise _Echec(f"{methode} : {reponse.statut}")
         return reponse
 
     def _envoyer(self, methode: str, url: str, entetes: dict[str, str] | None = None) -> None:
@@ -199,6 +229,19 @@ def _piste_video(sdp: str, base: str) -> str:
         # Concaténée, comme ffmpeg : la base peut porter une requête (`?…`) qu'urljoin perdrait.
         return (base if base.endswith("/") else base + "/") + controle.group(1)
     raise _Echec("aucune piste vidéo")
+
+
+def _codec_video(sdp: str) -> str | None:
+    """Nom d'encodage (`H264`, `H265`…) du premier format de la première piste vidéo, d'après son `a=rtpmap`."""
+    for media in re.split(r"^m=", sdp, flags=re.MULTILINE)[1:]:
+        if not media.startswith("video"):
+            continue
+        formats = media.partition("\n")[0].split()[3:]
+        if not formats:
+            return None
+        carte = re.search(rf"^a=rtpmap:{re.escape(formats[0])}\s+([^/\s]+)", media, flags=re.MULTILINE)
+        return carte.group(1).upper() if carte else None
+    return None
 
 
 def _lire_defi(entete: str) -> dict[str, str]:

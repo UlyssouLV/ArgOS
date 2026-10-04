@@ -36,6 +36,8 @@ services:
       # Détection des Caméras : sous-réseaux autorisés et ports sondés, voir .env.example. Vide : non configurée.
       ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:-}
       ARGOS_DETECTION_CAMERAS_PORTS: ${ARGOS_DETECTION_CAMERAS_PORTS:-554,8554}
+      # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes : voir .env.example.
+      ARGOS_APERCU_EXPIRATION_S: ${ARGOS_APERCU_EXPIRATION_S:-120}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
       interval: 2s
