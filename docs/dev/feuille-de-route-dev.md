@@ -46,6 +46,8 @@ La Détection ne lit pas le switch (non géré) : elle voit ce qui est joignable
 
 ## 0.4.1 — Ajout d’une Caméra depuis un Candidat
 
+**Livrée** ([PR #34](https://github.com/UlyssouLV/ArgOS/pull/34)).
+
 Spec : [v0.4.1](../specs/v0.4.1-ajout-camera-depuis-candidat.md).
 
 Depuis l’Administration, **Ajouter** sur un Candidat : ArgOS cherche seul le Flux en essayant les chemins courants des caméras (flux principal avant secondaire, marque reconnue dans l’en-tête `Server` en tête). Une caméra qui répond `401` fait demander identifiant (`admin` prérempli) et mot de passe, un seul essai par clic ; aucun chemin courant ne répond : l’Administrateur saisit le chemin. Le Flux trouvé s’affiche en **Aperçu** dans l’Administration (chemin MediaMTX éphémère `apercu-*`, un seul à la fois, jamais dans le Live), avec nom et emplacement à remplir, puis « Ajouter la Caméra ». Un codec que le navigateur ne lit pas (H.265) est nommé, sans empêcher l’ajout.
