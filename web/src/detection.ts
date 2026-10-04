@@ -9,13 +9,14 @@ export type EtatDetection = {
   raison: string | null;
 };
 
+/** Hôte et port RTSP d'un appareil : Candidat détecté, ou IP saisie à la main. */
+export type Adresse = { ip: string; port: number };
+
 /**
  * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) à la même
  * IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic, l'UI ne les montre pas.
  */
-export type Candidat = {
-  ip: string;
-  port: number;
+export type Candidat = Adresse & {
   statut_rtsp: number;
   serveur: string | null;
   camera: { id: number; nom: string } | null;
@@ -65,7 +66,10 @@ export type Identifiants = { identifiant: string; mot_de_passe: string };
 /** Chemin RTSP saisi quand aucun chemin courant ne répond : seul ce chemin est essayé. */
 export type DemandeEssai = Partial<Identifiants> & { chemin?: string };
 
-/** Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. */
+/**
+ * Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. Adresse d'une Caméra du Site :
+ * refus « Déjà configurée : <nom> », sans essai.
+ */
 export async function essayer(ip: string, port: number, demande: DemandeEssai = {}): Promise<Essai> {
   return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port, ...demande }) }));
 }

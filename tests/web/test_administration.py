@@ -65,26 +65,33 @@ def administration(page: Page, administrateur) -> Page:
     return page
 
 
-def formulaire_creation(page: Page) -> Locator:
-    return page.get_by_role("form", name="Nouvelle Caméra")
-
-
-def creer(page: Page, nom: str, url: str, emplacement: str = "") -> None:
-    formulaire = formulaire_creation(page)
-    formulaire.get_by_label("Nom").fill(nom)
-    formulaire.get_by_label("URL RTSP").fill(url)
-    formulaire.get_by_label("Emplacement").fill(emplacement)
-    formulaire.get_by_role("button", name="Créer").click()
+def creer(page: Page, api: httpx.Client, nom: str, url: str, emplacement: str | None = None) -> None:
+    """Par l'API : l'Administration n'offre plus d'ajout par URL. La page relue montre la Caméra sans attendre."""
+    assert api.post("/api/cameras", json={"nom": nom, "url_rtsp": url, "emplacement": emplacement}).status_code == 201
+    page.reload()
 
 
 def ligne(page: Page, nom: str) -> Locator:
     return page.get_by_role("row").filter(has_text=nom)
 
 
-def test_camera_creee_apparait_puis_passe_online_sans_recharger(administration: Page, noms):
+def modifier(page: Page, nom: str) -> Locator:
+    ligne(page, nom).get_by_role("button", name="Modifier").click()
+    return page.get_by_role("form", name=f"Modifier {nom}")
+
+
+def test_pas_de_formulaire_d_ajout_par_url(administration: Page):
+    expect(administration.get_by_role("heading", name="Caméras", exact=True)).to_be_visible()
+
+    expect(administration.get_by_role("form", name="Nouvelle Caméra")).to_have_count(0)
+    expect(administration.get_by_label("URL RTSP")).to_have_count(0)
+    expect(administration.get_by_role("button", name="Créer")).to_have_count(0)
+
+
+def test_camera_creee_apparait_puis_passe_online_sans_recharger(administration: Page, api, noms):
     nom = noms()
 
-    creer(administration, nom, url_simulee(1), "Portail")
+    creer(administration, api, nom, url_simulee(1), "Portail")
 
     camera = ligne(administration, nom)
     expect(camera).to_contain_text("Portail")
@@ -93,34 +100,49 @@ def test_camera_creee_apparait_puis_passe_online_sans_recharger(administration: 
     expect(camera).to_contain_text("online", timeout=DELAI_ONLINE_MS)
 
 
-def test_doublon_de_nom_affiche_le_409_dans_le_formulaire(administration: Page, noms, api):
+def test_doublon_de_nom_affiche_le_409_dans_le_formulaire_de_modification(administration: Page, noms, api):
+    pris = noms()
     nom = noms()
-    assert api.post("/api/cameras", json={"nom": nom, "url_rtsp": url_injoignable()}).status_code == 201
+    assert api.post("/api/cameras", json={"nom": pris, "url_rtsp": url_injoignable()}).status_code == 201
+    creer(administration, api, nom, url_injoignable())
 
-    creer(administration, nom, url_injoignable())
+    edition = modifier(administration, nom)
+    edition.get_by_label("Nom").fill(pris)
+    edition.get_by_role("button", name="Enregistrer").click()
 
-    expect(formulaire_creation(administration).get_by_role("alert")).to_contain_text(
-        "Une Caméra porte déjà ce nom ou cette URL"
-    )
+    expect(edition.get_by_role("alert")).to_contain_text("Une Caméra porte déjà ce nom ou cette URL")
 
 
-def test_url_non_rtsp_affiche_un_message_dans_le_formulaire(administration: Page, noms):
+def test_url_non_rtsp_affiche_un_message_dans_le_formulaire_de_modification(administration: Page, api, noms):
     nom = noms()
+    creer(administration, api, nom, url_injoignable())
 
-    creer(administration, nom, "http://exemple.invalid/flux")
+    edition = modifier(administration, nom)
+    edition.get_by_label("URL RTSP").fill("http://exemple.invalid/flux")
+    edition.get_by_role("button", name="Enregistrer").click()
 
-    expect(formulaire_creation(administration).get_by_role("alert")).to_contain_text("URL RTSP invalide")
-    expect(ligne(administration, nom)).to_have_count(0)
+    expect(edition.get_by_role("alert")).to_contain_text("URL RTSP invalide")
+
+
+def test_modifier_l_url_d_une_camera(administration: Page, api, noms):
+    nom = noms()
+    creer(administration, api, nom, url_injoignable())
+    nouvelle = url_injoignable()
+
+    edition = modifier(administration, nom)
+    edition.get_by_label("URL RTSP").fill(nouvelle)
+    edition.get_by_role("button", name="Enregistrer").click()
+
+    expect(ligne(administration, nom)).to_contain_text(nouvelle)
 
 
 def test_modifier_l_emplacement_conserve_le_mot_de_passe_rtsp(administration: Page, noms, api):
     nom = noms()
     url = f"rtsp://user:secret@{unique('hote')}.invalid/flux"
-    creer(administration, nom, url, "Portail")
+    creer(administration, api, nom, url, "Portail")
     expect(ligne(administration, nom)).to_contain_text("user:***@")
 
-    ligne(administration, nom).get_by_role("button", name="Modifier").click()
-    edition = administration.get_by_role("form", name=f"Modifier {nom}")
+    edition = modifier(administration, nom)
     expect(edition.get_by_label("URL RTSP")).to_have_value(re.compile(r"user:\*\*\*@"))
     edition.get_by_label("Emplacement").fill("Garage")
     edition.get_by_role("button", name="Enregistrer").click()
@@ -130,9 +152,9 @@ def test_modifier_l_emplacement_conserve_le_mot_de_passe_rtsp(administration: Pa
     assert api.post("/api/cameras", json={"nom": noms(), "url_rtsp": url}).status_code == 409
 
 
-def test_desactiver_puis_reactiver(administration: Page, noms):
+def test_desactiver_puis_reactiver(administration: Page, api, noms):
     nom = noms()
-    creer(administration, nom, url_injoignable())
+    creer(administration, api, nom, url_injoignable())
 
     ligne(administration, nom).get_by_role("button", name="Désactiver").click()
     expect(ligne(administration, nom)).to_contain_text("désactivée")
@@ -142,9 +164,9 @@ def test_desactiver_puis_reactiver(administration: Page, noms):
     expect(ligne(administration, nom)).to_contain_text("active")
 
 
-def test_supprimer_une_camera_desactivee_apres_confirmation(administration: Page, noms):
+def test_supprimer_une_camera_desactivee_apres_confirmation(administration: Page, api, noms):
     nom = noms()
-    creer(administration, nom, url_injoignable())
+    creer(administration, api, nom, url_injoignable())
     camera = ligne(administration, nom)
     expect(camera.get_by_role("button", name="Désactiver")).to_be_visible()
     expect(camera.get_by_role("button", name="Supprimer")).to_have_count(0)

@@ -150,20 +150,19 @@ Ouvrir **http://localhost:8080** et se connecter avec `ARGOS_IDENTIFIANT` / `ARG
 L’onglet **Administration** couvre toute la gestion des Caméras :
 
 - la liste de toutes les Caméras (nom, emplacement, hôte:port, URL avec le mot de passe RTSP masqué, active ou désactivée, état `unknown` / `online` / `offline`, dernière vérification), rafraîchie toute seule toutes les 10 s ;
-- **Nouvelle Caméra** : nom, URL RTSP, emplacement facultatif ;
 - **Modifier** : nom, URL, emplacement. L’URL s’affiche masquée (`rtsp://user:***@…`) : la laisser telle quelle conserve le mot de passe RTSP enregistré ;
-- un refus de l’API s’affiche dans le formulaire : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
+- un refus de l’API s’affiche dans le formulaire de modification : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
 - **Désactiver** / **Réactiver** ;
 - **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression** ;
-- **Détecter des Caméras** : voir [Détection des Caméras](#détection-des-caméras).
+- **Détecter des Caméras**, puis **Ajouter** sur un Candidat, ou **Ajouter par adresse IP** (IP, port `554` modifiable) pour un appareil que la Détection n’a pas trouvé, même si elle n’est pas configurée : voir [Détection des Caméras](#détection-des-caméras). Une IP déjà configurée affiche **Déjà configurée : <nom>**. L’Administration n’offre plus d’ajout par URL RTSP (`POST /api/cameras` reste dans l’API).
 
-**Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). Dans **Nouvelle Caméra**, créer :
+**Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). **Détecter des Caméras**, puis **Ajouter** sur chacune :
 
-| Nom | URL RTSP |
+| Caméra simulée | Parcours |
 |---|---|
-| Caméra simulée 1 | `rtsp://camera-simulee-1/Streaming/Channels/101` |
-| Caméra simulée 2 | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` |
-| Caméra simulée 3 | `rtsp://camera-simulee-3/flux` |
+| 1 | Flux trouvé seul (chemin Hikvision) |
+| 2 | **Cette caméra demande un mot de passe** : identifiant `admin`, mot de passe `argos-simulee` |
+| 3 | **Flux introuvable** : chemin RTSP `/flux` |
 
 Elles passent `online` en 15 s au plus, sans recharger la page. Pourquoi `camera-simulee-N` et pas `localhost` : voir [Ajouter les Caméras simulées](#ajouter-les-caméras-simulées).
 
@@ -240,7 +239,7 @@ L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : sessio
 
 ## Détection des Caméras
 
-Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. Rien n’est ajouté ni stocké (ajout depuis un Candidat : 0.4.1). ArgOS lui-même n’apparaît jamais.
+Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. La Détection n’ajoute ni ne stocke rien : **Ajouter** sur un nouveau Candidat ouvre le parcours d’ajout (Aperçu, nom, emplacement). ArgOS lui-même n’apparaît jamais.
 
 Les sous-réseaux viennent de la machine hôte : l’API, dans Docker, ne voit pas ses prises réseau ([ADR 0002](docs/adr/0002-detection-depuis-le-reseau-bridge.md)). Le script **`scripts/cameras/configurer-detection.sh`** (Linux et macOS), lancé depuis la racine du dépôt avant la stack, demande une fois la ou les prises qui relient les caméras, puis recalcule à chaque lancement leur(s) sous-réseau(x) dans `.env` :
 

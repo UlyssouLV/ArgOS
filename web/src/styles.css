@@ -104,14 +104,16 @@ input {
   font-size: 1.1rem;
 }
 
-.formulaire-camera {
+.formulaire-camera,
+.ajout-par-ip {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 0.75rem;
 }
 
-.formulaire-camera label {
+.formulaire-camera label,
+.ajout-par-ip label {
   display: grid;
   gap: 0.3rem;
 }
@@ -120,12 +122,16 @@ input {
   width: 24rem;
 }
 
-.formulaire-camera .boutons {
+.formulaire-camera .boutons,
+.ajout-par-ip .boutons {
   display: flex;
   gap: 0.5rem;
 }
 
-.formulaire-camera .erreur {
+.formulaire-camera .erreur,
+.ajout-par-ip h3,
+.ajout-par-ip output,
+.ajout-par-ip .erreur {
   flex-basis: 100%;
 }
 
@@ -231,6 +237,18 @@ button.danger {
   background: #1d2328;
   color: #fff;
   font-size: 1.2rem;
+}
+
+.ajout-par-ip {
+  margin: 1rem 0 0.75rem;
+}
+
+.ajout-par-ip h3 {
+  margin: 0;
+}
+
+.ajout-par-ip input[name="port"] {
+  width: 6rem;
 }
 
 .ajout-candidat {

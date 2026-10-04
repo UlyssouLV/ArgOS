@@ -6,7 +6,7 @@ import {
   essayer,
   renouvelerEssai,
   retirerEssai,
-  type Candidat,
+  type Adresse,
   type DemandeEssai,
   type Essai,
   type Issue,
@@ -39,7 +39,9 @@ function messageCodec(codec: string | null): string {
 const APERCU_RETIRE = "L'Aperçu a été retiré (délai dépassé) : annuler puis recommencer.";
 
 type PropsAjout = Readonly<{
-  candidat: Candidat;
+  candidat: Adresse;
+  /** Essai déjà fait (ajout par adresse IP) : le panneau ne relance pas le premier. */
+  premierEssai?: Essai;
   onAjoutee: (camera: Camera) => void;
   onFermer: () => void;
 }>;
@@ -52,8 +54,8 @@ type PropsAjout = Readonly<{
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
-export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
-  const [essai, setEssai] = useState<Essai | null>(null);
+export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: PropsAjout) {
+  const [essai, setEssai] = useState<Essai | null>(premierEssai ?? null);
   const [nom, setNom] = useState("");
   const [emplacement, setEmplacement] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
@@ -67,7 +69,9 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
   // L'Aperçu a-t-il déjà joué, ou échoué avant de jouer ? Remis à zéro à chaque essai.
   const [lecture, setLecture] = useState<"attente" | "lue" | "echec">("attente");
 
+  const dejaEssaye = premierEssai !== undefined;
   useEffect(() => {
+    if (dejaEssaye) return;
     let abandonne = false;
     essayer(candidat.ip, candidat.port)
       .then((resultat) => !abandonne && setEssai(resultat))
@@ -75,7 +79,7 @@ export function AjoutCandidat({ candidat, onAjoutee, onFermer }: PropsAjout) {
     return () => {
       abandonne = true;
     };
-  }, [candidat.ip, candidat.port]);
+  }, [candidat.ip, candidat.port, dejaEssaye]);
 
   /** Un seul essai d'identifiants par clic : ArgOS ne réessaie jamais seul. */
   async function reessayer() {

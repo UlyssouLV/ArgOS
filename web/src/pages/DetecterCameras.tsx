@@ -1,10 +1,13 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 
 import { messageEchec, type Camera } from "../cameras";
 import {
+  essayer,
   lancerDetection,
   lireEtatDetection,
+  type Adresse,
   type Candidat,
+  type Essai,
   type EtatDetection,
   type ResultatDetection,
 } from "../detection";
@@ -14,12 +17,22 @@ function couverture(sous_reseaux: string[], ports: number[]): string {
   return `${sous_reseaux.join(", ")} — ports ${ports.join(", ")}`;
 }
 
-function cle(candidat: Candidat): string {
-  return `${candidat.ip}:${candidat.port}`;
+function cle(adresse: Adresse): string {
+  return `${adresse.ip}:${adresse.port}`;
 }
 
+/** Port RTSP standard, prérempli pour l'ajout par adresse IP. */
+const PORT_RTSP = 554;
+
 /**
- * Section de l'Administration : lance une Détection, montre les Candidats et ajoute l'un d'eux comme Caméra.
+ * Panneau d'ajout ouvert : celui d'un Candidat détecté, ou d'une IP saisie avec son premier essai
+ * (`numero` : chaque saisie ouvre un panneau neuf, même sur la même IP).
+ */
+type EnAjout = { cle: string } | { adresse: Adresse; essai: Essai; numero: number };
+
+/**
+ * Section de l'Administration : lance une Détection, montre les Candidats et ajoute l'un d'eux comme Caméra,
+ * ou ajoute un appareil non détecté par son IP. Un seul panneau d'ajout ouvert à la fois.
  * `onCameraAjoutee` : la liste des Caméras est à relire.
  */
 export function DetecterCameras({ onCameraAjoutee }: Readonly<{ onCameraAjoutee: () => void }>) {
@@ -27,6 +40,7 @@ export function DetecterCameras({ onCameraAjoutee }: Readonly<{ onCameraAjoutee:
   const [resultat, setResultat] = useState<ResultatDetection | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [enAjout, setEnAjout] = useState<EnAjout | null>(null);
 
   useEffect(() => {
     lireEtatDetection()
@@ -35,7 +49,8 @@ export function DetecterCameras({ onCameraAjoutee }: Readonly<{ onCameraAjoutee:
   }, []);
 
   /** Le Candidat passe dans « Déjà configurées » sans relancer de Détection. */
-  function ajoutee(candidat: Candidat, camera: Camera) {
+  function ajoutee(candidat: Adresse, camera: Camera) {
+    setEnAjout(null);
     setResultat((courant) =>
       courant && {
         ...courant,
@@ -74,22 +89,107 @@ export function DetecterCameras({ onCameraAjoutee }: Readonly<{ onCameraAjoutee:
           {erreur}
         </p>
       )}
-      {resultat && <Candidats resultat={resultat} onAjoutee={ajoutee} />}
+      {resultat && (
+        <Candidats
+          resultat={resultat}
+          enAjout={enAjout && "cle" in enAjout ? enAjout.cle : null}
+          onOuvrir={(candidat) => setEnAjout({ cle: cle(candidat) })}
+          onFermer={() => setEnAjout(null)}
+          onAjoutee={ajoutee}
+        />
+      )}
+      <AjoutParIp
+        onEssai={(adresse, essai) =>
+          setEnAjout((avant) => ({ adresse, essai, numero: (avant && "numero" in avant ? avant.numero : 0) + 1 }))
+        }
+      />
+      {enAjout && "adresse" in enAjout && (
+        <AjoutCandidat
+          key={enAjout.numero}
+          candidat={enAjout.adresse}
+          premierEssai={enAjout.essai}
+          onAjoutee={(camera) => ajoutee(enAjout.adresse, camera)}
+          onFermer={() => setEnAjout(null)}
+        />
+      )}
     </section>
+  );
+}
+
+type PropsAjoutParIp = Readonly<{ onEssai: (adresse: Adresse, essai: Essai) => void }>;
+
+/**
+ * « Ajouter par adresse IP » : appareil que la Détection n'a pas trouvé, même si elle n'est pas configurée.
+ * Le premier essai part d'ici ; une adresse refusée (Caméra déjà configurée, hors du réseau local) s'affiche
+ * dans ce formulaire sans ouvrir le panneau d'ajout.
+ */
+function AjoutParIp({ onEssai }: PropsAjoutParIp) {
+  const [ip, setIp] = useState("");
+  const [port, setPort] = useState(String(PORT_RTSP));
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function soumettre(evenement: FormEvent) {
+    evenement.preventDefault();
+    const adresse = { ip: ip.trim(), port: Number(port) };
+    setEnCours(true);
+    setErreur(null);
+    try {
+      onEssai(adresse, await essayer(adresse.ip, adresse.port));
+    } catch (e) {
+      setErreur(messageEchec(e));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  return (
+    <form className="ajout-par-ip" aria-label="Ajouter par adresse IP" onSubmit={soumettre}>
+      <h3>Ajouter par adresse IP</h3>
+      <label>
+        <span>Adresse IP</span>
+        <input
+          name="ip"
+          required
+          autoComplete="off"
+          pattern="\d{1,3}(\.\d{1,3}){3}"
+          title="Adresse IPv4, par exemple 192.168.1.64"
+          placeholder="192.168.1.64"
+          value={ip} onChange={(e) => setIp(e.target.value)} />
+      </label>
+      <label>
+        <span>Port</span>
+        <input name="port" type="number" required min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
+      </label>
+      <div className="boutons">
+        <button type="submit" disabled={enCours}>
+          Ajouter
+        </button>
+      </div>
+      {enCours && <output>Recherche du Flux…</output>}
+      {erreur && (
+        <p className="erreur" role="alert">
+          {erreur}
+        </p>
+      )}
+    </form>
   );
 }
 
 type PropsCandidats = Readonly<{
   resultat: ResultatDetection;
+  /** Clé du Candidat dont le panneau d'ajout est ouvert sous sa ligne. */
+  enAjout: string | null;
+  onOuvrir: (candidat: Candidat) => void;
+  onFermer: () => void;
   onAjoutee: (candidat: Candidat, camera: Camera) => void;
 }>;
 
 /**
- * Nouveaux Candidats en tableau, chacun avec « Ajouter » : un seul panneau d'ajout ouvert à la fois, sous sa ligne.
+ * Nouveaux Candidats en tableau, chacun avec « Ajouter » : le panneau d'ajout s'ouvre sous sa ligne.
  * Ceux déjà configurés à part, repliés, avec le nom de leur Caméra.
  */
-function Candidats({ resultat, onAjoutee }: PropsCandidats) {
-  const [enAjout, setEnAjout] = useState<string | null>(null);
+function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCandidats) {
   const nouveaux = resultat.candidats.filter((candidat) => candidat.camera === null);
   const configures = resultat.candidats.filter((candidat) => candidat.camera !== null);
   return (
@@ -115,7 +215,7 @@ function Candidats({ resultat, onAjoutee }: PropsCandidats) {
                   <td>{candidat.ip}</td>
                   <td>{candidat.port}</td>
                   <td>
-                    <button type="button" disabled={enAjout === cle(candidat)} onClick={() => setEnAjout(cle(candidat))}>
+                    <button type="button" disabled={enAjout === cle(candidat)} onClick={() => onOuvrir(candidat)}>
                       Ajouter
                     </button>
                   </td>
@@ -125,11 +225,8 @@ function Candidats({ resultat, onAjoutee }: PropsCandidats) {
                     <td colSpan={3}>
                       <AjoutCandidat
                         candidat={candidat}
-                        onAjoutee={(camera) => {
-                          setEnAjout(null);
-                          onAjoutee(candidat, camera);
-                        }}
-                        onFermer={() => setEnAjout(null)}
+                        onAjoutee={(camera) => onAjoutee(candidat, camera)}
+                        onFermer={onFermer}
                       />
                     </td>
                   </tr>

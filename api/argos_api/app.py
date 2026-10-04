@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -105,6 +106,13 @@ class EssaiLu(BaseModel):
     apercu: str | None
     # Sans `POST /api/essai/renouveler` pendant ce délai, l'Aperçu est retiré.
     expiration_s: float
+
+
+class DejaConfiguree(BaseModel):
+    """`409` d'un essai sur l'adresse d'une Caméra du Site : `detail` à afficher tel quel."""
+
+    detail: str
+    camera: CameraCorrespondante
 
 
 class AjoutDepuisEssai(BaseModel):
@@ -335,18 +343,22 @@ def _routes_essai(
     """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
     pas pour deviner des mots de passe.
 
-    Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS. Un nouvel essai retire
-    le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
+    Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS ni vers une Caméra déjà
+    configurée (même rapprochement que la Détection). Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
     la Caméra est créée à partir d'elle.
     """
     Base = Annotated[Session, Depends(base)]
     routes = APIRouter(prefix="/api/essai", dependencies=[Depends(administrateur_connecte)])
     un_seul = threading.Lock()
 
-    @routes.post("")
-    def essayer(demande: DemandeEssai) -> EssaiLu:
+    @routes.post("", response_model=EssaiLu, responses={status.HTTP_409_CONFLICT: {"model": DejaConfiguree}})
+    def essayer(demande: DemandeEssai, base: Base) -> EssaiLu | JSONResponse:
         if not any(demande.ip in reseau for reseau in RESEAUX_LOCAUX):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, HORS_RESEAU_LOCAL)
+        camera = cameras.par_adresse(base).get((demande.ip, demande.port))
+        if camera is not None:
+            deja = DejaConfiguree(detail=f"Déjà configurée : {camera.nom}", camera=camera)
+            return JSONResponse(deja.model_dump(), status_code=status.HTTP_409_CONFLICT)
         if not un_seul.acquire(blocking=False):
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from stack_compose import EXPIRATION_APERCU_S, URL_API, adresses_ip, compose, redemarrer_api
+from stack_compose import EXPIRATION_APERCU_S, URL_API, adresses_ip, compose, redemarrer_api, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
 from test_detection import ip_de
@@ -294,3 +294,20 @@ def test_journaux_une_ligne_par_essai_sans_identifiant(essai):
     assert MOT_DE_PASSE_SIMULEE_2 not in journaux
     assert "admin:" not in journaux
     assert "rtsp://" not in journaux
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_ip_deja_configuree_409_avec_la_camera(connecte, creer_camera, active):
+    # Déclarée par son nom Compose : même rapprochement que la Détection, par IP résolue et port.
+    camera = creer_camera(url_rtsp=url_camera_simulee(1, unique("essai"))).json()
+    if not active:
+        assert connecte.patch(f"/api/cameras/{camera['id']}", json={"active": False}).status_code == 200
+    connecte.delete("/api/essai")
+
+    reponse = connecte.post("/api/essai", json={"ip": ip_de(1), "port": 554}, timeout=DELAI_ESSAI_S)
+
+    assert reponse.status_code == 409
+    assert reponse.json()["camera"] == {"id": camera["id"], "nom": camera["nom"]}
+    assert reponse.json()["detail"] == f"Déjà configurée : {camera['nom']}"
+    # Aucun essai ouvert : rien à renouveler.
+    assert connecte.post("/api/essai/renouveler").status_code == 404
