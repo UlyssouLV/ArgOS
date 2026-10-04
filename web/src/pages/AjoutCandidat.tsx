@@ -48,8 +48,8 @@ type PropsAjout = Readonly<{
 
 /**
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
- * Caméra à mot de passe : identifiant et mot de passe, puis « Réessayer ».
- * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Réessayer ».
+ * Caméra à mot de passe : identifiant et mot de passe, puis « Valider ».
+ * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Valider ».
  * Codec autre que H.264, ou Aperçu qui ne démarre pas : message nommant le codec ; l'ajout reste permis.
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
@@ -204,7 +204,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
             Ajouter la Caméra
           </button>
         )}
-        {(identifiantsDemandes || cheminDemande) && <button type="submit">Réessayer</button>}
+        {(identifiantsDemandes || cheminDemande) && <button type="submit">Valider</button>}
         <button type="button" onClick={annuler}>
           Annuler
         </button>

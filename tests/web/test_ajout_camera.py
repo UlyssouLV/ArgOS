@@ -118,13 +118,13 @@ def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page
     expect(panneau.get_by_text("Cette caméra demande un mot de passe")).to_be_visible(timeout=DELAI_APERCU_MS)
     expect(panneau.get_by_label("Identifiant")).to_have_value("admin")
     panneau.get_by_label("Mot de passe").fill("mauvais")
-    panneau.get_by_role("button", name="Réessayer").click()
+    panneau.get_by_role("button", name="Valider").click()
 
     expect(panneau.get_by_text("Identifiant ou mot de passe refusé par la caméra")).to_be_visible(
         timeout=DELAI_APERCU_MS
     )
     panneau.get_by_label("Mot de passe").fill(MOT_DE_PASSE_SIMULEE_2)
-    panneau.get_by_role("button", name="Réessayer").click()
+    panneau.get_by_role("button", name="Valider").click()
 
     apercu = panneau.locator("video")
     expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
@@ -153,7 +153,7 @@ def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_
 
     expect(panneau.get_by_text("Flux introuvable")).to_be_visible(timeout=DELAI_APERCU_MS)
     panneau.get_by_label("Chemin RTSP").fill("/flux")
-    panneau.get_by_role("button", name="Réessayer").click()
+    panneau.get_by_role("button", name="Valider").click()
 
     apercu = panneau.locator("video")
     expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)

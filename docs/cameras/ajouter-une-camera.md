@@ -34,8 +34,8 @@ La liste est dans `api/argos_api/essai.py` (`CHEMINS_COURANTS`) : Hikvision, Dah
 La plupart des caméras protégées répondent `401 Unauthorized` à **n’importe quel** `DESCRIBE` sans identifiants, avant même de regarder le chemin : elles ne disent pas si le chemin existe. Essayer les autres chemins sans mot de passe ne sert donc à rien. Dès le premier `401`, ArgOS s’arrête et affiche **Cette caméra demande un mot de passe.**
 
 - L’identifiant est prérempli avec `admin` (le plus courant), modifiable.
-- **Réessayer** relance les chemins courants avec ces identifiants.
-- Un nouveau `401` → **Identifiant ou mot de passe refusé par la caméra.** On corrige et on réessaie.
+- **Valider** relance les chemins courants avec ces identifiants.
+- Un nouveau `401` → **Identifiant ou mot de passe refusé par la caméra.** On corrige et on valide à nouveau.
 
 **Un seul essai d’identifiants par clic** : ArgOS s’arrête au premier refus, sans essayer d’autre chemin, sans réessai automatique, sans tester de mots de passe par défaut. Beaucoup de caméras se verrouillent (ou bloquent l’adresse d’ArgOS) après quelques échecs.
 
@@ -43,7 +43,7 @@ Le mot de passe saisi ne revient jamais dans le navigateur : l’API compose l�
 
 ## 4. Le repli par chemin
 
-Aucun chemin courant ne répond `200` : **Flux introuvable.**, et un champ **Chemin RTSP**. C’est le cas d’une caméra exotique : son chemin est dans sa notice ou sur le site du fabricant. On le saisit avec ou sans `/` au début ; **Réessayer** n’essaie que lui, **avec les identifiants déjà donnés** (pas besoin de les ressaisir).
+Aucun chemin courant ne répond `200` : **Flux introuvable.**, et un champ **Chemin RTSP**. C’est le cas d’une caméra exotique : son chemin est dans sa notice ou sur le site du fabricant. On le saisit avec ou sans `/` au début ; **Valider** n’essaie que lui, **avec les identifiants déjà donnés** (pas besoin de les ressaisir).
 
 ## 5. L’Aperçu
 
