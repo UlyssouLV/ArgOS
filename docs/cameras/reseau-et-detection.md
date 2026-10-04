@@ -2,7 +2,7 @@
 
 Comprendre, et pouvoir expliquer, comment les Caméras sont reliées à la machine qui héberge ArgOS, et ce que fait le bouton **Détecter des Caméras** de l’Administration. Écrit pour quelqu’un qui n’est pas spécialiste du réseau.
 
-Pour aller plus loin : [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md) (pourquoi les sous-réseaux sont déclarés), [sécurité](../securite.md#détection--argos-agit-sur-le-réseau) (ce que la Détection envoie), [schéma des Flux](../dev/schema-flux.md).
+Pour ajouter un Candidat comme Caméra : [Ajouter une Caméra](ajouter-une-camera.md). Pour aller plus loin : [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md) (pourquoi les sous-réseaux sont déclarés), [sécurité](../securite.md#détection--argos-agit-sur-le-réseau) (ce que la Détection envoie), [schéma des Flux](../dev/schema-flux.md).
 
 ## 1. Adresse IP, sous-réseau, notation `/24`
 
@@ -95,8 +95,8 @@ Une seule Détection tourne à la fois : une seconde, lancée pendant la premiè
 
 **Ce qu’elle ne fait pas** :
 
-- **Rien n’est ajouté ni stocké** : un Candidat n’est pas une Caméra, et disparaît au rechargement de la page. L’ajout depuis un Candidat arrive en 0.4.1.
-- **Aucun identifiant n’est envoyé**, et la Détection ne dit pas si une caméra est protégée : `OPTIONS` répond en général sans mot de passe. Une caméra protégée apparaît donc comme les autres.
+- **Rien n’est ajouté ni stocké** : un Candidat n’est pas une Caméra, et disparaît au rechargement de la page. Pour en faire une Caméra : **Ajouter** sur sa ligne (ou **Ajouter par adresse IP** pour un appareil non détecté), voir [Ajouter une Caméra](ajouter-une-camera.md).
+- **Aucun identifiant n’est envoyé**, et la Détection ne dit pas si une caméra est protégée : `OPTIONS` répond en général sans mot de passe. Une caméra protégée apparaît donc comme les autres ; le mot de passe est demandé à l’ajout.
 - **Pas d’adresse MAC** (invisible depuis `api`, § 3) : si une caméra change d’IP, rien ne la reconnaît. Identité par MAC : 0.4.2.
 - **Pas d’ONVIF, de mDNS ni de lecture du switch** : seul compte ce qui accepte une connexion RTSP depuis la machine ArgOS, sur les ports sondés.
 - **Rien hors des sous-réseaux autorisés** : une caméra restée sur une autre plage d’adresses est invisible (§ 5).

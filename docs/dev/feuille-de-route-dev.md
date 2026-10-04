@@ -44,15 +44,19 @@ L’API, dans Docker, ne voit pas les prises de la machine ([ADR 0002](../adr/00
 
 La Détection ne lit pas le switch (non géré) : elle voit ce qui est joignable depuis le serveur ArgOS. Entrée manuelle (« appareil non détecté ») hors scope de cette version.
 
-## 0.4.1 — Auth RTSP à l’ajout (401 et credentials)
+## 0.4.1 — Ajout d’une Caméra depuis un Candidat
 
-Sur un candidat détecté, tenter un accès au Flux : si la caméra répond **sans auth**, enchaîner vers la preview ; si elle répond **401 / Unauthorized**, afficher identifiant + mot de passe, retester, puis montrer la preview pour nommer / situer et finaliser l’ajout — sans coller une URL RTSP à la main (chemin dérivé ou sondé).
+Spec : [v0.4.1](../specs/v0.4.1-ajout-camera-depuis-candidat.md).
 
-Le filet « appareil non détecté → saisir une IP / URL » peut arriver dans cette version ou la suivante, selon le découpage des tickets.
+Depuis l’Administration, **Ajouter** sur un Candidat : ArgOS cherche seul le Flux en essayant les chemins courants des caméras (flux principal avant secondaire, marque reconnue dans l’en-tête `Server` en tête). Une caméra qui répond `401` fait demander identifiant (`admin` prérempli) et mot de passe, un seul essai par clic ; aucun chemin courant ne répond : l’Administrateur saisit le chemin. Le Flux trouvé s’affiche en **Aperçu** dans l’Administration (chemin MediaMTX éphémère `apercu-*`, un seul à la fois, jamais dans le Live), avec nom et emplacement à remplir, puis « Ajouter la Caméra ». Un codec que le navigateur ne lit pas (H.265) est nommé, sans empêcher l’ajout.
+
+**Ajouter par adresse IP** couvre l’appareil non détecté, par le même parcours ; l’Administration n’offre plus d’ajout par URL RTSP (la modification reste). Essai réservé à une session, un à la fois, réseau local seulement. Les Caméras simulées servent des chemins de vraies caméras (Hikvision, Dahua avec identifiants, exotique). Doc : [Ajouter une Caméra](../cameras/ajouter-une-camera.md).
 
 ## 0.4.2 — Identité stable par adresse MAC
 
 Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue à la détection ou à l’ajout) pour la reconnaître si son IP change (DHCP), mettre à jour l’URL RTSP en conséquence, et éviter de traiter le même appareil physique comme une nouvelle Caméra.
+
+Ajout manuel par adresse MAC : à côté de **Ajouter par adresse IP**, saisir la MAC d’un appareil (lue sur son étiquette) pour l’ajouter par le même parcours.
 
 ## 1.0.0 — Fil rouge Site → Live RTSP
 
@@ -90,7 +94,7 @@ Repérer une Caméra `online` dont l’image est figée ou une boucle injectée 
 
 ## Plus tard — Codecs multiples (H.265…)
 
-Accepter des Caméras qui n’émettent pas du H.264 (H.265 notamment) et les rendre lisibles dans le Live malgré le support navigateur inégal.
+Rendre lisibles dans le Live et l’Aperçu les Caméras qui n’émettent pas du H.264 (H.265 notamment), malgré le support navigateur inégal : **réencodage** en H.264 côté serveur (coûteux en calcul), ou **un autre transport que WebRTC** (HLS / fMP4, lu par les navigateurs qui décodent le H.265). Depuis la 0.4.1, une telle Caméra s’ajoute déjà et est sondée, mais le navigateur ne l’affiche pas.
 
 ## Plus tard — Incrustation nom/heure sur les Caméras simulées
 

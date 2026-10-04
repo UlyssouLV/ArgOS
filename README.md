@@ -12,7 +12,9 @@ Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrate
 
 Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
 
-Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
+Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)).
+
+Version **0.4.1** : **Ajouter** sur un Candidat, ou **Ajouter par adresse IP**, fait chercher son Flux par ArgOS sur les chemins courants des caméras, demande un mot de passe ou un chemin seulement s’il le faut, et montre l’**Aperçu** avant d’ajouter la Caméra : plus d’URL RTSP à écrire (voir [Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
 ## Prérequis
 
@@ -154,7 +156,7 @@ L’onglet **Administration** couvre toute la gestion des Caméras :
 - un refus de l’API s’affiche dans le formulaire de modification : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
 - **Désactiver** / **Réactiver** ;
 - **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression** ;
-- **Détecter des Caméras**, puis **Ajouter** sur un Candidat, ou **Ajouter par adresse IP** (IP, port `554` modifiable) pour un appareil que la Détection n’a pas trouvé, même si elle n’est pas configurée : voir [Détection des Caméras](#détection-des-caméras). Une IP déjà configurée affiche **Déjà configurée : <nom>**. L’Administration n’offre plus d’ajout par URL RTSP (`POST /api/cameras` reste dans l’API).
+- **Détecter des Caméras**, puis **Ajouter** sur un Candidat, ou **Ajouter par adresse IP** (IP, port `554` modifiable) pour un appareil que la Détection n’a pas trouvé, même si elle n’est pas configurée : voir [Détection des Caméras](#détection-des-caméras). Une IP déjà configurée affiche **Déjà configurée : <nom>**. L’Administration n’offre plus d’ajout par URL RTSP (`POST /api/cameras` reste dans l’API). Déroulé, mot de passe, chemin en repli, codec non lisible : **[Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)**.
 
 **Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). **Détecter des Caméras**, puis **Ajouter** sur chacune :
 
@@ -211,6 +213,9 @@ npm run dev     # http://localhost:5173, rechargement à chaud
 | `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
 | `GET /api/detection` | État de la Détection : `configuree`, `sous_reseaux`, `ports`, `raison` si indisponible |
 | `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |
+| `POST /api/essai` `{"ip", "port"?, "identifiant"?, "mot_de_passe"?, "chemin"?}` | Cherche le Flux d’un Candidat (port `554` par défaut) : `issue` (`flux_trouve`, `identifiants_requis`, `identifiants_refuses`, `flux_introuvable`, `injoignable`), `chemin`, `codec`, `apercu` (chemin MediaMTX à lire en WebRTC, si `flux_trouve`), `expiration_s`. Remplace l’essai précédent. `422` hors réseau local ou adresse d’ArgOS ; `409` IP déjà configurée (`camera` `{id, nom}`) ou essai déjà en cours |
+| `POST /api/essai/renouveler` / `DELETE /api/essai` | Renouvelle l’Aperçu (`404` s’il a expiré) / retire l’essai et son Aperçu |
+| `POST /api/essai/camera` `{"nom", "emplacement"?}` | Crée la Caméra, active, depuis l’URL de l’essai côté serveur (identifiants compris), et retire l’Aperçu : `201` ; `404` sans Flux trouvé en cours ; `409` doublon, l’essai reste ouvert |
 | `GET /api/instance` | Sans session : jeton tiré à chaque démarrage, pour que la Détection reconnaisse ArgOS lui-même |
 
 Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
@@ -239,7 +244,7 @@ L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : sessio
 
 ## Détection des Caméras
 
-Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. La Détection n’ajoute ni ne stocke rien : **Ajouter** sur un nouveau Candidat ouvre le parcours d’ajout (Aperçu, nom, emplacement). ArgOS lui-même n’apparaît jamais.
+Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. La Détection n’ajoute ni ne stocke rien : **Ajouter** sur un nouveau Candidat ouvre le parcours d’ajout (Aperçu, nom, emplacement) : voir [Ajouter une Caméra](docs/cameras/ajouter-une-camera.md). ArgOS lui-même n’apparaît jamais.
 
 Les sous-réseaux viennent de la machine hôte : l’API, dans Docker, ne voit pas ses prises réseau ([ADR 0002](docs/adr/0002-detection-depuis-le-reseau-bridge.md)). Le script **`scripts/cameras/configurer-detection.sh`** (Linux et macOS), lancé depuis la racine du dépôt avant la stack, demande une fois la ou les prises qui relient les caméras, puis recalcule à chaque lancement leur(s) sous-réseau(x) dans `.env` :
 
@@ -279,7 +284,7 @@ Le [Live](#live) de l’UI depuis un téléphone ou une tablette du même résea
 
 ## Comment circulent les Flux
 
-Chaque Caméra simulée est un petit MediaMTX à elle : un ffmpeg y lit `camN.mp4` au rythme réel, en boucle, **sans réencodage** (`-c copy`), et le publie sur le chemin `flux`, servi en RTSP sur le port 554. Elle joue alors le rôle d’une caméra IP. Le pont (`mediamtx`) tire le Flux de toute Caméra active, réelle ou simulée, et ressert les **mêmes images H.264** sur `camera-<id>` sous trois emballages :
+Chaque Caméra simulée est un petit MediaMTX à elle : un ffmpeg y lit `camN.mp4` au rythme réel, en boucle, **sans réencodage** (`-c copy`), et le publie sur son chemin de vraie caméra (voir [Caméras simulées](#caméras-simulées)), servi en RTSP sur le port 554. Elle joue alors le rôle d’une caméra IP. Le pont (`mediamtx`) tire le Flux de toute Caméra active, réelle ou simulée, et ressert les **mêmes images H.264** sur `camera-<id>` sous trois emballages :
 
 | Protocole | Chemin | Retard | Pour qui |
 |-----------|--------|--------|----------|
