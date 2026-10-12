@@ -154,6 +154,18 @@ def par_adresse(base: Session) -> dict[tuple[IPv4Address, int], CameraCorrespond
     return adresses
 
 
+def de_l_appareil(base: Session, mac: str, chemin: str) -> tuple[CameraCorrespondante, bool] | None:
+    """Caméra (active ou désactivée) de l'Appareil `mac`, et si elle relaie déjà `chemin` (`/chemin?requete`).
+
+    Celle au même chemin d'abord, sinon la plus ancienne ; `None` : Appareil inconnu.
+    """
+    appareil = list(base.scalars(select(Camera).where(Camera.mac == mac).order_by(Camera.id)))
+    meme_chemin = next((camera for camera in appareil if _chemin(camera.url_rtsp) == chemin), None)
+    if meme_chemin is not None:
+        return _correspondante(meme_chemin), True
+    return (_correspondante(appareil[0]), False) if appareil else None
+
+
 class AdresseMiseAJour(BaseModel):
     """Hôte de l'URL avant la Détection (IP ou nom) et nouvelle IP de l'Appareil."""
 
@@ -274,6 +286,12 @@ def _avec_hote(url: str, ip: IPv4Address) -> str:
 
 def _port(url: str) -> int:
     return _decouper(url).port or PORT_RTSP
+
+
+def _chemin(url: str) -> str:
+    morceaux = _decouper(url)
+    requete = f"?{morceaux.query}" if morceaux.query else ""
+    return "/" + morceaux.path.lstrip("/") + requete
 
 
 def _adresses(url: str) -> set[tuple[IPv4Address, int]]:

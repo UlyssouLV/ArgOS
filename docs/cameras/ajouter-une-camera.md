@@ -12,10 +12,11 @@ Dans l’**Administration**, section Détection :
 2. **Recherche du Flux…** : ArgOS essaie les chemins courants des caméras (§ 2). Quelques secondes.
 3. Selon la réponse de la caméra :
    - Flux trouvé → **Aperçu** (§ 5) ;
+   - Flux trouvé, mais déjà configuré sur le même appareil (même MAC, même chemin, même si l’IP a changé) → **Déjà configurée : <nom>**, sans Aperçu ;
    - **Cette caméra demande un mot de passe.** → identifiant et mot de passe (§ 3) ;
    - **Flux introuvable.** → chemin RTSP (§ 4) ;
    - **Aucune caméra ne répond à cette adresse.** → rien à faire depuis ArgOS : la caméra est éteinte, a changé d’adresse, ou ne parle pas RTSP sur ce port.
-4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active, apparaît dans la liste des Caméras et dans le Live, et le Candidat passe dans **Déjà configurées**, sans relancer de Détection.
+4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active, apparaît dans la liste des Caméras et dans le Live, et le Candidat passe dans **Déjà configurées**, sans relancer de Détection. Si l’appareil porte déjà une autre Caméra (même MAC, autre chemin : enregistreur, encodeur multi-voies), l’Aperçu avertit **Cet appareil porte déjà la Caméra <nom>** ; l’ajout reste permis.
 
 **Annuler** est offert à chaque étape : rien n’est créé, et l’Aperçu est retiré. Un nom déjà pris est refusé avec le message habituel ; l’Aperçu reste ouvert pour corriger.
 

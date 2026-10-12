@@ -288,3 +288,8 @@ button.danger {
 .ajout-candidat .lecteur {
   max-height: 22rem;
 }
+
+.ajout-candidat .avertissement {
+  margin: 0;
+  color: #8a5a00;
+}

@@ -80,6 +80,8 @@ export type Essai = {
   apercu: string | null;
   /** MAC de l'Appareil dès qu'il a répondu ; `null` si injoignable ou illisible. */
   mac: string | null;
+  /** Autre Caméra du même Appareil (même MAC, autre chemin) : avertissement, l'ajout reste permis. */
+  appareil_deja_connu: { id: number; nom: string } | null;
   expiration_s: number;
 };
 

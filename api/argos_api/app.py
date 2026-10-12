@@ -113,6 +113,8 @@ class EssaiLu(BaseModel):
     apercu: str | None
     # MAC de l'Appareil dès qu'il a répondu ; `None` si injoignable ou illisible.
     mac: str | None
+    # Autre Caméra du même Appareil (même MAC, autre chemin) : l'UI avertit, l'ajout reste permis.
+    appareil_deja_connu: CameraCorrespondante | None
     # Sans `POST /api/essai/renouveler` pendant ce délai, l'Aperçu est retiré.
     expiration_s: float
 
@@ -363,7 +365,8 @@ def _routes_essai(
     pas pour deviner des mots de passe.
 
     Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS ni vers une Caméra déjà
-    configurée (même rapprochement que la Détection). Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
+    configurée (même rapprochement que la Détection), ni vers un Flux déjà configuré sur le même Appareil
+    (même MAC, même chemin), même si son IP a changé. Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
     la Caméra est créée à partir d'elle.
     """
     Base = Annotated[Session, Depends(base)]
@@ -376,8 +379,7 @@ def _routes_essai(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, HORS_RESEAU_LOCAL)
         camera = cameras.par_adresse(base).get((demande.ip, demande.port))
         if camera is not None:
-            deja = DejaConfiguree(detail=f"Déjà configurée : {camera.nom}", camera=camera)
-            return JSONResponse(deja.model_dump(), status_code=status.HTTP_409_CONFLICT)
+            return _deja_configuree(camera)
         if not un_seul.acquire(blocking=False):
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:
@@ -399,6 +401,11 @@ def _routes_essai(
                 demande.ip, demande.port, resultat.issue.value, resultat.chemin, resultat.codec,
             )
             apercu = None
+            appareil = None
+            if resultat.issue == essai.Issue.FLUX_TROUVE and resultat.mac:
+                appareil = cameras.de_l_appareil(base, resultat.mac, resultat.chemin)
+            if appareil is not None and appareil[1]:
+                return _deja_configuree(appareil[0])
             if resultat.issue == essai.Issue.FLUX_TROUVE:
                 try:
                     apercu = apercus.ouvrir(generation, resultat)
@@ -416,6 +423,7 @@ def _routes_essai(
             codec=resultat.codec,
             apercu=apercu,
             mac=resultat.mac,
+            appareil_deja_connu=None if appareil is None else appareil[0],
             expiration_s=configuration.expiration_apercu,
         )
 
@@ -440,6 +448,11 @@ def _routes_essai(
             return apercus.ajouter(creer)
 
     return routes
+
+
+def _deja_configuree(camera: CameraCorrespondante) -> JSONResponse:
+    deja = DejaConfiguree(detail=f"Déjà configurée : {camera.nom}", camera=camera)
+    return JSONResponse(deja.model_dump(), status_code=status.HTTP_409_CONFLICT)
 
 
 @contextmanager
