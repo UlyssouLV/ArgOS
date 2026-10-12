@@ -8,6 +8,7 @@ from playwright.sync_api import Locator, Page, Route, expect
 from stack_compose import EXPIRATION_APERCU_S, adresses_ip, url_camera_simulee
 from test_administration import administration, api, noms, unique  # noqa: F401 (fixtures)
 from test_detection import DELAI_DETECTION_MS
+from test_live import HEVC_PRETENDU, NAVIGATEUR_SANS_H265, SANS_HEVC, hls, requetes_flux, whep  # noqa: F401 (fixtures)
 
 # Essai, puis démarrage à la demande du relais de l'Aperçu, avec de la marge.
 DELAI_APERCU_MS = 45_000
@@ -172,12 +173,12 @@ def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: 
     (ip,) = adresses_ip("camera-simulee-1")
     nom = noms("Ajout")
 
-    def en_h265(route: Route):
-        # Le vrai essai ouvre l'Aperçu ; seul le codec annoncé change, comme une caméra en H.265.
+    def en_mjpeg(route: Route):
+        # Le vrai essai ouvre l'Aperçu ; seul le codec annoncé change, comme une caméra en MJPEG.
         reponse = route.fetch()
-        route.fulfill(response=reponse, json={**reponse.json(), "codec": "H265"})
+        route.fulfill(response=reponse, json={**reponse.json(), "codec": "MJPEG"})
 
-    administration.route("**/api/essai", lambda route: en_h265(route) if route.request.method == "POST" else route.continue_())
+    administration.route("**/api/essai", lambda route: en_mjpeg(route) if route.request.method == "POST" else route.continue_())
     section = administration.get_by_role("region", name="Détecter des Caméras")
     section.get_by_role("button", name="Détecter des Caméras").click()
     candidats = section.get_by_role("table", name="Candidats")
@@ -187,7 +188,7 @@ def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: 
 
     expect(
         panneau.get_by_text(
-            "Cette caméra émet en H.265, que le navigateur ne sait pas lire. La Caméra peut être ajoutée ; "
+            "Cette caméra émet en MJPEG, que le navigateur ne sait pas lire. La Caméra peut être ajoutée ; "
             "la lecture viendra dans une version future."
         )
     ).to_be_visible(timeout=DELAI_APERCU_MS)
@@ -196,6 +197,34 @@ def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: 
 
     expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
     expect(panneau).to_have_count(0)
+
+
+def test_apercu_d_un_candidat_h265_se_lit_en_hls_et_l_ajout_garde_son_codec(
+    administration: Page, api, noms, requetes_flux, sans_essai
+):
+    (ip,) = adresses_ip("camera-simulee-4")
+    nom = noms("Ajout")
+    # Chromium décode le HEVC selon la machine : on le lui retire, le message navigateur prouve le choix de HLS.
+    administration.add_init_script(SANS_HEVC)
+    administration.reload()
+    section = administration.get_by_role("region", name="Détecter des Caméras")
+    section.get_by_role("button", name="Détecter des Caméras").click()
+    candidats = section.get_by_role("table", name="Candidats")
+    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+
+    expect(panneau.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_APERCU_MS)
+    expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)
+    expect(panneau.get_by_text("Flux indisponible")).to_have_count(0)
+    assert whep(requetes_flux) == []
+
+    panneau.get_by_label("Nom").fill(nom)
+    panneau.get_by_role("button", name="Ajouter la Caméra").click()
+
+    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
+    expect(panneau).to_have_count(0)
+    assert next(c["codec"] for c in api.get("/api/cameras").json() if c["nom"] == nom) == "H265"
 
 
 def ajouter_par_ip(administration: Page, ip: str) -> Locator:
@@ -245,3 +274,19 @@ def test_ajout_par_adresse_ip_sans_camera(administration: Page, sans_essai):
     panneau = administration.get_by_role("form", name=f"Ajouter {IP_SANS_CAMERA}:554")
     expect(panneau.get_by_text("Aucune caméra ne répond à cette adresse")).to_be_visible(timeout=DELAI_APERCU_MS)
     expect(panneau.locator("video")).to_have_count(0)
+
+
+def test_apercu_d_un_candidat_h265_est_demande_en_hls_sur_son_chemin_apercu(administration: Page, requetes_flux, sans_essai):
+    (ip,) = adresses_ip("camera-simulee-4")
+    # Le navigateur prétend décoder le HEVC : le lecteur va jusqu'à demander la playlist, puis échoue à décoder.
+    administration.add_init_script(HEVC_PRETENDU)
+    administration.reload()
+
+    ajouter_par_ip(administration, ip)
+
+    panneau = administration.get_by_role("form", name=f"Ajouter {ip}:554")
+    expect(panneau.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_APERCU_MS)
+    assert hls(requetes_flux)
+    assert all(re.search(r":8888/apercu-[^/]+/", url) for url in hls(requetes_flux)), hls(requetes_flux)
+    assert whep(requetes_flux) == []
+    expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
@@ -11,7 +11,7 @@ import {
   type Essai,
   type Issue,
 } from "../detection";
-import { LecteurFlux, type EtatLecteur } from "../LecteurFlux";
+import { LecteurFlux } from "../LecteurFlux";
 
 const MESSAGES: Record<Exclude<Issue, "flux_trouve">, string> = {
   identifiants_requis: "Cette caméra demande un mot de passe.",
@@ -26,8 +26,8 @@ const IDENTIFIANT_PAR_DEFAUT = "admin";
 /** Renouvellements par délai d'expiration : un renouvellement perdu ne fait pas expirer l'Aperçu. */
 const RENOUVELLEMENTS_PAR_EXPIRATION = 4;
 
-/** Seul codec vidéo que les navigateurs lisent tous en WebRTC. */
-const CODEC_LISIBLE = "H264";
+/** Codecs que le lecteur de Flux sait montrer : H.264 en WebRTC, H.265 en HLS. */
+const CODECS_LUS: ReadonlyArray<string | null> = ["H264", "H265"];
 
 /** Codec nommé comme on l'écrit (`H265` → « en H.265 ») ; inconnu : « dans un codec ». */
 function messageCodec(codec: string | null): string {
@@ -50,7 +50,8 @@ type PropsAjout = Readonly<{
  * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
  * Caméra à mot de passe : identifiant et mot de passe, puis « Valider ».
  * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Valider ».
- * Codec autre que H.264, ou Aperçu qui ne démarre pas : message nommant le codec ; l'ajout reste permis.
+ * L'Aperçu se lit comme le Live, d'après le codec de l'essai (H.265 en HLS, le reste en WebRTC).
+ * Codec ni H.264 ni H.265 : message nommant le codec ; l'ajout reste permis.
  * Appareil qui porte déjà une Caméra (même MAC, autre chemin) : avertissement ; l'ajout reste permis.
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
@@ -67,8 +68,6 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   // Vrai dès que des identifiants ont été envoyés : ils accompagnent ensuite chaque essai.
   const [avecIdentifiants, setAvecIdentifiants] = useState(false);
   const [chemin, setChemin] = useState("");
-  // L'Aperçu a-t-il déjà joué, ou échoué avant de jouer ? Remis à zéro à chaque essai.
-  const [lecture, setLecture] = useState<"attente" | "lue" | "echec">("attente");
 
   const dejaEssaye = premierEssai !== undefined;
   useEffect(() => {
@@ -86,7 +85,6 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   async function reessayer() {
     setEssai(null);
     setErreur(null);
-    setLecture("attente");
     try {
       const envoieIdentifiants = avecIdentifiants || identifiantsDemandes;
       setAvecIdentifiants(envoieIdentifiants);
@@ -122,12 +120,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   const cheminDemande = essai?.issue === "flux_introuvable";
   const expirationS = essai?.expiration_s;
   const codec = essai?.codec ?? null;
-  const codecIllisible = apercu !== null && (codec !== CODEC_LISIBLE || lecture === "echec");
-
-  const suivreLecture = useCallback((etat: EtatLecteur) => {
-    if (etat === "lecture") setLecture("lue");
-    else if (etat === "indisponible") setLecture((avant) => (avant === "lue" ? avant : "echec"));
-  }, []);
+  const codecIllisible = apercu !== null && !CODECS_LUS.includes(codec);
 
   useEffect(() => {
     if (!apercu || !expirationS) return;
@@ -188,7 +181,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
       )}
       {apercu && (
         <>
-          <LecteurFlux cheminFlux={apercu} codec={null} onEtat={suivreLecture} />
+          <LecteurFlux cheminFlux={apercu} codec={codec} />
           {codecIllisible && <p className="erreur">{messageCodec(codec)}</p>}
           {essai?.appareil_deja_connu && (
             <p className="avertissement">Cet appareil porte déjà la Caméra {essai.appareil_deja_connu.nom}</p>

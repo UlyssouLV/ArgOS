@@ -1,4 +1,4 @@
-// Lecteur HLS, en lecture seule : le Live lit le Flux d'une Caméra H.265 en LL-HLS fMP4 depuis MediaMTX,
+// Lecteur HLS, en lecture seule : le Live et l'Aperçu lisent un Flux H.265 en LL-HLS fMP4 depuis MediaMTX,
 // sans réencodage (docs/adr/0004-hls-pour-les-flux-h265.md). C'est le navigateur qui décode le HEVC.
 
 import Hls from "hls.js";
