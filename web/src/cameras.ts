@@ -2,6 +2,9 @@ import { appeler, NonConnecte } from "./api";
 
 export type Etat = "unknown" | "online" | "offline";
 
+/** Pourquoi une Caméra est dans son état, quand ArgOS le sait. */
+export type RaisonEtat = "autre_appareil";
+
 /** Représentation d'une Caméra par l'API : le mot de passe RTSP y est masqué (`***`). */
 export type Camera = {
   id: number;
@@ -13,7 +16,7 @@ export type Camera = {
   active: boolean;
   etat: Etat;
   etat_verifie_le: string | null;
-  raison_etat: string | null;
+  raison_etat: RaisonEtat | null;
   /** MAC de l'Appareil (`aa:bb:cc:dd:ee:ff`), lue sur le réseau ; `null` : inconnue. */
   mac: string | null;
   /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
@@ -27,13 +30,13 @@ export function texteMac(mac: string | null): string {
   return mac ?? "—";
 }
 
-const RAISONS_ETAT: Record<string, string> = {
+const RAISONS_ETAT: Record<RaisonEtat, string> = {
   autre_appareil: "autre appareil à cette adresse",
 };
 
 /** Pourquoi la Caméra est dans cet état, à afficher à côté ; `null` si ArgOS ne le sait pas. */
-export function texteRaison(raison: string | null): string | null {
-  return raison === null ? null : (RAISONS_ETAT[raison] ?? null);
+export function texteRaison(raison: RaisonEtat | null): string | null {
+  return raison === null ? null : RAISONS_ETAT[raison];
 }
 
 /** Refus de l'API, à afficher tel quel dans le formulaire. */

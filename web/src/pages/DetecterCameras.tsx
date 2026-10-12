@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
   essayer,
+  filtreMacInvalide,
   filtrerParMac,
   lancerDetection,
   lireEtatDetection,
@@ -210,7 +211,13 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
             value={filtre} onChange={(e) => setFiltre(e.target.value)} />
         </label>
       )}
-      {aucunNeCorrespond && <p>Aucun Candidat ne correspond à ce filtre.</p>}
+      {aucunNeCorrespond && (
+        <p>
+          {filtreMacInvalide(filtre)
+            ? "MAC invalide : chiffres 0-9 et lettres a-f seulement (séparateurs : - . acceptés), douze au plus."
+            : "Aucun Candidat ne correspond à ce filtre."}
+        </p>
+      )}
       {!aucunNeCorrespond && nouveaux.length === 0 && (
         <p>
           Aucun {configures.length > 0 && "nouveau "}Candidat sur {couverture(resultat.sous_reseaux, resultat.ports)}.

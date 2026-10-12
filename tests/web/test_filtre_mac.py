@@ -84,3 +84,17 @@ def test_filtre_vide_montre_tous_les_candidats(section: Locator):
     for numero in (2, 3):
         expect(visibles(section, "Candidats").filter(has_text=ip_de(numero))).to_have_count(1)
     expect(visibles(section, "Déjà configurées").filter(has_text=ip_de(1))).to_have_count(1)
+
+
+def test_filtre_aligne_sur_les_octets(section: Locator):
+    # « 2a » n'existe dans 02:a6:… qu'à cheval sur deux octets.
+    filtrer(section, "2a")
+
+    expect(section.get_by_text("Aucun Candidat ne correspond à ce filtre.")).to_be_visible()
+
+
+def test_filtre_invalide_le_dit(section: Locator):
+    filtrer(section, "02:zz")
+
+    expect(section.get_by_text(re.compile(r"^MAC invalide"))).to_be_visible()
+    expect(section.get_by_role("table", name="Candidats")).to_have_count(0)

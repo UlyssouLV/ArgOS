@@ -237,14 +237,15 @@ def creer_app(
 
     app.include_router(_routes_cameras(base, administrateur_connecte))
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
+
+    def adresses_d_argos() -> set[IPv4Address]:
+        """Adresses de l'API et du pont, celles d'ArgOS sur le réseau des caméras comprises : jamais Candidat."""
+        return soi.adresses_des_conteneurs([hote_pont]) | adresses_reseau_cameras
+
     app.include_router(
-        _routes_detection(
-            configuration.reglage_detection(), hote_pont, adresses_reseau_cameras, base, administrateur_connecte
-        )
+        _routes_detection(configuration.reglage_detection(), adresses_d_argos, base, administrateur_connecte)
     )
-    app.include_router(
-        _routes_essai(apercus, configuration, hote_pont, adresses_reseau_cameras, base, administrateur_connecte)
-    )
+    app.include_router(_routes_essai(apercus, configuration, adresses_d_argos, base, administrateur_connecte))
     return app
 
 
@@ -292,8 +293,7 @@ def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connec
 
 def _routes_detection(
     reglage: ReglageDetection,
-    hote_pont: str,
-    adresses_argos: set[IPv4Address],
+    adresses_d_argos: Callable[[], set[IPv4Address]],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
@@ -320,9 +320,7 @@ def _routes_detection(
             raise HTTPException(status.HTTP_409_CONFLICT, DETECTION_EN_COURS)
         try:
             debut = monotonic()
-            # Adresses d'ArgOS sur le réseau des caméras comprises : jamais Candidat.
-            exclues = soi.adresses_des_conteneurs([hote_pont]) | adresses_argos
-            trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, exclues, DELAI_DETECTION_S)
+            trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, adresses_d_argos(), DELAI_DETECTION_S)
             argos = soi.publient_cette_api({c.ip for c in trouves}, DELAI_DETECTION_S)
             candidats = [c for c in trouves if c.ip not in argos]
             duree_s = round(monotonic() - debut, 1)
@@ -365,17 +363,17 @@ def _routes_detection(
 def _routes_essai(
     apercus: Apercus,
     configuration: Configuration,
-    hote_pont: str,
-    adresses_argos: set[IPv4Address],
+    adresses_d_argos: Callable[[], set[IPv4Address]],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
     """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
     pas pour deviner des mots de passe.
 
-    Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS ni vers une Caméra déjà
-    configurée (même rapprochement que la Détection), ni vers un Flux déjà configuré sur le même Appareil
-    (même MAC, même chemin), même si son IP a changé. Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
+    Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS. Refusé après la sonde, sans
+    Aperçu, pour une Caméra déjà configurée (même rapprochement que la Détection : un autre Appareil qui a repris
+    son adresse reste essayable) ou un Flux déjà configuré sur le même Appareil (même MAC, même chemin), même si
+    son IP a changé. Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
     la Caméra est créée à partir d'elle.
     """
     Base = Annotated[Session, Depends(base)]
@@ -386,13 +384,10 @@ def _routes_essai(
     def essayer(demande: DemandeEssai, base: Base) -> EssaiLu | JSONResponse:
         if not any(demande.ip in reseau for reseau in RESEAUX_LOCAUX):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, HORS_RESEAU_LOCAL)
-        camera = cameras.par_adresse(base).get((demande.ip, demande.port))
-        if camera is not None:
-            return _deja_configuree(camera)
         if not un_seul.acquire(blocking=False):
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:
-            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) | adresses_argos or soi.publient_cette_api(
+            if demande.ip in adresses_d_argos() or soi.publient_cette_api(
                 [demande.ip], DELAI_DETECTION_S
             ):
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ADRESSE_D_ARGOS)
@@ -410,11 +405,10 @@ def _routes_essai(
                 demande.ip, demande.port, resultat.issue.value, resultat.chemin, resultat.codec,
             )
             apercu = None
-            appareil = None
-            if resultat.issue == essai.Issue.FLUX_TROUVE and resultat.mac:
-                appareil = cameras.de_l_appareil(base, resultat.mac, resultat.chemin)
-            if appareil is not None and appareil[1]:
-                return _deja_configuree(appareil[0])
+            chemin = resultat.chemin if resultat.issue == essai.Issue.FLUX_TROUVE else None
+            correspondance = cameras.correspondance_de_l_essai(base, demande.ip, demande.port, resultat.mac, chemin)
+            if correspondance is not None and correspondance.deja_configuree:
+                return _deja_configuree(correspondance.camera)
             if resultat.issue == essai.Issue.FLUX_TROUVE:
                 try:
                     apercu = apercus.ouvrir(generation, resultat)
@@ -432,7 +426,7 @@ def _routes_essai(
             codec=resultat.codec,
             apercu=apercu,
             mac=resultat.mac,
-            appareil_deja_connu=None if appareil is None else appareil[0],
+            appareil_deja_connu=None if correspondance is None else correspondance.camera,
             expiration_s=configuration.expiration_apercu,
         )
 

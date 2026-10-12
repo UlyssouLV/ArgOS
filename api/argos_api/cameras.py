@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from argos_api import voisinage
 from argos_api.detection import Candidat
-from argos_api.modeles import AUTRE_APPAREIL, Camera
+from argos_api.modeles import AUTRE_APPAREIL, Camera, RaisonEtat
 from argos_api.pont import chemin_flux
 
 PORT_RTSP = 554
@@ -86,7 +86,7 @@ class CameraLue(BaseModel):
     active: bool
     etat: Etat
     etat_verifie_le: datetime | None
-    raison_etat: str | None
+    raison_etat: RaisonEtat | None
     # Chemin MediaMTX qui relaie le Flux (docs/adr/0001-mediamtx-en-pont.md) ; aucun si désactivée.
     chemin_flux: str | None
     # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : inconnue. Jamais modifiable par l'Administrateur.
@@ -142,28 +142,41 @@ class CameraCorrespondante(BaseModel):
     nom: str
 
 
-def par_adresse(base: Session) -> dict[tuple[IPv4Address, int], CameraCorrespondante]:
-    """Caméras (actives ou désactivées) par IP résolue de l'hôte de leur URL et port.
+class Correspondance(BaseModel):
+    """Caméra du Site rapprochée d'un essai ; `deja_configuree` : ajouter ce Flux ferait un doublon."""
 
-    Plusieurs Caméras à la même adresse (chemins différents) : la plus ancienne. Hôte introuvable : ignoré.
+    camera: CameraCorrespondante
+    deja_configuree: bool
+
+
+def correspondance_de_l_essai(
+    base: Session, ip: IPv4Address, port: int, mac: str | None, chemin: str | None
+) -> Correspondance | None:
+    """Caméra (active ou désactivée) que l'essai de `ip:port` rejoint ; `None` : rien de connu.
+
+    D'abord à la même IP résolue et au même port, comme la Détection : déjà configurée, la plus ancienne ; une
+    Caméra d'un autre Appareil (MAC connues et différentes) est écartée, celui-ci a repris son adresse. Sinon,
+    Flux trouvé (`chemin`) sur un Appareil connu : au même chemin, déjà configurée ; à un autre chemin, la plus
+    ancienne de l'Appareil, ajout permis.
     """
-    adresses: dict[tuple[IPv4Address, int], CameraCorrespondante] = {}
-    for camera in base.scalars(select(Camera).order_by(Camera.id)):
-        for adresse in _adresses(camera.url_rtsp):
-            adresses.setdefault(adresse, _correspondante(camera))
-    return adresses
-
-
-def de_l_appareil(base: Session, mac: str, chemin: str) -> tuple[CameraCorrespondante, bool] | None:
-    """Caméra (active ou désactivée) de l'Appareil `mac`, et si elle relaie déjà `chemin` (`/chemin?requete`).
-
-    Celle au même chemin d'abord, sinon la plus ancienne ; `None` : Appareil inconnu.
-    """
-    appareil = list(base.scalars(select(Camera).where(Camera.mac == mac).order_by(Camera.id)))
+    toutes = list(base.scalars(select(Camera).order_by(Camera.id)))
+    a_l_adresse = next(
+        (c for c in toutes if (ip, port) in _adresses(c.url_rtsp) and _meme_appareil_possible(c, mac)), None
+    )
+    if a_l_adresse is not None:
+        return Correspondance(camera=_correspondante(a_l_adresse), deja_configuree=True)
+    appareil = [camera for camera in toutes if mac and camera.mac == mac]
+    if chemin is None or not appareil:
+        return None
     meme_chemin = next((camera for camera in appareil if _chemin(camera.url_rtsp) == chemin), None)
     if meme_chemin is not None:
-        return _correspondante(meme_chemin), True
-    return (_correspondante(appareil[0]), False) if appareil else None
+        return Correspondance(camera=_correspondante(meme_chemin), deja_configuree=True)
+    return Correspondance(camera=_correspondante(appareil[0]), deja_configuree=False)
+
+
+def _meme_appareil_possible(camera: Camera, mac: str | None) -> bool:
+    """Faux seulement si les deux MAC sont connues et diffèrent : un autre Appareil répond à l'adresse."""
+    return camera.mac is None or mac is None or camera.mac == mac
 
 
 class AdresseMiseAJour(BaseModel):
@@ -186,7 +199,7 @@ def rapprocher(base: Session, candidats: Sequence[Candidat]) -> dict[Candidat, R
     """Rapproche chaque Candidat des Caméras (actives ou désactivées) et suit les Appareils qui ont changé d'IP.
 
     D'abord par MAC : la plus ancienne Caméra de l'Appareil, au port du Candidat de préférence. Sinon par
-    IP résolue et port, comme `par_adresse`. Une Caméra sans MAC à l'adresse d'un Candidat reçoit sa MAC.
+    IP résolue et port, sauf une Caméra d'un autre Appareil. Une Caméra sans MAC à l'adresse d'un Candidat reçoit sa MAC.
     Un Appareil connu vu à une autre IP : l'hôte de l'URL de toutes ses Caméras devient cette IP (port, chemin,
     identifiants gardés), sauf si une Caméra qui ne bouge pas occupe déjà la nouvelle URL (conflit). Tout
     s'écrit en une transaction : deux Appareils peuvent échanger leurs IP.
@@ -229,7 +242,9 @@ def _rapprochement(
     appareil = [camera for camera in toutes if candidat.mac and camera.mac == candidat.mac]
     if not appareil:
         adresse = (candidat.ip, candidat.port)
-        camera = next((camera for camera in toutes if adresse in adresses[camera.id]), None)
+        camera = next(
+            (c for c in toutes if adresse in adresses[c.id] and _meme_appareil_possible(c, candidat.mac)), None
+        )
         return Rapprochement(camera=None if camera is None else _correspondante(camera))
     # Tri stable par id : la plus ancienne au port du Candidat, sinon la plus ancienne de l'Appareil.
     appareil.sort(key=lambda camera: _port(camera.url_rtsp) != candidat.port)

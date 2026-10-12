@@ -41,14 +41,28 @@ function chiffresMac(mac: string): string {
   return mac.replaceAll(/[\s:.-]/g, "").toLowerCase();
 }
 
+/** Saisie du filtre que l'API refuserait aussi : autre chose que des chiffres hexadécimaux, ou plus de douze. */
+export function filtreMacInvalide(saisie: string): boolean {
+  return !/^[0-9a-f]{0,12}$/.test(chiffresMac(saisie));
+}
+
+/** `filtre` apparaît dans `chiffres` en commençant ou finissant entre deux octets : « ab » ne trouve pas `0a:b0`. */
+function contientSurUnOctet(chiffres: string, filtre: string): boolean {
+  for (let debut = chiffres.indexOf(filtre); debut !== -1; debut = chiffres.indexOf(filtre, debut + 1)) {
+    if (debut % 2 === 0 || (debut + filtre.length) % 2 === 0) return true;
+  }
+  return false;
+}
+
 /**
  * Candidats dont la MAC contient `saisie`, tapée telle qu'écrite sur l'étiquette (`AA-BB-…`, `aabb.ccdd.eeff`,
- * partielle). Saisie vide : tous ; sinon, ceux sans MAC sont écartés.
+ * partielle, alignée sur les octets). Saisie vide : tous ; invalide : aucun ; sinon, ceux sans MAC sont écartés.
  */
 export function filtrerParMac(candidats: Candidat[], saisie: string): Candidat[] {
   const filtre = chiffresMac(saisie);
   if (filtre === "") return candidats;
-  return candidats.filter((candidat) => candidat.mac !== null && chiffresMac(candidat.mac).includes(filtre));
+  if (filtreMacInvalide(saisie)) return [];
+  return candidats.filter((candidat) => candidat.mac !== null && contientSurUnOctet(chiffresMac(candidat.mac), filtre));
 }
 
 async function lire<T>(reponse: Response): Promise<T> {
@@ -92,8 +106,9 @@ export type Identifiants = { identifiant: string; mot_de_passe: string };
 export type DemandeEssai = Partial<Identifiants> & { chemin?: string };
 
 /**
- * Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. Adresse d'une Caméra du Site :
- * refus « Déjà configurée : <nom> », sans essai.
+ * Cherche le Flux d'un Candidat ; remplace l'essai précédent et son Aperçu. Adresse d'une Caméra du Site (sauf
+ * si un autre Appareil l'a reprise) ou Flux déjà configuré sur le même Appareil : refus « Déjà configurée : <nom> »,
+ * sans Aperçu.
  */
 export async function essayer(ip: string, port: number, demande: DemandeEssai = {}): Promise<Essai> {
   return lire(await appeler("/api/essai", { method: "POST", body: JSON.stringify({ ip, port, ...demande }) }));

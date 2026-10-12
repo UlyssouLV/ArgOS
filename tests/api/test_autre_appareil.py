@@ -12,9 +12,9 @@ import pytest
 
 from stack_compose import IPS_SIMULEES, MACS_SIMULEES, deplacer_cameras_simulees, remettre_cameras_simulees, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
-from test_essai import essai  # noqa: F401 (fixture)
+from test_essai import DELAI_ESSAI_S, essai  # noqa: F401 (fixture)
 from test_mediamtx_en_pont import attendre_lisible
-from test_suivi_adresse import DELAI_VOISINAGE_S, ajouter
+from test_suivi_adresse import DELAI_VOISINAGE_S, ajouter, detecter_jusqu_a
 
 AUTRE_MAC = "02:a6:05:00:00:99"
 
@@ -53,6 +53,39 @@ def test_autre_appareil_offline_plus_relaye_puis_retabli_a_son_retour(connecte, 
 
     attendre_camera(connecte, camera["id"], etat="online", raison_etat=None)
     attendre_lisible(camera["chemin_flux"], True)
+
+
+def test_autre_appareil_a_l_adresse_d_une_camera_est_un_nouveau_candidat(connecte, essai, autre_appareil):
+    camera = ajouter(essai, 1)
+    connecte.delete("/api/essai")
+
+    autre_appareil(1)
+
+    candidat = detecter_jusqu_a(connecte, {IPS_SIMULEES[1]: AUTRE_MAC})[IPS_SIMULEES[1]]
+    assert candidat["camera"] is None
+    assert candidat["adresse_mise_a_jour"] is None
+    assert connecte.get(f"/api/cameras/{camera['id']}").json()["url_rtsp"] == camera["url_rtsp"]
+
+
+def test_autre_appareil_a_l_adresse_d_une_camera_s_essaye(connecte, essai, autre_appareil):
+    ajouter(essai, 1)
+    connecte.delete("/api/essai")
+
+    autre_appareil(1)
+
+    # La table de voisinage peut garder l'ancienne MAC un temps : refus « Déjà configurée » jusque-là.
+    echeance = time.monotonic() + DELAI_VOISINAGE_S
+    while True:
+        reponse = connecte.post("/api/essai", json={"ip": IPS_SIMULEES[1], "port": 554}, timeout=DELAI_ESSAI_S)
+        if reponse.status_code == 200 or time.monotonic() >= echeance:
+            break
+        assert reponse.status_code == 409
+        time.sleep(0.5)
+    assert reponse.status_code == 200
+    resultat = reponse.json()
+    assert resultat["issue"] == "flux_trouve"
+    assert resultat["mac"] == AUTRE_MAC
+    assert resultat["appareil_deja_connu"] is None
 
 
 def test_camera_sans_mac_remplie_par_la_sonde(connecte, creer_camera):

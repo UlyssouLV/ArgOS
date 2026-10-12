@@ -7,15 +7,24 @@ une autre MAC la met `offline` (`autre_appareil`), et le pont cesse de la relaye
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from typing import TypedDict
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from argos_api.modeles import AUTRE_APPAREIL, Camera
+from argos_api.modeles import AUTRE_APPAREIL, Camera, RaisonEtat
 
 Sonde = Callable[[str, float], bool]
 # MAC de l'Appareil qui répond à l'hôte d'une URL RTSP, lue juste après la sonde ; `None` si illisible.
 LireMac = Callable[[str], str | None]
+
+
+class ColonnesApresSonde(TypedDict, total=False):
+    """Colonnes d'une Caméra à réécrire après sa sonde ; une colonne absente reste inchangée."""
+
+    etat: str
+    raison_etat: RaisonEtat | None
+    mac: str
 
 
 class Surveillance:
@@ -61,12 +70,17 @@ class Surveillance:
                         Camera.mac.is_not_distinct_from(cible.mac),
                         Camera.active,
                     )
-                    .values(**_etat(en_ligne, cible.mac, cible.raison_etat, mac_lue), etat_verifie_le=verifie_le)
+                    .values(
+                        **_colonnes_apres_sonde(en_ligne, cible.mac, cible.raison_etat, mac_lue),
+                        etat_verifie_le=verifie_le,
+                    )
                 )
             base.commit()
 
 
-def _etat(en_ligne: bool, mac: str | None, raison: str | None, mac_lue: str | None) -> dict:
+def _colonnes_apres_sonde(
+    en_ligne: bool, mac: str | None, raison: str | None, mac_lue: str | None
+) -> ColonnesApresSonde:
     """État, raison et MAC après une sonde. MAC illisible, ou sonde échouée : MAC et raison inchangées."""
     if not en_ligne:
         # Personne ne répond : rien ne dit que la bonne MAC est revue, l'autre Appareil reste supposé là.

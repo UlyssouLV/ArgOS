@@ -1,12 +1,15 @@
 """Tables de la base du Site."""
 
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
 AUTRE_APPAREIL = "autre_appareil"
+# Seules raisons qu'ArgOS écrit dans `raison_etat`.
+RaisonEtat = Literal["autre_appareil"]
 
 
 class Base(DeclarativeBase):

@@ -8,6 +8,7 @@ import {
   texteMac,
   texteRaison,
   type Camera,
+  type RaisonEtat,
   type SaisieCamera,
 } from "../cameras";
 import { DetecterCameras } from "./DetecterCameras";
@@ -16,6 +17,12 @@ const RAFRAICHISSEMENT_MS = 10_000;
 
 function dateVerification(camera: Camera): string {
   return camera.etat_verifie_le ? new Date(camera.etat_verifie_le).toLocaleString("fr-FR") : "—";
+}
+
+/** Raison de l'état, entre parenthèses à côté ; rien si ArgOS ne la sait pas. */
+function Raison({ raison }: { raison: RaisonEtat | null }) {
+  const texte = texteRaison(raison);
+  return texte && <span className="raison-etat"> ({texte})</span>;
 }
 
 export function Administration() {
@@ -107,9 +114,7 @@ export function Administration() {
                   <td>{camera.active ? "active" : "désactivée"}</td>
                   <td>
                     <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
-                    {texteRaison(camera.raison_etat) && (
-                      <span className="raison-etat"> ({texteRaison(camera.raison_etat)})</span>
-                    )}
+                    <Raison raison={camera.raison_etat} />
                   </td>
                   <td>{dateVerification(camera)}</td>
                   <td>
