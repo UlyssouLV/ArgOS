@@ -1,14 +1,25 @@
 """Live dans l'UI, de bout en bout dans Chromium : la vidéo arrive vraiment en WebRTC depuis MediaMTX.
 
+Une Caméra H.265 se lit en HLS (docs/adr/0004-hls-pour-les-flux-h265.md). Que Chromium décode le HEVC
+dépend de la machine : les tests H.265 le lui retirent, ou le lui font prétendre puis échouer.
+
 La base n'est jamais effacée. Pour maîtriser l'ordre et le tour des Caméras actives, les Caméras
 actives qui ne sont pas au test sont désactivées le temps du test, puis réactivées.
 """
 
+import time
+
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from test_administration import api, noms, unique, url_injoignable, url_simulee  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
+
+# Intervalle (10 s) + délai (5 s) de sonde, avec de la marge : le codec d'une Caméra créée est lu par la sonde.
+DELAI_CODEC_S = 45
+# Au-delà de la nouvelle tentative (5 s) du lecteur.
+APRES_NOUVELLE_TENTATIVE_S = 7
+NAVIGATEUR_SANS_H265 = "Ce navigateur ne lit pas le H.265"
 
 # Un tour de réconciliation du pont (10 s), démarrage du Flux à la demande et nouvelle tentative (5 s), avec de la marge.
 DELAI_VIDEO_MS = 45_000
@@ -24,6 +35,29 @@ window.RTCPeerConnection = class extends Natif {
     super(...args);
     window.__connexions.push(this);
   }
+};
+"""
+
+# Le navigateur dit ne pas décoder le HEVC.
+SANS_HEVC = """
+const hevc = (type) => /hvc1|hev1/.test(type);
+const isTypeSupported = MediaSource.isTypeSupported.bind(MediaSource);
+MediaSource.isTypeSupported = (type) => !hevc(type) && isTypeSupported(type);
+const canPlayType = HTMLMediaElement.prototype.canPlayType;
+HTMLMediaElement.prototype.canPlayType = function (type) {
+  return hevc(type) ? "" : canPlayType.call(this, type);
+};
+"""
+
+# Le navigateur prétend décoder le HEVC, puis échoue dès qu'on lui donne des images.
+HEVC_PRETENDU = """
+const hevc = (type) => /hvc1|hev1/.test(type);
+const isTypeSupported = MediaSource.isTypeSupported.bind(MediaSource);
+MediaSource.isTypeSupported = (type) => hevc(type) || isTypeSupported(type);
+const addSourceBuffer = MediaSource.prototype.addSourceBuffer;
+MediaSource.prototype.addSourceBuffer = function (type) {
+  if (hevc(type)) throw new DOMException("HEVC non décodé", "NotSupportedError");
+  return addSourceBuffer.call(this, type);
 };
 """
 
@@ -53,6 +87,45 @@ def creer(api, noms):
         return nom
 
     return _creer
+
+
+@pytest.fixture
+def requetes_flux(page: Page) -> list[str]:
+    """URL des requêtes du lecteur de Flux : négociations WHEP et HLS."""
+    urls: list[str] = []
+    page.on("request", lambda requete: urls.append(requete.url) if ":8889/" in requete.url or ":8888/" in requete.url else None)
+    return urls
+
+
+def whep(urls: list[str]) -> list[str]:
+    return [url for url in urls if url.endswith("/whep")]
+
+
+def hls(urls: list[str]) -> list[str]:
+    return [url for url in urls if ":8888/" in url and ".m3u8" in url]
+
+
+def attendre_codec(api, nom: str, codec: str) -> None:
+    echeance = time.monotonic() + DELAI_CODEC_S
+    while next(c["codec"] for c in api.get("/api/cameras").json() if c["nom"] == nom) != codec:
+        assert time.monotonic() < echeance, f"{nom} : codec toujours différent de {codec}"
+        time.sleep(1)
+
+
+@pytest.fixture
+def en_h265(page: Page):
+    """La liste des Caméras donne le codec H265 à une Caméra : une Caméra injoignable n'en a jamais."""
+
+    def _en_h265(nom: str) -> None:
+        def retoucher(route: Route) -> None:
+            reponse = route.fetch()
+            route.fulfill(response=reponse, json=[c | {"codec": "H265"} if c["nom"] == nom else c for c in reponse.json()])
+
+        page.route("**/api/cameras", lambda route: retoucher(route) if route.request.method == "GET" else route.continue_())
+
+    yield _en_h265
+    # Le Live relit la liste toutes les 10 s : une lecture peut être en cours à la fermeture de la page.
+    page.unroute_all(behavior="ignoreErrors")
 
 
 @pytest.fixture
@@ -127,3 +200,84 @@ def test_camera_active_injoignable_affiche_flux_indisponible(seules_actives, cre
     expect(camera_affichee(live)).to_have_text(nom)
     expect(live.get_by_text("Flux indisponible")).to_be_visible(timeout=DELAI_VIDEO_MS)
     assert connexions_ouvertes(live) <= 1
+
+
+def test_live_camera_h265_sans_decodage_hevc_affiche_le_message_sans_requete_ni_nouvelle_tentative(
+    seules_actives, creer, api, requetes_flux, live: Page
+):
+    nom = creer(url_simulee(4))
+    attendre_codec(api, nom, "H265")
+    live.add_init_script(SANS_HEVC)
+    live.reload()
+
+    expect(camera_affichee(live)).to_have_text(nom)
+    expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()
+    time.sleep(APRES_NOUVELLE_TENTATIVE_S)
+
+    expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()
+    expect(live.get_by_text("Flux indisponible")).to_be_hidden()
+    assert requetes_flux == []
+    assert connexions_ouvertes(live) == 0
+
+
+def test_live_camera_h265_que_le_navigateur_echoue_a_decoder_affiche_le_message_sans_nouvelle_tentative(
+    seules_actives, creer, api, requetes_flux, live: Page
+):
+    nom = creer(url_simulee(4))
+    attendre_codec(api, nom, "H265")
+    live.add_init_script(HEVC_PRETENDU)
+    live.reload()
+
+    expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_VIDEO_MS)
+    lues = len(hls(requetes_flux))
+    time.sleep(APRES_NOUVELLE_TENTATIVE_S)
+
+    assert lues >= 1
+    assert len(hls(requetes_flux)) == lues
+    assert whep(requetes_flux) == []
+    expect(live.get_by_text("Flux indisponible")).to_be_hidden()
+
+
+def test_live_camera_h265_injoignable_retente_en_hls_puis_suivant_ferme_le_lecteur_hls(
+    seules_actives, creer, en_h265, requetes_flux, live: Page
+):
+    injoignable = creer(url_injoignable())
+    h264 = creer(url_simulee(1))
+    en_h265(injoignable)
+    live.add_init_script(HEVC_PRETENDU)
+    live.reload()
+
+    expect(camera_affichee(live)).to_have_text(injoignable)
+    expect(live.get_by_text("Flux indisponible")).to_be_visible(timeout=DELAI_VIDEO_MS)
+    time.sleep(APRES_NOUVELLE_TENTATIVE_S)
+    assert len(hls(requetes_flux)) >= 2
+    assert whep(requetes_flux) == []
+
+    live.get_by_role("button", name="Suivant").click()
+
+    expect(camera_affichee(live)).to_have_text(h264)
+    attendre_que_la_video_joue(live)
+    lues = len(hls(requetes_flux))
+    time.sleep(APRES_NOUVELLE_TENTATIVE_S)
+    assert len(hls(requetes_flux)) == lues
+    assert connexions_ouvertes(live) == 1
+
+
+def test_live_d_une_camera_h264_a_une_camera_h265_ferme_la_connexion_webrtc(
+    seules_actives, creer, api, requetes_flux, live: Page
+):
+    h264 = creer(url_simulee(1))
+    h265 = creer(url_simulee(4))
+    attendre_codec(api, h265, "H265")
+    live.add_init_script(SANS_HEVC)
+    live.reload()
+    expect(camera_affichee(live)).to_have_text(h264)
+    attendre_que_la_video_joue(live)
+    assert len(whep(requetes_flux)) >= 1
+
+    live.get_by_role("button", name="Suivant").click()
+
+    expect(camera_affichee(live)).to_have_text(h265)
+    expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()
+    assert connexions_ouvertes(live) == 0
+    assert hls(requetes_flux) == []

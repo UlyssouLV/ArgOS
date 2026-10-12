@@ -1,5 +1,5 @@
 // Client WHEP minimal, en lecture seule : le Live lit le Flux d'une Caméra en WebRTC depuis MediaMTX.
-// Pas d'iframe ni de HLS : la négociation est un POST de l'offre SDP, la réponse SDP revient en 201.
+// Pas d'iframe : la négociation est un POST de l'offre SDP, la réponse SDP revient en 201.
 
 const PORT_WEBRTC = "8889";
 /** Délai pour que la connexion s'établisse après la négociation, sinon c'est une coupure. */

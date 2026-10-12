@@ -188,7 +188,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
       )}
       {apercu && (
         <>
-          <LecteurFlux cheminFlux={apercu} onEtat={suivreLecture} />
+          <LecteurFlux cheminFlux={apercu} codec={null} onEtat={suivreLecture} />
           {codecIllisible && <p className="erreur">{messageCodec(codec)}</p>}
           {essai?.appareil_deja_connu && (
             <p className="avertissement">Cet appareil porte déjà la Caméra {essai.appareil_deja_connu.nom}</p>
