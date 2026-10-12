@@ -22,6 +22,7 @@ from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
+from argos_api.ecoute import SortieSeulement
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
 from argos_api.surveillance import Surveillance
@@ -180,6 +181,9 @@ def creer_app(
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Content-Type"],
     )
+    # Ajouté en dernier, donc le plus extérieur : refuse avant CORS, routage et session.
+    adresses_reseau_cameras = configuration.adresses_reseau_cameras()
+    app.add_middleware(SortieSeulement, adresses=adresses_reseau_cameras)
 
     def base() -> Iterator[Session]:
         with ouvrir_base() as s:
@@ -234,10 +238,12 @@ def creer_app(
     app.include_router(_routes_cameras(base, administrateur_connecte))
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
     app.include_router(
-        _routes_detection(configuration.reglage_detection(), hote_pont, base, administrateur_connecte)
+        _routes_detection(
+            configuration.reglage_detection(), hote_pont, adresses_reseau_cameras, base, administrateur_connecte
+        )
     )
     app.include_router(
-        _routes_essai(apercus, configuration, hote_pont, base, administrateur_connecte)
+        _routes_essai(apercus, configuration, hote_pont, adresses_reseau_cameras, base, administrateur_connecte)
     )
     return app
 
@@ -287,6 +293,7 @@ def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connec
 def _routes_detection(
     reglage: ReglageDetection,
     hote_pont: str,
+    adresses_argos: set[IPv4Address],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
@@ -313,7 +320,8 @@ def _routes_detection(
             raise HTTPException(status.HTTP_409_CONFLICT, DETECTION_EN_COURS)
         try:
             debut = monotonic()
-            exclues = soi.adresses_des_conteneurs([hote_pont])
+            # Adresses d'ArgOS sur le réseau des caméras comprises : jamais Candidat.
+            exclues = soi.adresses_des_conteneurs([hote_pont]) | adresses_argos
             trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, exclues, DELAI_DETECTION_S)
             argos = soi.publient_cette_api({c.ip for c in trouves}, DELAI_DETECTION_S)
             candidats = [c for c in trouves if c.ip not in argos]
@@ -358,6 +366,7 @@ def _routes_essai(
     apercus: Apercus,
     configuration: Configuration,
     hote_pont: str,
+    adresses_argos: set[IPv4Address],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
@@ -383,7 +392,7 @@ def _routes_essai(
         if not un_seul.acquire(blocking=False):
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:
-            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) or soi.publient_cette_api(
+            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) | adresses_argos or soi.publient_cette_api(
                 [demande.ip], DELAI_DETECTION_S
             ):
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ADRESSE_D_ARGOS)

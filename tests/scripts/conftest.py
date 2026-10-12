@@ -1,7 +1,8 @@
 """Fixtures : le script de configuration de la Détection lancé avec une fausse commande réseau.
 
-Les commandes `uname`, `ip` et `ifconfig` sont remplacées (PATH) par des scripts qui renvoient
-une sortie préenregistrée ; le `.env` est un fichier temporaire.
+Les commandes `uname`, `ip`, `ifconfig` et `ping` sont remplacées (PATH) par des scripts qui renvoient
+une sortie préenregistrée ; le `.env` est un fichier temporaire. Les appareils qui répondent en ARP sont
+ceux de la table de voisinage simulée (`ip neigh`).
 """
 
 import os
@@ -16,6 +17,7 @@ SCRIPT = REPO_ROOT / "scripts" / "cameras" / "configurer-detection.sh"
 DELAI_S = 10
 
 QUESTION = "Quelle(s) prise(s)"
+QUESTION_IP = "IP d'ArgOS sur le réseau des caméras"
 
 
 @dataclass
@@ -32,15 +34,32 @@ class Machine:
         self.bin = dossier / "bin"
         self.bin.mkdir()
         self.sortie_reseau = dossier / "sortie-reseau.txt"
+        self.table_voisinage = dossier / "voisins.txt"
+        self.table_voisinage.write_text("")
+        # Le ping remplit la table de voisinage ; ici, elle l'est d'avance.
+        self._commande("ping", "exit 1")
         self.fichier_env = dossier / ".env"
         self.fichier_env.write_text("ARGOS_IDENTIFIANT=administrateur\n")
 
     def systeme(self, nom: str, sortie_reseau: str) -> None:
         """`nom` : Linux (sortie de `ip -o -4 addr show`) ou Darwin (sortie de `ifconfig`)."""
         self._commande("uname", f"echo {nom}")
-        commande = "ip" if nom == "Linux" else "ifconfig"
-        self._commande(commande, f'cat "{self.sortie_reseau}"')
+        if nom == "Linux":
+            # `ip neigh show to <ip> dev <prise>` : la ligne de cette IP dans la table de voisinage.
+            self._commande(
+                "ip",
+                f'if [ "$1" = neigh ]; then awk -v ip="$4" \'$1 == ip\' "{self.table_voisinage}"; '
+                f'else cat "{self.sortie_reseau}"; fi',
+            )
+        else:
+            self._commande("ifconfig", f'cat "{self.sortie_reseau}"')
         self.sortie_reseau.write_text(sortie_reseau)
+
+    def voisins(self, *ips: str, prise: str = "eth0") -> None:
+        """Appareils qui répondent en ARP sur `prise`, chacun avec une MAC."""
+        self.table_voisinage.write_text(
+            "".join(f"{ip} dev {prise} lladdr 02:00:00:00:00:{n:02x} REACHABLE\n" for n, ip in enumerate(ips, start=1))
+        )
 
     def ecrire_env(self, contenu: str) -> None:
         self.fichier_env.write_text(contenu)

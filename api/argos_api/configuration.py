@@ -1,7 +1,7 @@
 """Configuration du Site, lue dans l'environnement (`.env` via Docker Compose)."""
 
 from dataclasses import dataclass
-from ipaddress import IPv4Network
+from ipaddress import IPv4Address, IPv4Network
 
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings
@@ -32,9 +32,22 @@ class Configuration(BaseSettings):
     # Réglage vide ou invalide : l'API démarre, seule la Détection est indisponible.
     detection_sous_reseaux: str = Field("", validation_alias="ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX")
     detection_ports: str = Field("554,8554", validation_alias="ARGOS_DETECTION_CAMERAS_PORTS")
+    # Adresses d'ArgOS sur le réseau des caméras (macvlan, prod Linux : compose.reseau-cameras.yaml),
+    # séparées par des virgules : jamais Candidat, et aucune requête n'y est servie (ADR 0003).
+    reseau_cameras_adresses: str = Field("", validation_alias="ARGOS_RESEAU_CAMERAS_ADRESSES")
 
     def liste_origines_autorisees(self) -> list[str]:
         return [origine.strip() for origine in self.origines_autorisees.split(",") if origine.strip()]
+
+    def adresses_reseau_cameras(self) -> set[IPv4Address]:
+        """Une adresse invalide est ignorée : le réseau des caméras n'empêche jamais l'API de démarrer."""
+        adresses = set()
+        for element in _elements(self.reseau_cameras_adresses):
+            try:
+                adresses.add(IPv4Address(element))
+            except ValueError:
+                continue
+        return adresses
 
     def reglage_detection(self) -> "ReglageDetection":
         try:
