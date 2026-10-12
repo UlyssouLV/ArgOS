@@ -5,6 +5,9 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+# `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
+AUTRE_APPAREIL = "autre_appareil"
+
 
 class Base(DeclarativeBase):
     pass

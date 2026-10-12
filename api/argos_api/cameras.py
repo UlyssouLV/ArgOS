@@ -12,8 +12,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from argos_api import voisinage
 from argos_api.detection import Candidat
-from argos_api.modeles import Camera
+from argos_api.modeles import AUTRE_APPAREIL, Camera
 from argos_api.pont import chemin_flux
 
 PORT_RTSP = 554
@@ -115,9 +116,25 @@ def lister(base: Session) -> list[CameraLue]:
 
 
 def urls_actives(base: Session) -> dict[int, str]:
-    """URL RTSP stockée (mot de passe compris) de chaque Caméra active, par id."""
-    lignes = base.execute(select(Camera.id, Camera.url_rtsp).where(Camera.active))
+    """URL RTSP stockée (mot de passe compris) de chaque Caméra active à relayer, par id.
+
+    Sans celles où un autre Appareil répond : son Flux ne doit jamais passer sous leur nom.
+    """
+    lignes = base.execute(
+        select(Camera.id, Camera.url_rtsp).where(
+            Camera.active, Camera.raison_etat.is_distinct_from(AUTRE_APPAREIL)
+        )
+    )
     return {id_camera: url for id_camera, url in lignes}
+
+
+def mac_a_l_adresse(url: str) -> str | None:
+    """MAC de l'Appareil à l'IP de l'hôte de `url`, juste après lui avoir parlé ; `None` si illisible.
+
+    Un hôte qui résout en plusieurs IP : on ne sait pas laquelle a répondu, `None`.
+    """
+    ips = [ip for ip, _ in _adresses(url)]
+    return voisinage.mac_de(ips[0]) if len(ips) == 1 else None
 
 
 class CameraCorrespondante(BaseModel):

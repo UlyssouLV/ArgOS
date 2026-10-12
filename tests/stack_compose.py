@@ -118,12 +118,14 @@ def adresses_ip(service: str) -> set[str]:
     return set(inspection.stdout.split())
 
 
-def deplacer_cameras_simulees(adresses: dict[int, str]) -> None:
+def deplacer_cameras_simulees(adresses: dict[int, str], macs: dict[int, str] | None = None) -> None:
     """Donne à chaque Caméra simulée (par numéro) sa nouvelle IP, MAC et nom Compose gardés : un nouveau bail DHCP.
 
+    `macs` remplace la MAC de certaines : à la même IP, c'est alors un autre Appareil qui sert le même Flux.
     Toutes quittent leur réseau avant d'y revenir : deux Caméras simulées peuvent échanger leurs IP.
     Par l'API du moteur Docker : `docker network connect` ne garde pas la MAC.
     """
+    macs = MACS_SIMULEES | (macs or {})
     conteneurs = {numero: compose("ps", "-q", f"camera-simulee-{numero}").stdout.strip() for numero in adresses}
     # Lu sur `api`, toujours rattaché : une Caméra simulée peut être restée détachée par un test interrompu.
     reseau = _reseau_simulation(compose("ps", "-q", "api").stdout.strip())
@@ -139,7 +141,7 @@ def deplacer_cameras_simulees(adresses: dict[int, str]) -> None:
                     "Container": conteneurs[numero],
                     "EndpointConfig": {
                         "IPAMConfig": {"IPv4Address": ip},
-                        "MacAddress": MACS_SIMULEES[numero],
+                        "MacAddress": macs[numero],
                         "Aliases": [nom],
                     },
                 },
@@ -148,10 +150,25 @@ def deplacer_cameras_simulees(adresses: dict[int, str]) -> None:
 
 
 def remettre_cameras_simulees() -> None:
-    """Remet à leur IP fixe les Caméras simulées déplacées."""
-    deplacees = {n: ip for n, ip in IPS_SIMULEES.items() if adresses_ip(f"camera-simulee-{n}") != {ip}}
+    """Remet à leur IP et MAC fixes les Caméras simulées déplacées ou changées d'Appareil."""
+    deplacees = {
+        n: ip
+        for n, ip in IPS_SIMULEES.items()
+        if _adresses_et_macs(f"camera-simulee-{n}") != {(ip, MACS_SIMULEES[n])}
+    }
     if deplacees:
         deplacer_cameras_simulees(deplacees)
+
+
+def _adresses_et_macs(service: str) -> set[tuple[str, str]]:
+    conteneur = compose("ps", "-q", service).stdout.strip()
+    inspection = subprocess.run(
+        ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}/{{.MacAddress}} {{end}}", conteneur],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return {tuple(adresse.split("/")) for adresse in inspection.stdout.split()}
 
 
 def _reseau_simulation(conteneur: str) -> str:

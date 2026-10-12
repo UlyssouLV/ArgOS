@@ -6,6 +6,7 @@ import {
   modifierCamera,
   supprimerCamera,
   texteMac,
+  texteRaison,
   type Camera,
   type SaisieCamera,
 } from "../cameras";
@@ -106,6 +107,9 @@ export function Administration() {
                   <td>{camera.active ? "active" : "désactivée"}</td>
                   <td>
                     <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
+                    {texteRaison(camera.raison_etat) && (
+                      <span className="raison-etat"> ({texteRaison(camera.raison_etat)})</span>
+                    )}
                   </td>
                   <td>{dateVerification(camera)}</td>
                   <td>

@@ -212,6 +212,11 @@ input {
   color: #8c1d18;
 }
 
+.raison-etat {
+  color: #8c1d18;
+  font-size: 0.85em;
+}
+
 button.danger {
   border-color: #b3261e;
   color: #b3261e;

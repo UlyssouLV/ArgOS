@@ -142,7 +142,9 @@ def creer_app(
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
-        surveillance = Surveillance(ouvrir_base, sonde.sonder, configuration.delai_sonde, horloge)
+        surveillance = Surveillance(
+            ouvrir_base, sonde.sonder, cameras.mac_a_l_adresse, configuration.delai_sonde, horloge
+        )
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
