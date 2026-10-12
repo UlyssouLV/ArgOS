@@ -9,5 +9,5 @@ La Détection des Caméras part du conteneur `api`, qui reste sur le réseau bri
 
 ## Consequences
 
-- La 0.4.2 (identité stable par adresse MAC) ne pourra pas lire la MAC depuis `api` en bridge : il faudra l'obtenir autrement (hôte, caméra elle-même, ONVIF…).
+- La 0.4.2 (identité stable par adresse MAC) ne pouvait pas lire la MAC depuis `api` en bridge : remplacé en partie par l'[ADR 0003](0003-macvlan-sur-la-prise-des-cameras.md), où `api` rejoint aussi le réseau des caméras par macvlan (prod Linux). Les sous-réseaux restent déclarés comme ici.
 - Les Caméras simulées vivent sur leur propre réseau Compose, déclaré par le fichier Compose de simulation, qui ajoute lui-même son sous-réseau : le script hôte n'en sait rien et la prod n'en garde aucune trace.

@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from argos_api import cameras, detection, essai, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
-from argos_api.cameras import CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
+from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
+from argos_api.ecoute import SortieSeulement
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
 from argos_api.surveillance import Surveillance
@@ -77,8 +78,15 @@ class CandidatLu(BaseModel):
     # Diagnostic, non affiché par l'UI : statut de la réponse à OPTIONS et en-tête `Server`.
     statut_rtsp: int
     serveur: str | None
-    # Caméra du Site (active ou désactivée) à la même IP résolue et au même port ; `None` : nouveau.
+    # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : illisible (hors du réseau local direct).
+    mac: str | None
+    # Caméra du Site (active ou désactivée) du même Appareil (MAC), sinon à la même IP résolue et au même
+    # port ; `None` : nouveau.
     camera: CameraCorrespondante | None
+    # Appareil connu vu à une autre IP : hôte de l'URL de ses Caméras mis à jour par cette Détection.
+    adresse_mise_a_jour: AdresseMiseAJour | None
+    # Caméra qui occupe la nouvelle URL : celle de l'Appareil n'a pas été modifiée.
+    conflit: CameraCorrespondante | None
 
 
 class ResultatDetection(BaseModel):
@@ -104,6 +112,10 @@ class EssaiLu(BaseModel):
     codec: str | None
     # Chemin MediaMTX de l'Aperçu, à lire en WebRTC ; seulement si `flux_trouve`.
     apercu: str | None
+    # MAC de l'Appareil dès qu'il a répondu ; `None` si injoignable ou illisible.
+    mac: str | None
+    # Autre Caméra du même Appareil (même MAC, autre chemin) : l'UI avertit, l'ajout reste permis.
+    appareil_deja_connu: CameraCorrespondante | None
     # Sans `POST /api/essai/renouveler` pendant ce délai, l'Aperçu est retiré.
     expiration_s: float
 
@@ -133,7 +145,9 @@ def creer_app(
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
-        surveillance = Surveillance(ouvrir_base, sonde.sonder, configuration.delai_sonde, horloge)
+        surveillance = Surveillance(
+            ouvrir_base, sonde.sonder, cameras.mac_a_l_adresse, configuration.delai_sonde, horloge
+        )
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
@@ -167,6 +181,9 @@ def creer_app(
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Content-Type"],
     )
+    # Ajouté en dernier, donc le plus extérieur : refuse avant CORS, routage et session.
+    adresses_reseau_cameras = configuration.adresses_reseau_cameras()
+    app.add_middleware(SortieSeulement, adresses=adresses_reseau_cameras)
 
     def base() -> Iterator[Session]:
         with ouvrir_base() as s:
@@ -221,10 +238,12 @@ def creer_app(
     app.include_router(_routes_cameras(base, administrateur_connecte))
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
     app.include_router(
-        _routes_detection(configuration.reglage_detection(), hote_pont, base, administrateur_connecte)
+        _routes_detection(
+            configuration.reglage_detection(), hote_pont, adresses_reseau_cameras, base, administrateur_connecte
+        )
     )
     app.include_router(
-        _routes_essai(apercus, configuration, hote_pont, base, administrateur_connecte)
+        _routes_essai(apercus, configuration, hote_pont, adresses_reseau_cameras, base, administrateur_connecte)
     )
     return app
 
@@ -274,6 +293,7 @@ def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connec
 def _routes_detection(
     reglage: ReglageDetection,
     hote_pont: str,
+    adresses_argos: set[IPv4Address],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
@@ -300,16 +320,24 @@ def _routes_detection(
             raise HTTPException(status.HTTP_409_CONFLICT, DETECTION_EN_COURS)
         try:
             debut = monotonic()
-            exclues = soi.adresses_des_conteneurs([hote_pont])
+            # Adresses d'ArgOS sur le réseau des caméras comprises : jamais Candidat.
+            exclues = soi.adresses_des_conteneurs([hote_pont]) | adresses_argos
             trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, exclues, DELAI_DETECTION_S)
             argos = soi.publient_cette_api({c.ip for c in trouves}, DELAI_DETECTION_S)
             candidats = [c for c in trouves if c.ip not in argos]
             duree_s = round(monotonic() - debut, 1)
         finally:
             une_seule.release()
-        connues = cameras.par_adresse(base)
+        rapprochements = cameras.rapprocher(base, candidats)
         for c in candidats:
             journal.info("Détection : Candidat %s:%s RTSP %s Server %s", c.ip, c.port, c.statut_rtsp, c.serveur)
+            rapprochement = rapprochements[c]
+            if rapprochement.adresse_mise_a_jour is not None:
+                ancienne = rapprochement.adresse_mise_a_jour.ancienne
+                journal.info("Détection : Appareil %s suivi de %s à %s", c.mac, ancienne, c.ip)
+            if rapprochement.conflit is not None:
+                id_conflit = rapprochement.conflit.id
+                journal.warning("Détection : Appareil %s vu à %s, URL déjà prise par la Caméra %s", c.mac, c.ip, id_conflit)
         journal.info(
             "Détection : bilan sous-réseaux %s, ports %s, %s s, %s Candidat(s)",
             ",".join(sous_reseaux), ",".join(map(str, reglage.ports)), duree_s, len(candidats),
@@ -324,7 +352,8 @@ def _routes_detection(
                     port=c.port,
                     statut_rtsp=c.statut_rtsp,
                     serveur=c.serveur,
-                    camera=connues.get((c.ip, c.port)),
+                    mac=c.mac,
+                    **rapprochements[c].model_dump(),
                 )
                 for c in candidats
             ],
@@ -337,6 +366,7 @@ def _routes_essai(
     apercus: Apercus,
     configuration: Configuration,
     hote_pont: str,
+    adresses_argos: set[IPv4Address],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
 ) -> APIRouter:
@@ -344,7 +374,8 @@ def _routes_essai(
     pas pour deviner des mots de passe.
 
     Un seul essai à la fois, et seulement vers le réseau local, jamais vers ArgOS ni vers une Caméra déjà
-    configurée (même rapprochement que la Détection). Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
+    configurée (même rapprochement que la Détection), ni vers un Flux déjà configuré sur le même Appareil
+    (même MAC, même chemin), même si son IP a changé. Un nouvel essai retire le précédent et son Aperçu. L'URL du Flux (identifiants compris) reste côté serveur, jamais journalisée ;
     la Caméra est créée à partir d'elle.
     """
     Base = Annotated[Session, Depends(base)]
@@ -357,12 +388,11 @@ def _routes_essai(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, HORS_RESEAU_LOCAL)
         camera = cameras.par_adresse(base).get((demande.ip, demande.port))
         if camera is not None:
-            deja = DejaConfiguree(detail=f"Déjà configurée : {camera.nom}", camera=camera)
-            return JSONResponse(deja.model_dump(), status_code=status.HTTP_409_CONFLICT)
+            return _deja_configuree(camera)
         if not un_seul.acquire(blocking=False):
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:
-            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) or soi.publient_cette_api(
+            if demande.ip in soi.adresses_des_conteneurs([hote_pont]) | adresses_argos or soi.publient_cette_api(
                 [demande.ip], DELAI_DETECTION_S
             ):
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ADRESSE_D_ARGOS)
@@ -380,6 +410,11 @@ def _routes_essai(
                 demande.ip, demande.port, resultat.issue.value, resultat.chemin, resultat.codec,
             )
             apercu = None
+            appareil = None
+            if resultat.issue == essai.Issue.FLUX_TROUVE and resultat.mac:
+                appareil = cameras.de_l_appareil(base, resultat.mac, resultat.chemin)
+            if appareil is not None and appareil[1]:
+                return _deja_configuree(appareil[0])
             if resultat.issue == essai.Issue.FLUX_TROUVE:
                 try:
                     apercu = apercus.ouvrir(generation, resultat)
@@ -396,6 +431,8 @@ def _routes_essai(
             chemin=resultat.chemin,
             codec=resultat.codec,
             apercu=apercu,
+            mac=resultat.mac,
+            appareil_deja_connu=None if appareil is None else appareil[0],
             expiration_s=configuration.expiration_apercu,
         )
 
@@ -410,15 +447,21 @@ def _routes_essai(
 
     @routes.post("/camera", status_code=status.HTTP_201_CREATED)
     def ajouter(ajout: AjoutDepuisEssai, base: Base) -> CameraLue:
-        def creer(url: str) -> CameraLue:
+        def creer(resultat: essai.Resultat) -> CameraLue:
             # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
+            nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=resultat.url, emplacement=ajout.emplacement)
             with _erreurs_cameras():
-                return cameras.creer(base, NouvelleCamera(nom=ajout.nom, url_rtsp=url, emplacement=ajout.emplacement))
+                return cameras.creer(base, nouvelle, mac=resultat.mac)
 
         with _sans_apercu_404():
             return apercus.ajouter(creer)
 
     return routes
+
+
+def _deja_configuree(camera: CameraCorrespondante) -> JSONResponse:
+    deja = DejaConfiguree(detail=f"Déjà configurée : {camera.nom}", camera=camera)
+    return JSONResponse(deja.model_dump(), status_code=status.HTTP_409_CONFLICT)
 
 
 @contextmanager

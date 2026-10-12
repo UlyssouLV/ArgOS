@@ -23,7 +23,8 @@ SOUS_RESEAUX = "ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX"
 def test_une_seule_prise_pas_de_question_sous_reseau_ecrit(machine, systeme, sortie_reseau, prise):
     machine.systeme(systeme, sortie_reseau)
 
-    resultat = machine.lancer(terminal=True)
+    # Sur Linux, l'IP d'ArgOS sur le réseau des caméras est demandée ensuite : proposition acceptée.
+    resultat = machine.lancer(terminal=True, reponses="\n")
 
     assert resultat.code == 0, resultat.sortie
     assert QUESTION not in resultat.sortie
@@ -36,7 +37,7 @@ def test_prise_retenue_sous_reseau_recalcule_quand_son_adresse_change(machine):
     machine.ecrire_env(f"{INTERFACES}=eth1\n{SOUS_RESEAUX}=192.168.1.0/24\n")
     machine.systeme("Linux", ip_linux(("eth0", "10.0.0.5/24"), ("eth1", "192.168.50.7/24")))
 
-    resultat = machine.lancer(terminal=True)
+    resultat = machine.lancer(terminal=True, reponses="\n")
 
     assert resultat.code == 0, resultat.sortie
     assert QUESTION not in resultat.sortie
@@ -57,7 +58,7 @@ def test_docker_boucle_locale_et_169_254_ecartes(machine):
         ),
     )
 
-    resultat = machine.lancer(terminal=True)
+    resultat = machine.lancer(terminal=True, reponses="\n")
 
     assert resultat.code == 0, resultat.sortie
     assert QUESTION not in resultat.sortie
@@ -68,7 +69,7 @@ def test_docker_boucle_locale_et_169_254_ecartes(machine):
 def test_plusieurs_prises_en_terminal_question_et_choix_retenus(machine):
     machine.systeme("Linux", ip_linux(("eth0", "192.168.1.23/24"), ("eth1", "10.10.0.2/24"), ("eth2", "10.20.0.2/24")))
 
-    resultat = machine.lancer(terminal=True, reponses="1 3\n")
+    resultat = machine.lancer(terminal=True, reponses="1 3\n\n")
 
     assert resultat.code == 0, resultat.sortie
     assert QUESTION in resultat.sortie
@@ -112,7 +113,7 @@ def test_1024_adresses_acceptees(machine):
     machine.ecrire_env(f"{INTERFACES}=eth0,eth1\n")
     machine.systeme("Linux", ip_linux(("eth0", "10.0.0.5/23"), ("eth1", "192.168.0.2/23")))
 
-    resultat = machine.lancer(terminal=True)
+    resultat = machine.lancer(terminal=True, reponses="\n")
 
     assert resultat.code == 0, resultat.sortie
     assert resultat.env[SOUS_RESEAUX] == "10.0.0.0/23,192.168.0.0/23"

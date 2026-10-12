@@ -12,7 +12,7 @@ from ipaddress import ip_address, ip_network
 import httpx
 import pytest
 
-from stack_compose import URL_API, adresses_ip, compose, url_camera_simulee
+from stack_compose import MACS_SIMULEES, URL_API, adresses_ip, compose, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
 
@@ -110,6 +110,14 @@ def test_candidats_portent_statut_rtsp_et_serveur(connecte):
         # Caméras simulées : MediaMTX répond 200 à OPTIONS, même celle à identifiant.
         assert candidat["statut_rtsp"] == 200
         assert candidat["serveur"] == "gortsplib"
+
+
+def test_candidats_portent_la_mac_fixe_de_chaque_camera_simulee(connecte):
+    reponse = connecte.post("/api/detection", timeout=DELAI_DETECTION_S)
+
+    assert reponse.status_code == 200
+    simules = candidats_simules(reponse.json())
+    assert {ip: c["mac"] for ip, c in simules.items()} == {ip_de(n): MACS_SIMULEES[n] for n in (1, 2, 3)}
 
 
 def test_seconde_detection_simultanee_409(administrateur):

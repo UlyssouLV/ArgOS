@@ -1,0 +1,27 @@
+# Réseau des caméras, prod Linux seulement (ADR 0003), superposé à compose.yaml :
+# scripts/cameras/configurer-detection.sh l'ajoute à COMPOSE_FILE dans .env, jamais sous macOS (Docker
+# Desktop ne gère pas macvlan). Sans lui, compose.yaml marche seul (pas de MAC pour les vraies caméras).
+# api seul y gagne une interface macvlan sur la prise des caméras, à une IP fixe hors DHCP : il y parle aux
+# caméras sans NAT et lit leur MAC dans sa table de voisinage. Aucune requête n'y est servie (docs/securite.md).
+# Une seule prise : la première retenue (ARGOS_DETECTION_CAMERAS_INTERFACES) ; les autres restent sans MAC.
+
+services:
+  api:
+    networks:
+      # Le bridge garde la route par défaut (gw_priority : Docker 28+), les noms Compose et les ports publiés.
+      default:
+        gw_priority: 1
+      reseau-cameras:
+        ipv4_address: ${ARGOS_RESEAU_CAMERAS_IP:?écrite par scripts/cameras/configurer-detection.sh, voir .env.example}
+    environment:
+      # Jamais Candidat, et toute requête arrivée sur cette adresse est refusée.
+      ARGOS_RESEAU_CAMERAS_ADRESSES: ${ARGOS_RESEAU_CAMERAS_IP}
+
+networks:
+  reseau-cameras:
+    driver: macvlan
+    driver_opts:
+      parent: ${ARGOS_RESEAU_CAMERAS_PRISE:?écrite par scripts/cameras/configurer-detection.sh, voir .env.example}
+    ipam:
+      config:
+        - subnet: ${ARGOS_RESEAU_CAMERAS_SOUS_RESEAU:?écrit par scripts/cameras/configurer-detection.sh, voir .env.example}

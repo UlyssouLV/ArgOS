@@ -5,6 +5,9 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+# `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
+AUTRE_APPAREIL = "autre_appareil"
+
 
 class Base(DeclarativeBase):
     pass
@@ -33,3 +36,7 @@ class Camera(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     etat: Mapped[str] = mapped_column(String(16), default="unknown")
     etat_verifie_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # MAC de l'Appareil (`aa:bb:cc:dd:ee:ff`), lue sur le réseau, jamais saisie ; non unique.
+    mac: Mapped[str | None] = mapped_column(String(17))
+    # Pourquoi l'état est ce qu'il est, quand ArgOS le sait (ex. `autre_appareil`).
+    raison_etat: Mapped[str | None] = mapped_column(String(32))

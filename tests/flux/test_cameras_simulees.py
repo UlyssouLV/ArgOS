@@ -5,6 +5,7 @@ Elles ne sont pas publiées sur la machine hôte : ffprobe tourne dans un conten
 
 import json
 import subprocess
+from ipaddress import ip_address, ip_network
 
 import pytest
 
@@ -14,6 +15,8 @@ from conftest import (
     FICHIER_PROD,
     FICHIER_SIMULATION,
     IDENTIFIANTS,
+    IPS,
+    MACS,
     RESEAU_SIMULATION,
     REPO_ROOT,
     SOUS_RESEAU_SIMULATION,
@@ -102,6 +105,31 @@ def test_reseau_de_simulation_a_sous_reseau_fixe_rejoint_par_api_et_pont():
     assert ipam["subnet"] == SOUS_RESEAU_SIMULATION
     for service in [*CAMERAS_SIMULEES, "api", "mediamtx"]:
         assert RESEAU_SIMULATION in config["services"][service]["networks"], service
+
+
+@pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
+def test_mac_et_ip_fixes_sur_le_reseau_de_simulation(reseau_simulation, camera):
+    conteneur = compose("ps", "-q", camera).strip()
+    reseaux = json.loads(
+        subprocess.run(
+            ["docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", conteneur],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
+
+    assert reseaux[reseau_simulation]["IPAddress"] == IPS[camera]
+    assert reseaux[reseau_simulation]["MacAddress"] == MACS[camera]
+
+
+def test_les_adresses_dynamiques_evitent_les_adresses_fixes():
+    """Pont, API (et tout conteneur rattaché plus tard) prennent leur IP hors des adresses fixes."""
+    (ipam,) = configuration(FICHIER_PROD, FICHIER_SIMULATION)["networks"][RESEAU_SIMULATION]["ipam"]["config"]
+    dynamiques = ip_network(ipam["ip_range"])
+
+    assert dynamiques.subnet_of(ip_network(SOUS_RESEAU_SIMULATION))
+    assert not {ip_address(ip) for ip in IPS.values()} & set(dynamiques)
 
 
 def test_la_simulation_complete_les_sous_reseaux_de_la_detection():

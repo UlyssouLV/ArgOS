@@ -16,6 +16,8 @@ Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`c
 
 Version **0.4.1** : **Ajouter** sur un Candidat, ou **Ajouter par adresse IP**, fait chercher son Flux par ArgOS sur les chemins courants des caméras, demande un mot de passe ou un chemin seulement s’il le faut, et montre l’**Aperçu** avant d’ajouter la Caméra : plus d’URL RTSP à écrire (voir [Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)). Voir la [feuille de route de dev](docs/dev/feuille-de-route-dev.md).
 
+Version **0.4.2** : ArgOS reconnaît l’**Appareil** de chaque Caméra par son **adresse MAC** (affichée au format `aa:bb:cc:dd:ee:ff` sur les Candidats, les Caméras et l’Aperçu). Une Détection qui retrouve un Appareil connu à une autre IP met à jour seule l’URL RTSP de ses Caméras (**adresse mise à jour**) ; une Caméra dont l’IP répond avec une autre MAC passe `offline` (**autre appareil à cette adresse**) et n’est plus relayée. **Filtrer par MAC** retrouve parmi les Candidats la caméra de l’étiquette. En prod Linux, l’API rejoint pour cela le réseau des caméras (macvlan, `compose.reseau-cameras.yaml`) : voir [Adresse MAC et suivi d’adresse](#adresse-mac-et-suivi-dadresse).
+
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose
@@ -151,7 +153,7 @@ Ouvrir **http://localhost:8080** et se connecter avec `ARGOS_IDENTIFIANT` / `ARG
 
 L’onglet **Administration** couvre toute la gestion des Caméras :
 
-- la liste de toutes les Caméras (nom, emplacement, hôte:port, URL avec le mot de passe RTSP masqué, active ou désactivée, état `unknown` / `online` / `offline`, dernière vérification), rafraîchie toute seule toutes les 10 s ;
+- la liste de toutes les Caméras (nom, emplacement, hôte:port, MAC de l’Appareil ou « — », URL avec le mot de passe RTSP masqué, active ou désactivée, état `unknown` / `online` / `offline` avec sa raison s’il y en a une, dernière vérification), rafraîchie toute seule toutes les 10 s ;
 - **Modifier** : nom, URL, emplacement. L’URL s’affiche masquée (`rtsp://user:***@…`) : la laisser telle quelle conserve le mot de passe RTSP enregistré ;
 - un refus de l’API s’affiche dans le formulaire de modification : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
 - **Désactiver** / **Réactiver** ;
@@ -209,11 +211,11 @@ npm run dev     # http://localhost:5173, rechargement à chaud
 | `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
 | `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
 | `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
-| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) |
+| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) ; chaque Caméra porte `mac` et `raison_etat` (`autre_appareil` ou `null`), non modifiables |
 | `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
 | `GET /api/detection` | État de la Détection : `configuree`, `sous_reseaux`, `ports`, `raison` si indisponible |
-| `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |
-| `POST /api/essai` `{"ip", "port"?, "identifiant"?, "mot_de_passe"?, "chemin"?}` | Cherche le Flux d’un Candidat (port `554` par défaut) : `issue` (`flux_trouve`, `identifiants_requis`, `identifiants_refuses`, `flux_introuvable`, `injoignable`), `chemin`, `codec`, `apercu` (chemin MediaMTX à lire en WebRTC, si `flux_trouve`), `expiration_s`. Remplace l’essai précédent. `422` hors réseau local ou adresse d’ArgOS ; `409` IP déjà configurée (`camera` `{id, nom}`) ou essai déjà en cours |
+| `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `mac`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`, `adresse_mise_a_jour` `{ancienne, nouvelle}` ou `null`, `conflit` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |
+| `POST /api/essai` `{"ip", "port"?, "identifiant"?, "mot_de_passe"?, "chemin"?}` | Cherche le Flux d’un Candidat (port `554` par défaut) : `issue` (`flux_trouve`, `identifiants_requis`, `identifiants_refuses`, `flux_introuvable`, `injoignable`), `chemin`, `codec`, `mac`, `appareil_deja_connu` (`{id, nom}` : même MAC, autre chemin), `apercu` (chemin MediaMTX à lire en WebRTC, si `flux_trouve`), `expiration_s`. Remplace l’essai précédent. `422` hors réseau local ou adresse d’ArgOS ; `409` IP déjà configurée, ou même MAC et même chemin qu’une Caméra (`camera` `{id, nom}`), ou essai déjà en cours |
 | `POST /api/essai/renouveler` / `DELETE /api/essai` | Renouvelle l’Aperçu (`404` s’il a expiré) / retire l’essai et son Aperçu |
 | `POST /api/essai/camera` `{"nom", "emplacement"?}` | Crée la Caméra, active, depuis l’URL de l’essai côté serveur (identifiants compris), et retire l’Aperçu : `201` ; `404` sans Flux trouvé en cours ; `409` doublon, l’essai reste ouvert |
 | `GET /api/instance` | Sans session : jeton tiré à chaque démarrage, pour que la Détection reconnaisse ArgOS lui-même |
@@ -255,7 +257,18 @@ docker compose up -d --wait               # recrée api avec ce réglage
 
 `lancer-argos.command` l’appelle tout seul. En repli, écrire `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=192.168.1.0/24` à la main dans `.env` (1024 adresses au plus, voir `.env.example`). Réglage vide ou invalide : l’Administration affiche la raison, le reste d’ArgOS marche. En dev, `compose.simulation.yaml` ajoute `172.30.0.0/24` : la Détection trouve les trois Caméras simulées, et aussi tout appareil RTSP du réseau de la box. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
 
-Adresse IP, sous-réseau, trouver le sien sur la machine Linux, DHCP et adresses d’usine des caméras, démarrage automatique (service systemd) : **[Réseau du Site et Détection des Caméras](docs/cameras/reseau-et-detection.md)**. Ce que la Détection envoie sur le réseau : [docs/securite.md](docs/securite.md#détection--argos-agit-sur-le-réseau).
+### Adresse MAC et suivi d’adresse
+
+Chaque Candidat, chaque Caméra et l’Aperçu montrent la **MAC** de l’Appareil (« — » si illisible), lue dans la table de voisinage de `api` juste après chaque sonde. Elle sert à :
+
+- **suivre une caméra qui change d’IP** (DHCP) : la Détection qui la retrouve met à jour l’hôte de l’URL de toutes les Caméras de cet Appareil (port, chemin et identifiants gardés), et l’affiche **adresse mise à jour (ancienne → nouvelle)** dans « Déjà configurées » ;
+- **ne jamais montrer une autre caméra** sous le nom d’une Caméra : une autre MAC à son adresse la met `offline`, **autre appareil à cette adresse**, et le pont cesse de la relayer ;
+- **éviter les doublons** à l’ajout : même MAC et même chemin → **Déjà configurée : <nom>** ; même MAC, autre chemin → **Cet appareil porte déjà la Caméra <nom>**, ajout permis ;
+- **retrouver une caméra** : **Filtrer par MAC**, au-dessus des Candidats, accepte la MAC telle qu’écrite sur l’étiquette (`AA-BB-…`, `aabb.ccdd.eeff`, partielle).
+
+Une MAC ne se lit que sur le réseau local direct. En prod Linux, le script ci-dessus propose une IP libre pour ArgOS sur la prise des caméras, la retient dans `.env` (`ARGOS_RESEAU_CAMERAS_IP`) et ajoute **`compose.reseau-cameras.yaml`** à `COMPOSE_FILE` : `api` y rejoint le réseau des caméras par macvlan, sans y être joignable ([ADR 0003](docs/adr/0003-macvlan-sur-la-prise-des-cameras.md), [sécurité](docs/securite.md#réseau-des-caméras--une-sortie-seulement)). Jamais sous macOS : Docker Desktop ne gère pas macvlan, et les vraies caméras vues d’un Mac restent sans MAC. Les Caméras simulées ont des MAC fixes, lues sans macvlan. Une Caméra sans MAC garde le comportement de la 0.4.1.
+
+Adresse IP, sous-réseau, trouver le sien sur la machine Linux, DHCP et adresses d’usine des caméras, démarrage automatique (service systemd), MAC, ARP, macvlan, caméra qui change d’IP, Appareil à plusieurs Caméras : **[Réseau du Site et Détection des Caméras](docs/cameras/reseau-et-detection.md)**. Ce que la Détection envoie sur le réseau : [docs/securite.md](docs/securite.md#détection--argos-agit-sur-le-réseau).
 
 ## Caméras simulées
 
@@ -266,6 +279,8 @@ Déclarées par `compose.simulation.yaml`, jamais par `compose.yaml` : la stack 
 | `camera-simulee-1` | `rtsp://camera-simulee-1/Streaming/Channels/101` | `media/simulated/cam1.mp4` |
 | `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` (identifiants exigés) | `media/simulated/cam2.mp4` |
 | `camera-simulee-3` | `rtsp://camera-simulee-3/flux` | `media/simulated/cam3.mp4` |
+
+Chacune a une IP et une MAC fixes sur `cameras-simulees` : `172.30.0.11` à `.13`, `02:a6:05:00:00:01` à `:03`.
 
 Elles vivent sur leur propre réseau Compose, `cameras-simulees` (sous-réseau fixe `172.30.0.0/24`), rejoint par `api` (sonde, Détection) et `mediamtx` (pont). Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX` de `api`. Elles ne sont **pas publiées** sur la machine hôte : on les regarde par le [Live](#live), une fois déclarées comme Caméras. Format et conversion des vidéos : [media/simulated/README.md](media/simulated/README.md).
 
@@ -349,7 +364,8 @@ Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f 
 - `tests/api/` couvre aussi le pont (Caméra simulée, avec ou sans identifiants, relue en H.264 sur `camera-<id>`) et le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
 - `tests/api/` et `tests/web/` couvrent la Détection : les trois Caméras simulées trouvées (dont celle à identifiants), ni la base ni le pont parmi les Candidats, Caméra correspondante sur un Candidat déjà déclaré, `409` pour une seconde Détection simultanée, `401` sans session ; dans l’UI, chargement, liste des Candidats, « Déjà configurées » repliée puis dépliée.
 - `tests/api/` et `tests/web/` couvrent l’ajout d’une Caméra depuis un Candidat : `camera-simulee-1` trouvée seule (chemin Hikvision, H.264, Aperçu présent dans le pont), `camera-simulee-2` mot de passe requis puis refusé puis accepté, `camera-simulee-3` Flux introuvable puis trouvé par le chemin saisi ; Caméra ajoutée active qui passe `online`, identifiants conservés mais jamais renvoyés ; doublon `409` avec l’essai toujours ouvert ; Aperçu retiré par `DELETE`, par un nouvel essai, par l’ajout, sans renouvellement, et orphelins retirés au démarrage ; IP injoignable, hors du réseau local ou d’ArgOS, déjà configurée ; essai simultané `409`, `401` sans session, aucun identifiant dans les journaux. Dans l’UI : les trois parcours avec Aperçu qui joue, Annuler, codec non lisible nommé, Ajouter par adresse IP.
-- `tests/scripts/` lance `scripts/cameras/configurer-detection.sh` avec de fausses sorties `ip` / `ifconfig` et un `.env` temporaire : une seule prise sans question, sous-réseau recalculé, Docker, boucle locale et `169.254` écartés, prise sans adresse, plage de plus de 1024 adresses refusée.
+- `tests/api/` et `tests/web/` couvrent l’identité par MAC : MAC fixe des Caméras simulées sur les Candidats, l’essai et la Caméra ajoutée ; Caméra simulée déplacée (même MAC, autre IP) suivie par la Détection (« adresse mise à jour »), échange d’IP, Caméra désactivée suivie, conflit avec une Caméra sans MAC ; IP prêtée à une autre Caméra simulée (« autre appareil à cette adresse », plus relayée) ; doublons à l’ajout par MAC ; filtre par MAC. `tests/regles-sessions/` vérifie le refus des requêtes arrivées par le réseau des caméras.
+- `tests/scripts/` lance `scripts/cameras/configurer-detection.sh` avec de fausses sorties `ip` / `ifconfig` et un `.env` temporaire : une seule prise sans question, sous-réseau recalculé, Docker, boucle locale et `169.254` écartés, prise sans adresse, plage de plus de 1024 adresses refusée ; réseau des caméras (Linux) : IP libre proposée depuis le haut du sous-réseau, remplaçable, retenue sans terminal, avertissements (hors sous-réseau, répond en ARP), `COMPOSE_FILE` complété sur Linux et jamais sur macOS, `compose.reseau-cameras.yaml` valide.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
 
 ## Structure
@@ -357,6 +373,7 @@ Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f 
 ```
 compose.yaml              Stack Docker Compose de prod (mediamtx, api, db, web)
 compose.simulation.yaml   Simulation de dev, superposée : Caméras simulées, réseau cameras-simulees
+compose.reseau-cameras.yaml  Prod Linux, superposé par le script : réseau des caméras (macvlan) pour lire les MAC
 lancer-argos.command      Lanceur macOS (double-clic) : .env, Détection, Docker Desktop, stack, UI
 scripts/cameras/          Script hôte : sous-réseaux de la Détection depuis la prise des caméras
 .env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
@@ -372,9 +389,9 @@ tests/scripts/            Tests du script de configuration de la Détection (fau
 docs/cameras/             Réseau du Site et Détection des Caméras, Ajouter une Caméra (docs pédagogiques)
 docs/dev/                 Feuille de route de dev, schéma des Flux (Mermaid)
 docs/specs/               Specs de version et contexte initial
-docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge)
+docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge, macvlan)
 docs/securite.md          Sécurité : limites connues, exposition réseau, Détection, dettes
-CONTEXT.md                Glossaire (Site, Administrateur, Caméra, Flux…)
+CONTEXT.md                Glossaire (Site, Administrateur, Appareil, Caméra, Flux…)
 AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 ```
 

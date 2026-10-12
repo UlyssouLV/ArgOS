@@ -2,7 +2,7 @@
 
 Comprendre, et pouvoir expliquer, comment les Caméras sont reliées à la machine qui héberge ArgOS, et ce que fait le bouton **Détecter des Caméras** de l’Administration. Écrit pour quelqu’un qui n’est pas spécialiste du réseau.
 
-Pour ajouter un Candidat comme Caméra : [Ajouter une Caméra](ajouter-une-camera.md). Pour aller plus loin : [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md) (pourquoi les sous-réseaux sont déclarés), [sécurité](../securite.md#détection--argos-agit-sur-le-réseau) (ce que la Détection envoie), [schéma des Flux](../dev/schema-flux.md).
+Pour ajouter un Candidat comme Caméra : [Ajouter une Caméra](ajouter-une-camera.md). Reconnaître une caméra qui change d’IP (adresse MAC, réseau des caméras) : § 9 et § 10. Pour aller plus loin : [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md) (pourquoi les sous-réseaux sont déclarés), [ADR 0003](../adr/0003-macvlan-sur-la-prise-des-cameras.md) (pourquoi l’API rejoint le réseau des caméras), [sécurité](../securite.md#détection--argos-agit-sur-le-réseau) (ce que la Détection envoie), [schéma des Flux](../dev/schema-flux.md).
 
 ## 1. Adresse IP, sous-réseau, notation `/24`
 
@@ -67,7 +67,7 @@ Conséquences :
 
 - `api` **joint** les adresses du réseau local : il peut appeler une caméra en `10.10.0.50`.
 - Mais il ne **voit** pas les prises de la machine : depuis le conteneur, il n’existe ni `enp1s0` ni `enp2s0`, seulement son réseau Docker. Il ne peut donc pas deviner seul sur quel sous-réseau chercher.
-- Il ne voit pas non plus les **adresses MAC** des appareils (l’identifiant matériel de chaque carte réseau) : elles restent de l’autre côté du NAT.
+- Il ne voit pas non plus les **adresses MAC** des appareils (l’identifiant matériel de chaque carte réseau) : elles restent de l’autre côté du NAT. Depuis la 0.4.2, en prod Linux, `api` rejoint en plus le réseau des caméras pour les lire (§ 9).
 
 Mettre `api` directement sur le réseau de la machine (`network_mode: host`) réglerait la question, mais casserait le reste (noms des conteneurs, exposition des ports, comportement différent sous Docker Desktop) : choix écarté dans l’[ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md).
 
@@ -81,9 +81,10 @@ Un clic sur **Détecter des Caméras** (Administration, session connectée) lanc
 2. **Connexion TCP** sur l’adresse et le port. Rien ne répond, ou refus : on passe à la suivante. Chaque essai est borné à 1,5 s ; 128 essais tournent en même temps. Un `/24` sur deux ports (508 essais) tient ainsi en moins de 10 s.
 3. **Requête RTSP `OPTIONS`**, si la connexion est acceptée : la question la plus anodine du protocole des caméras (« quelles commandes acceptes-tu ? »), sans chemin de Flux ni identifiants. Si la réponse commence par une ligne de statut RTSP (`RTSP/1.0 200 OK`, mais aussi `401 Unauthorized` ou autre), l’hôte est un **Candidat**. Un port ouvert qui ne répond pas en RTSP (une imprimante, un serveur web) n’en est pas un.
 4. **ArgOS lui-même est écarté** : la machine qui héberge ArgOS publie le pont, qui répond en RTSP comme une caméra. L’API demande à chaque Candidat, sur le port 8000, `GET /api/instance` ; celui qui renvoie le jeton de cette instance (tiré au hasard à chaque démarrage) est ArgOS, et disparaît de la liste.
-5. **Rapprochement avec les Caméras du Site** : un Candidat dont l’adresse IP et le port sont ceux de l’URL RTSP d’une Caméra (active ou désactivée ; un nom d’hôte dans l’URL est d’abord résolu en IP) est rangé dans **Déjà configurées (n)**, avec le nom de la Caméra, replié par défaut.
+5. **MAC de l’Appareil** : la connexion TCP vient de faire demander la MAC du Candidat (ARP, § 9) ; l’API la lit dans sa table de voisinage. Illisible (réseau routé, Mac de dev avec de vraies caméras) : pas de MAC, « — » dans l’UI.
+6. **Rapprochement avec les Caméras du Site** : d’abord par MAC, un Candidat dont la MAC est celle d’une Caméra (active ou désactivée) est son Appareil, même à une autre IP (§ 10) ; sinon, un Candidat dont l’adresse IP et le port sont ceux de l’URL RTSP d’une Caméra (un nom d’hôte dans l’URL est d’abord résolu en IP). Il est rangé dans **Déjà configurées (n)**, avec le nom de la Caméra, replié par défaut.
 
-L’UI montre ensuite les sous-réseaux couverts et les nouveaux Candidats (IP, port), triés par adresse. L’API renvoie en plus, pour le diagnostic, le statut RTSP reçu et l’en-tête `Server` annoncé (souvent la marque ou le firmware), et les écrit dans ses journaux :
+L’UI montre ensuite les sous-réseaux couverts et les nouveaux Candidats (IP, port, MAC), triés par adresse. **Filtrer par MAC**, au-dessus de la liste, retrouve la caméra qu’on a dans la main : on tape la MAC telle qu’écrite sur son étiquette (`AA-BB-CC-DD-EE-FF`, `aabb.ccdd.eeff`, majuscules ou non), entière ou en partie. L’API renvoie en plus, pour le diagnostic, le statut RTSP reçu et l’en-tête `Server` annoncé (souvent la marque ou le firmware), et les écrit dans ses journaux :
 
 ```bash
 docker compose logs api | grep Détection
@@ -97,7 +98,7 @@ Une seule Détection tourne à la fois : une seconde, lancée pendant la premiè
 
 - **Rien n’est ajouté ni stocké** : un Candidat n’est pas une Caméra, et disparaît au rechargement de la page. Pour en faire une Caméra : **Ajouter** sur sa ligne (ou **Ajouter par adresse IP** pour un appareil non détecté), voir [Ajouter une Caméra](ajouter-une-camera.md).
 - **Aucun identifiant n’est envoyé**, et la Détection ne dit pas si une caméra est protégée : `OPTIONS` répond en général sans mot de passe. Une caméra protégée apparaît donc comme les autres ; le mot de passe est demandé à l’ajout.
-- **Pas d’adresse MAC** (invisible depuis `api`, § 3) : si une caméra change d’IP, rien ne la reconnaît. Identité par MAC : 0.4.2.
+- **Pas de Détection automatique** : une Caméra qui passe `offline` ne fait jamais balayer le réseau. Pour retrouver une caméra qui a changé d’IP, l’Administrateur relance la Détection (§ 10).
 - **Pas d’ONVIF, de mDNS ni de lecture du switch** : seul compte ce qui accepte une connexion RTSP depuis la machine ArgOS, sur les ports sondés.
 - **Rien hors des sous-réseaux autorisés** : une caméra restée sur une autre plage d’adresses est invisible (§ 5).
 - **Pas d’IPv6.**
@@ -133,9 +134,10 @@ Il :
 2. **au premier lancement**, demande quelle(s) prise(s) relient les caméras (numéros séparés par des espaces), sauf s’il n’y en a qu’une, prise d’office, et retient la réponse dans `.env` : `ARGOS_DETECTION_CAMERAS_INTERFACES=enp2s0` ;
 3. **à chaque lancement**, relit l’adresse actuelle des prises retenues, en déduit leur(s) sous-réseau(x) et les écrit dans `.env` : `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=10.10.0.0/24`. La Détection suit ainsi un changement d’adresse sans rien reconfigurer ;
 4. prévient si une prise retenue n’a pas d’adresse (câble débranché, pas de DHCP, § 5) : le réglage est vidé et la Détection affiche « non configurée » ;
-5. refuse une plage de plus de 1024 adresses (par exemple une prise en `/16`), en expliquant pourquoi : réglage vidé, sortie en erreur.
+5. refuse une plage de plus de 1024 adresses (par exemple une prise en `/16`), en expliquant pourquoi : réglage vidé, sortie en erreur ;
+6. **sur Linux seulement**, prépare le réseau des caméras (§ 9) : au premier lancement en terminal, propose une IP libre pour ArgOS sur la prise des caméras et la retient (`ARGOS_RESEAU_CAMERAS_IP`), puis ajoute `compose.reseau-cameras.yaml` à `COMPOSE_FILE` dans `.env`. Sous macOS, rien.
 
-Sans terminal (démarrage automatique, § 7), il ne pose aucune question : il garde la prise retenue, ou, s’il y a plusieurs prises et aucune retenue, laisse la Détection non configurée en le disant.
+Sans terminal (démarrage automatique, § 7), il ne pose aucune question : il garde la prise et l’IP d’ArgOS retenues, ou, s’il y a plusieurs prises et aucune retenue, laisse la Détection non configurée en le disant ; sans IP retenue, le réseau des caméras n’est pas activé (pas de MAC pour les vraies caméras).
 
 **Changer de prise** : vider `ARGOS_DETECTION_CAMERAS_INTERFACES=` dans `.env`, puis relancer le script dans un terminal.
 
@@ -186,12 +188,106 @@ sudo systemctl enable --now argos.service
 journalctl -u argos.service   # ce qu'a dit le script au dernier démarrage
 ```
 
-`network-online.target` attend que le réseau soit prêt (avec NetworkManager ou systemd-networkd, leur service `…-wait-online` doit être activé) : sinon la prise des caméras peut ne pas encore avoir son adresse DHCP quand le script la lit. Sans `compose.simulation.yaml` : c’est la stack de prod.
+`docker compose` lit `COMPOSE_FILE` dans `.env` : une fois le réseau des caméras activé par le script, `ExecStart` le monte sans rien changer au service. `network-online.target` attend que le réseau soit prêt (avec NetworkManager ou systemd-networkd, leur service `…-wait-online` doit être activé) : sinon la prise des caméras peut ne pas encore avoir son adresse DHCP quand le script la lit. Sans `compose.simulation.yaml` : c’est la stack de prod.
 
 ## 8. Le cas du dev
 
 - **Sur Mac**, `lancer-argos.command` appelle le script (avec `ifconfig`) avant de démarrer la stack. La prise est en général `en0` (Wi-Fi ou Ethernet), sur le réseau de la box, par exemple `192.168.1.0/24`.
-- La stack de dev ajoute **`compose.simulation.yaml`** : les trois Caméras simulées (`camera-simulee-1` à `-3`, RTSP sur le port 554, `-2` avec identifiants) vivent sur le réseau Compose `cameras-simulees`, en `172.30.0.0/24`, que `api` rejoint. Ce fichier **ajoute** lui-même `172.30.0.0/24` aux sous-réseaux venus de `.env` : le script n’en sait rien, et la prod (`compose.yaml` seul) n’en garde aucune trace.
+- La stack de dev ajoute **`compose.simulation.yaml`** : les trois Caméras simulées (`camera-simulee-1` à `-3`, RTSP sur le port 554, `-2` avec identifiants) vivent sur le réseau Compose `cameras-simulees`, en `172.30.0.0/24`, que `api` rejoint. Chacune y a une IP et une MAC fixes (`172.30.0.11` à `.13`, `02:a6:05:00:00:01` à `:03`) : `api` est leur voisin direct, il lit leurs MAC sans macvlan (§ 9). Ce fichier **ajoute** lui-même `172.30.0.0/24` aux sous-réseaux venus de `.env` : le script n’en sait rien, et la prod (`compose.yaml` seul) n’en garde aucune trace.
 - La Détection balaie donc **aussi le réseau de la box** : tout appareil RTSP de la maison (une vraie caméra, un NAS, un décodeur) apparaît comme Candidat. C’est attendu. Le Mac lui-même, qui publie le pont sur `8554`, est reconnu et écarté (§ 4).
 - Sans prise privée (Mac hors réseau), le script laisse le réglage vide : la Détection ne cherche alors que dans `172.30.0.0/24` et trouve les trois Caméras simulées.
-- Sous Docker Desktop, `api` sort vers le réseau de la box par le NAT du Mac, comme sous Linux (§ 3). Lancer la stack à la main : README, [Protocole de lancement](../../README.md#protocole-de-lancement).
+- Sous Docker Desktop, `api` sort vers le réseau de la box par le NAT du Mac, comme sous Linux (§ 3). macvlan n’y existe pas : les vraies caméras vues depuis un Mac n’ont pas de MAC, et gardent le comportement de la 0.4.1 (§ 10). Lancer la stack à la main : README, [Protocole de lancement](../../README.md#protocole-de-lancement).
+
+## 9. Reconnaître un Appareil : MAC, ARP, réseau des caméras
+
+### L’adresse MAC
+
+Une adresse IP se prête et se reprend : une caméra en DHCP peut recevoir une autre IP après une coupure ou à la fin de son bail (§ 5). Ce qui ne change pas, c’est l’**adresse MAC** de sa carte réseau : six octets gravés en usine, imprimés sur l’étiquette de la caméra, par exemple `AC-CC-8E-12-34-56`. Chaque fabricant l’écrit à sa façon (`AC:CC:8E:…`, `accc.8e12.3456`) ; ArgOS l’affiche toujours au même format : `ac:cc:8e:12:34:56`.
+
+ArgOS appelle **Appareil** le matériel reconnu par sa MAC, et **Caméra** chaque Flux d’un Appareil. Une caméra ordinaire est un Appareil à une seule Caméra ; un enregistreur ou un encodeur multi-voies est un Appareil à plusieurs Caméras (§ 10).
+
+### L’ARP : comment une machine apprend une MAC
+
+Sur un même sous-réseau, les appareils ne s’échangent pas les paquets par IP, mais par MAC. Avant de parler à `10.10.0.50`, la machine crie sur le réseau « qui a `10.10.0.50` ? » : c’est une requête **ARP**. La caméra répond avec sa MAC, que la machine garde quelques minutes dans sa **table de voisinage** (`ip neigh` sur Linux).
+
+Deux conséquences :
+
+- On ne lit une MAC **qu’après avoir parlé** à l’IP : ArgOS lit la table juste après chaque sonde réussie (Détection, essai d’ajout, surveillance de l’état), quand la connexion vient de la remplir.
+- On ne voit que les MAC des **voisins directs**. Derrière un routeur, la table donne la MAC du routeur pour toute adresse lointaine : inutile. ArgOS ne lit donc aucune MAC sur un réseau routé.
+
+### Pourquoi l’API ne la voyait pas
+
+Derrière le NAT de Docker (§ 3), c’est la **machine hôte** qui parle aux caméras, donc elle qui fait l’ARP et garde les MAC. Le conteneur `api`, lui, n’a pour voisin que le pont Docker : sa table de voisinage ne contient aucune caméra.
+
+### macvlan : l’API sur le réseau des caméras
+
+Depuis la 0.4.2, en **prod Linux**, `api` rejoint directement le réseau des caméras par une interface **macvlan** : une carte réseau virtuelle, avec sa propre MAC et sa propre IP, branchée sur la prise des caméras comme un appareil de plus sur le switch. `api` parle alors aux caméras sans NAT, fait lui-même l’ARP, et lit leurs MAC dans sa propre table. Il garde le réseau bridge pour le reste (noms des conteneurs, ports publiés, route par défaut). Pourquoi ce choix plutôt que la table ARP de l’hôte : [ADR 0003](../adr/0003-macvlan-sur-la-prise-des-cameras.md).
+
+```
+box ── enp1s0 (192.168.1.20) ── machine ArgOS ── enp2s0 (10.10.0.1) ── switch ── caméras
+                                     │                  │
+                          api : bridge Docker     api : macvlan 10.10.0.254
+                          (UI, NAT, ports)        (sonde des caméras, ARP)
+```
+
+Ce réseau est une **sortie** : `api` y parle aux caméras, mais refuse toute requête qui y arrive (une caméra compromise ne joint pas l’API, voir [sécurité](../securite.md#réseau-des-caméras--une-sortie-seulement)).
+
+### L’IP d’ArgOS sur le réseau des caméras
+
+L’interface macvlan a besoin d’une IP du sous-réseau des caméras, **fixe**, et que personne d’autre n’utilise. Le script (§ 6) s’en charge au premier lancement en terminal :
+
+1. il part du **haut** du sous-réseau (`10.10.0.254` pour un `/24`), loin des adresses que distribuent en général les serveurs DHCP, et propose la première adresse qui ne répond pas en ARP et n’est pas une adresse de la machine ;
+2. on accepte (Entrée) ou on tape une autre adresse ; une adresse hors du sous-réseau, ou qui répond déjà en ARP, est refusée ;
+3. il la retient dans `.env` (`ARGOS_RESEAU_CAMERAS_IP`), avec la prise et son sous-réseau (`ARGOS_RESEAU_CAMERAS_PRISE`, `ARGOS_RESEAU_CAMERAS_SOUS_RESEAU`), et ajoute `compose.reseau-cameras.yaml` à `COMPOSE_FILE`.
+
+**À vérifier soi-même** : l’adresse doit être **hors de la plage DHCP** du réseau des caméras. Le script sait seulement qu’elle est libre maintenant ; si un serveur DHCP la donne plus tard à une caméra, les deux se gênent. Avec un DHCP sur ce réseau (box, routeur, `dnsmasq`), réduire sa plage ou y réserver l’adresse d’ArgOS.
+
+À chaque lancement, le script revérifie l’IP retenue : sortie du sous-réseau de la prise (adresse de la prise changée), ou occupée par un autre appareil (répond en ARP), il **avertit** et désactive le réseau des caméras (retiré de `COMPOSE_FILE`) jusqu’à ce qu’on en choisisse une autre en terminal. ArgOS démarre quand même, sans MAC pour les vraies caméras.
+
+Limites :
+
+- **Une seule prise** : le réseau des caméras se monte sur la première prise retenue. Les caméras des autres prises sont détectées, mais sans MAC (le script le dit).
+- La machine hôte elle-même ne joint pas l’IP macvlan d’`api` (propriété de macvlan sous Linux) : sans effet sur ArgOS, qui n’est servi que par le bridge.
+- **Jamais sous macOS** : Docker Desktop ne gère pas macvlan. Sur un Mac, les vraies caméras restent sans MAC (§ 8).
+
+Changer l’IP d’ArgOS : vider `ARGOS_RESEAU_CAMERAS_IP=` dans `.env`, relancer le script dans un terminal, puis `docker compose up -d --wait`.
+
+## 10. Quand une caméra change d’IP
+
+### Suivi à la Détection
+
+ArgOS retient la MAC de l’Appareil de chaque Caméra dès qu’il la voit (à l’ajout, à la Détection, ou par la sonde). Quand une caméra a pris une autre IP, sa Caméra passe `offline` : rien n’est plus diffusé à son ancienne adresse. ArgOS ne la cherche pas de lui-même (§ 4) : l’Administrateur relance **Détecter des Caméras**.
+
+La Détection trouve un Candidat dont la MAC est celle d’une Caméra du Site, à une autre IP. ArgOS :
+
+1. remplace l’**hôte** de l’URL RTSP de toutes les Caméras de cet Appareil par la nouvelle IP : port, chemin et identifiants sont gardés (`rtsp://admin:***@10.10.0.57/Streaming/Channels/101` devient `rtsp://admin:***@10.10.0.61/Streaming/Channels/101`). Les Caméras désactivées suivent aussi, pour être justes à leur réactivation ;
+2. range le Candidat dans **Déjà configurées**, avec la mention **adresse mise à jour (10.10.0.57 → 10.10.0.61)** ;
+3. remet la Caméra à `unknown` ; le pont la relaie à sa nouvelle adresse, la sonde la repasse `online`, et elle revient dans le Live, sans autre action.
+
+Toutes les mises à jour d’une Détection s’écrivent ensemble : deux caméras qui ont **échangé** leurs IP sont toutes deux corrigées.
+
+**Conflit** : si la nouvelle URL est déjà celle d’une autre Caméra, sans MAC, qui ne bouge pas, ArgOS ne modifie pas la Caméra de l’Appareil, et le Candidat l’affiche : **adresse non mise à jour : URL déjà prise par <nom>**. À corriger à la main (**Modifier**), puis relancer la Détection.
+
+### « Autre appareil à cette adresse »
+
+Pire qu’une caméra qui part : un **autre** appareil qui reprend son IP (une autre caméra a reçu ce bail). Il répond peut-être en RTSP au même chemin, et la Caméra semblerait `online` avec l’image d’une autre caméra.
+
+La sonde de l’état vérifie donc aussi la MAC : quand le Flux d’une Caméra répond, mais depuis une **autre MAC** que celle de son Appareil, la Caméra passe `offline`, l’Administration affiche **autre appareil à cette adresse** à côté de l’état, et le pont cesse de la relayer : son Flux disparaît du Live. Dès que la bonne MAC est revue à cette adresse, la raison s’efface et le relais reprend. Pour retrouver la caméra à sa nouvelle IP : relancer une Détection.
+
+### Caméras sans MAC
+
+Une Caméra peut ne pas avoir de MAC :
+
+- elle a été **ajoutée avant la 0.4.2** : elle reçoit sa MAC d’elle-même, la première fois qu’une Détection ou la sonde voit son Appareil à son IP, sans migration manuelle ;
+- sa MAC est **illisible** : caméra derrière un routeur (réseau routé), réseau des caméras non activé, ou **Mac de dev** avec de vraies caméras (pas de macvlan sous Docker Desktop).
+
+Sans MAC, la Caméra garde le comportement de la 0.4.1 : l’UI affiche **—**, elle est rapprochée des Candidats par IP et port, et si elle change d’IP, elle reste `offline` jusqu’à ce qu’on corrige son URL (**Modifier**).
+
+### Un Appareil à plusieurs Caméras
+
+Un enregistreur (NVR), un encodeur multi-voies ou une caméra à plusieurs objectifs porte **plusieurs Flux sous une seule MAC**, un par chemin RTSP. ArgOS le tolère depuis la 0.4.2 :
+
+- **à l’ajout**, un Flux déjà configuré sur le même Appareil (même MAC, même chemin, même si l’IP a changé) est refusé : **Déjà configurée : <nom>**. Un autre chemin du même Appareil est permis, avec l’avertissement **Cet appareil porte déjà la Caméra <nom>** ([Ajouter une Caméra](ajouter-une-camera.md#1-le-déroulé)) ;
+- **à la Détection**, toutes ses Caméras sont mises à jour ensemble quand son IP change ; le Candidat est rangé sous la plus ancienne (au même port de préférence).
+
+**Reste à étudier** sur du vrai matériel ([feuille de route](../dev/feuille-de-route-dev.md#plus-tard--un-appareil-plusieurs-caméras)) : comment chaque voie expose son chemin RTSP selon les marques, proposer à l’ajout toutes les voies d’un Appareil plutôt que la première trouvée, et regrouper les Caméras d’un même Appareil dans l’Administration.

@@ -166,6 +166,17 @@ input {
   margin-bottom: 0.75rem;
 }
 
+.filtre-mac {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+}
+
+.filtre-mac input {
+  width: 14rem;
+  font-family: ui-monospace, monospace;
+}
+
 .candidats {
   width: auto;
   min-width: 16rem;
@@ -177,6 +188,12 @@ input {
 
 .deja-configurees summary {
   cursor: pointer;
+}
+
+/* Adresse suivie (ou conflit) sous le nom de la Caméra d'un Candidat déjà configuré. */
+.suivi {
+  display: block;
+  font-size: 0.85em;
 }
 
 .etat {
@@ -193,6 +210,11 @@ input {
 .etat-offline {
   background: #f8d7d5;
   color: #8c1d18;
+}
+
+.raison-etat {
+  color: #8c1d18;
+  font-size: 0.85em;
 }
 
 button.danger {
@@ -265,4 +287,9 @@ button.danger {
 
 .ajout-candidat .lecteur {
   max-height: 22rem;
+}
+
+.ajout-candidat .avertissement {
+  margin: 0;
+  color: #8a5a00;
 }

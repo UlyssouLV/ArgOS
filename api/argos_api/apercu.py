@@ -69,10 +69,11 @@ class Apercus:
         with self._verrou:
             self._ouvert_valide().echeance = self._horloge() + self._expiration_s
 
-    def ajouter[T](self, creer: Callable[[str], T]) -> T:
-        """`creer` reçoit l'URL du Flux (identifiants compris) ; s'il lève, l'Aperçu reste ouvert."""
+    def ajouter[T](self, creer: Callable[[essai.Resultat], T]) -> T:
+        """`creer` reçoit le résultat de l'essai (URL du Flux, identifiants compris, et MAC) ; s'il lève,
+        l'Aperçu reste ouvert."""
         with self._verrou:
-            camera = creer(self._ouvert_valide().resultat.url)
+            camera = creer(self._ouvert_valide().resultat)
             self._retirer()
             return camera
 

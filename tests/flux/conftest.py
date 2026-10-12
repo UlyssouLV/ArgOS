@@ -20,6 +20,13 @@ CHEMINS = {
 }
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS = {"camera-simulee-2": "admin:argos-simulee"}
+# Adresses fixes des Caméras simulées sur leur réseau (media/simulated/README.md).
+IPS = {"camera-simulee-1": "172.30.0.11", "camera-simulee-2": "172.30.0.12", "camera-simulee-3": "172.30.0.13"}
+MACS = {
+    "camera-simulee-1": "02:a6:05:00:00:01",
+    "camera-simulee-2": "02:a6:05:00:00:02",
+    "camera-simulee-3": "02:a6:05:00:00:03",
+}
 
 
 def compose(*args: str, fichiers: tuple[str, ...] = (FICHIER_PROD, FICHIER_SIMULATION)) -> str:

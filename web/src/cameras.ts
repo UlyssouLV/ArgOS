@@ -13,11 +13,28 @@ export type Camera = {
   active: boolean;
   etat: Etat;
   etat_verifie_le: string | null;
+  raison_etat: string | null;
+  /** MAC de l'Appareil (`aa:bb:cc:dd:ee:ff`), lue sur le réseau ; `null` : inconnue. */
+  mac: string | null;
   /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
   chemin_flux: string | null;
 };
 
 export type SaisieCamera = { nom: string; url_rtsp: string; emplacement: string | null };
+
+/** MAC à afficher ; « — » si inconnue (réseau routé, Caméra d'avant la 0.4.2). */
+export function texteMac(mac: string | null): string {
+  return mac ?? "—";
+}
+
+const RAISONS_ETAT: Record<string, string> = {
+  autre_appareil: "autre appareil à cette adresse",
+};
+
+/** Pourquoi la Caméra est dans cet état, à afficher à côté ; `null` si ArgOS ne le sait pas. */
+export function texteRaison(raison: string | null): string | null {
+  return raison === null ? null : (RAISONS_ETAT[raison] ?? null);
+}
 
 /** Refus de l'API, à afficher tel quel dans le formulaire. */
 export class Refus extends Error {}

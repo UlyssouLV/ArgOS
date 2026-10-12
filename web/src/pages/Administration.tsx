@@ -5,6 +5,8 @@ import {
   messageEchec,
   modifierCamera,
   supprimerCamera,
+  texteMac,
+  texteRaison,
   type Camera,
   type SaisieCamera,
 } from "../cameras";
@@ -71,6 +73,7 @@ export function Administration() {
               <th>Nom</th>
               <th>Emplacement</th>
               <th>Hôte:port</th>
+              <th>MAC</th>
               <th>URL RTSP</th>
               <th>Active</th>
               <th>État</th>
@@ -82,7 +85,7 @@ export function Administration() {
             {cameras.map((camera) =>
               enEdition === camera.id ? (
                 <tr key={camera.id}>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <FormulaireCamera
                       titre={`Modifier ${camera.nom}`}
                       initiale={camera}
@@ -99,10 +102,14 @@ export function Administration() {
                   <td>
                     {camera.hote}:{camera.port}
                   </td>
+                  <td className="mac">{texteMac(camera.mac)}</td>
                   <td className="url">{camera.url_rtsp}</td>
                   <td>{camera.active ? "active" : "désactivée"}</td>
                   <td>
                     <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
+                    {texteRaison(camera.raison_etat) && (
+                      <span className="raison-etat"> ({texteRaison(camera.raison_etat)})</span>
+                    )}
                   </td>
                   <td>{dateVerification(camera)}</td>
                   <td>

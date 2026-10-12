@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from stack_compose import EXPIRATION_APERCU_S, URL_API, adresses_ip, compose, redemarrer_api, url_camera_simulee
+from stack_compose import EXPIRATION_APERCU_S, MACS_SIMULEES, URL_API, adresses_ip, compose, redemarrer_api, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
 from test_detection import ip_de
@@ -116,6 +116,21 @@ def test_ajout_cree_une_camera_active_qui_passe_online_et_retire_l_apercu(connec
     assert camera["url_rtsp"] == f"rtsp://{ip_de(1)}:554/Streaming/Channels/101"
     assert not lisible(apercu)
     attendre_etat(connecte, camera["id"], "online")
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_l_essai_renvoie_la_mac_meme_sans_flux_trouve(essai, numero):
+    # camera-simulee-2 sans identifiants : `identifiants_requis`, mais l'Appareil a répondu.
+    assert essai(numero)["mac"] == MACS_SIMULEES[numero]
+
+
+def test_la_camera_ajoutee_garde_la_mac_lue_pendant_l_essai(connecte, essai):
+    essai(1)
+
+    camera = essai.ajouter(nom=unique("Essai")).json()
+
+    assert camera["mac"] == MACS_SIMULEES[1]
+    assert connecte.get(f"/api/cameras/{camera['id']}").json()["mac"] == MACS_SIMULEES[1]
 
 
 def test_ajout_d_un_nom_pris_409_et_l_essai_reste_ouvert(essai, creer_camera):
@@ -242,6 +257,7 @@ def test_ip_privee_sans_camera_injoignable(connecte):
     assert reponse.status_code == 200
     assert reponse.json()["issue"] == "injoignable"
     assert reponse.json()["apercu"] is None
+    assert reponse.json()["mac"] is None
 
 
 def test_essai_simultane_409(administrateur):

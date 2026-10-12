@@ -12,8 +12,12 @@ _Avoid_ : instance, serveur, déploiement
 Personne qui se connecte au Site avec le compte local pour gérer les Caméras.
 _Avoid_ : admin, utilisateur, opérateur
 
+**Appareil** :
+Matériel réseau reconnu par son adresse MAC, qui porte une ou plusieurs Caméras.
+_Avoid_ : device, équipement, hôte
+
 **Caméra** :
-Source vidéo connue du Site, identifiée par une URL RTSP.
+Flux d’un Appareil connu du Site, identifié par une URL RTSP.
 _Avoid_ : Device, capteur, stream
 
 **Caméra désactivée** :

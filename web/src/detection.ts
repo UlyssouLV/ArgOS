@@ -13,13 +13,19 @@ export type EtatDetection = {
 export type Adresse = { ip: string; port: number };
 
 /**
- * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) à la même
- * IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic, l'UI ne les montre pas.
+ * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) du même Appareil
+ * (MAC), sinon à la même IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic,
+ * l'UI ne les montre pas. `mac` : celle de l'Appareil, `null` si illisible.
+ * Appareil connu vu à une autre IP : `adresse_mise_a_jour` si la Détection a suivi ses Caméras, `conflit` si
+ * une autre Caméra occupait déjà la nouvelle URL (Caméra non modifiée).
  */
 export type Candidat = Adresse & {
   statut_rtsp: number;
   serveur: string | null;
+  mac: string | null;
   camera: { id: number; nom: string } | null;
+  adresse_mise_a_jour: { ancienne: string; nouvelle: string } | null;
+  conflit: { id: number; nom: string } | null;
 };
 
 export type ResultatDetection = {
@@ -29,6 +35,21 @@ export type ResultatDetection = {
   /** Triés par IP puis port. */
   candidats: Candidat[];
 };
+
+/** Chiffres d'une MAC, comme l'API la normalise : séparateurs `:` `-` `.` et espaces retirés, en minuscules. */
+function chiffresMac(mac: string): string {
+  return mac.replaceAll(/[\s:.-]/g, "").toLowerCase();
+}
+
+/**
+ * Candidats dont la MAC contient `saisie`, tapée telle qu'écrite sur l'étiquette (`AA-BB-…`, `aabb.ccdd.eeff`,
+ * partielle). Saisie vide : tous ; sinon, ceux sans MAC sont écartés.
+ */
+export function filtrerParMac(candidats: Candidat[], saisie: string): Candidat[] {
+  const filtre = chiffresMac(saisie);
+  if (filtre === "") return candidats;
+  return candidats.filter((candidat) => candidat.mac !== null && chiffresMac(candidat.mac).includes(filtre));
+}
 
 async function lire<T>(reponse: Response): Promise<T> {
   if (reponse.ok) return reponse.json();
@@ -57,6 +78,10 @@ export type Essai = {
   chemin: string | null;
   codec: string | null;
   apercu: string | null;
+  /** MAC de l'Appareil dès qu'il a répondu ; `null` si injoignable ou illisible. */
+  mac: string | null;
+  /** Autre Caméra du même Appareil (même MAC, autre chemin) : avertissement, l'ajout reste permis. */
+  appareil_deja_connu: { id: number; nom: string } | null;
   expiration_s: number;
 };
 

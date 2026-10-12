@@ -18,7 +18,7 @@ def unique(prefixe: str) -> str:
 
 def sans_etat(camera: dict) -> dict:
     """La sonde peut changer l'état entre deux requêtes (tests/api/test_etat_cameras.py)."""
-    return {cle: valeur for cle, valeur in camera.items() if cle not in ("etat", "etat_verifie_le")}
+    return {cle: valeur for cle, valeur in camera.items() if cle not in ("etat", "etat_verifie_le", "raison_etat")}
 
 
 @pytest.fixture
@@ -85,7 +85,10 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "active": True,
         "etat": "unknown",
         "etat_verifie_le": None,
+        "raison_etat": None,
         "chemin_flux": f"camera-{camera['id']}",
+        # Lue seulement sur le réseau, jamais saisie : inconnue pour une Caméra créée par son URL.
+        "mac": None,
     }
 
 
@@ -213,6 +216,16 @@ def test_patch_partiel(connecte, creer_camera):
 
     assert reponse.status_code == 200
     assert sans_etat(reponse.json()) == sans_etat(camera | {"nom": nom})
+
+
+def test_la_mac_n_est_pas_modifiable(connecte, creer_camera):
+    camera = creer_camera().json()
+
+    reponse = connecte.patch(f"/api/cameras/{camera['id']}", json={"mac": "02:a6:05:00:00:01"})
+
+    assert reponse.status_code == 200
+    assert reponse.json()["mac"] is None
+    assert connecte.get(f"/api/cameras/{camera['id']}").json()["mac"] is None
 
 
 def test_patch_de_l_url_rederive_hote_et_port(connecte, creer_camera):

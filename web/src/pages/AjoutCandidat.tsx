@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import { messageEchec, type Camera } from "../cameras";
+import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
   ajouterDepuisEssai,
   essayer,
@@ -51,6 +51,7 @@ type PropsAjout = Readonly<{
  * Caméra à mot de passe : identifiant et mot de passe, puis « Valider ».
  * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Valider ».
  * Codec autre que H.264, ou Aperçu qui ne démarre pas : message nommant le codec ; l'ajout reste permis.
+ * Appareil qui porte déjà une Caméra (même MAC, autre chemin) : avertissement ; l'ajout reste permis.
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
@@ -153,6 +154,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
     <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={soumettre}>
       {essai === null && erreur === null && <output>Recherche du Flux…</output>}
       {essai && essai.issue !== "flux_trouve" && <p className="erreur">{MESSAGES[essai.issue]}</p>}
+      {essai && essai.issue !== "injoignable" && <p className="mac">MAC de l'Appareil : {texteMac(essai.mac)}</p>}
       {identifiantsDemandes && (
         <>
           <label>
@@ -188,6 +190,9 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
         <>
           <LecteurFlux cheminFlux={apercu} onEtat={suivreLecture} />
           {codecIllisible && <p className="erreur">{messageCodec(codec)}</p>}
+          {essai?.appareil_deja_connu && (
+            <p className="avertissement">Cet appareil porte déjà la Caméra {essai.appareil_deja_connu.nom}</p>
+          )}
           <label>
             <span>Nom</span>
             <input name="nom" required value={nom} onChange={(e) => setNom(e.target.value)} />

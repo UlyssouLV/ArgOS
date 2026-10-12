@@ -23,6 +23,10 @@ EXPIRATION_APERCU_S = 30
 IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
 # Chemins de vraies caméras des Caméras simulées (media/simulated/README.md).
 CHEMINS_SIMULES = {1: "Streaming/Channels/101", 2: "cam/realmonitor?channel=1&subtype=0", 3: "flux"}
+# MAC et IP fixes des Caméras simulées (compose.simulation.yaml), MAC au format affiché par ArgOS.
+MACS_SIMULEES = {1: "02:a6:05:00:00:01", 2: "02:a6:05:00:00:02", 3: "02:a6:05:00:00:03"}
+IPS_SIMULEES = {1: "172.30.0.11", 2: "172.30.0.12", 3: "172.30.0.13"}
+RESEAU_SIMULATION = "cameras-simulees"
 
 
 def compose(*args: str) -> subprocess.CompletedProcess[str]:
@@ -112,6 +116,80 @@ def adresses_ip(service: str) -> set[str]:
         check=True,
     )
     return set(inspection.stdout.split())
+
+
+def deplacer_cameras_simulees(adresses: dict[int, str], macs: dict[int, str] | None = None) -> None:
+    """Donne à chaque Caméra simulée (par numéro) sa nouvelle IP, MAC et nom Compose gardés : un nouveau bail DHCP.
+
+    `macs` remplace la MAC de certaines : à la même IP, c'est alors un autre Appareil qui sert le même Flux.
+    Toutes quittent leur réseau avant d'y revenir : deux Caméras simulées peuvent échanger leurs IP.
+    Par l'API du moteur Docker : `docker network connect` ne garde pas la MAC.
+    """
+    macs = MACS_SIMULEES | (macs or {})
+    conteneurs = {numero: compose("ps", "-q", f"camera-simulee-{numero}").stdout.strip() for numero in adresses}
+    # Lu sur `api`, toujours rattaché : une Caméra simulée peut être restée détachée par un test interrompu.
+    reseau = _reseau_simulation(compose("ps", "-q", "api").stdout.strip())
+    for conteneur in conteneurs.values():
+        # Sans `check` : déjà détachée, elle est simplement rattachée.
+        subprocess.run(["docker", "network", "disconnect", reseau, conteneur], capture_output=True)
+    with httpx.Client(transport=httpx.HTTPTransport(uds=_socket_docker()), base_url="http://docker") as moteur:
+        for numero, ip in adresses.items():
+            nom = f"camera-simulee-{numero}"
+            reponse = moteur.post(
+                f"/networks/{reseau}/connect",
+                json={
+                    "Container": conteneurs[numero],
+                    "EndpointConfig": {
+                        "IPAMConfig": {"IPv4Address": ip},
+                        "MacAddress": macs[numero],
+                        "Aliases": [nom],
+                    },
+                },
+            )
+            reponse.raise_for_status()
+
+
+def remettre_cameras_simulees() -> None:
+    """Remet à leur IP et MAC fixes les Caméras simulées déplacées ou changées d'Appareil."""
+    deplacees = {
+        n: ip
+        for n, ip in IPS_SIMULEES.items()
+        if _adresses_et_macs(f"camera-simulee-{n}") != {(ip, MACS_SIMULEES[n])}
+    }
+    if deplacees:
+        deplacer_cameras_simulees(deplacees)
+
+
+def _adresses_et_macs(service: str) -> set[tuple[str, str]]:
+    conteneur = compose("ps", "-q", service).stdout.strip()
+    inspection = subprocess.run(
+        ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}/{{.MacAddress}} {{end}}", conteneur],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return {tuple(adresse.split("/")) for adresse in inspection.stdout.split()}
+
+
+def _reseau_simulation(conteneur: str) -> str:
+    inspection = subprocess.run(
+        ["docker", "inspect", "-f", "{{range $nom, $_ := .NetworkSettings.Networks}}{{$nom}} {{end}}", conteneur],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    (reseau,) = [nom for nom in inspection.stdout.split() if nom.endswith(f"_{RESEAU_SIMULATION}")]
+    return reseau
+
+
+def _socket_docker() -> str:
+    hote = subprocess.run(
+        ["docker", "context", "inspect", "-f", "{{.Endpoints.docker.Host}}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return hote.removeprefix("unix://")
 
 
 def lancer_stack() -> None:

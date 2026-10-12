@@ -58,7 +58,15 @@ Depuis l’Administration, **Ajouter** sur un Candidat : ArgOS cherche seul le F
 
 Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue à la détection ou à l’ajout) pour la reconnaître si son IP change (DHCP), mettre à jour l’URL RTSP en conséquence, et éviter de traiter le même appareil physique comme une nouvelle Caméra.
 
-Ajout manuel par adresse MAC : à côté de **Ajouter par adresse IP**, saisir la MAC d’un appareil (lue sur son étiquette) pour l’ajouter par le même parcours.
+Spec : [v0.4.2](../specs/v0.4.2-identite-stable-par-adresse-mac.md).
+
+ArgOS retient la MAC de l’**Appareil** de chaque Caméra (à l’ajout, à la Détection, par la sonde). Une Détection qui retrouve un Appareil connu à une autre IP met à jour l’hôte de l’URL de toutes ses Caméras (« adresse mise à jour ») ; une Caméra dont l’adresse répond avec une autre MAC passe `offline` (« autre appareil à cette adresse ») et n’est plus relayée ; l’ajout refuse un Flux déjà configuré sur le même Appareil. En prod Linux, l’API rejoint le réseau des caméras par macvlan, sans y être joignable ([ADR 0003](../adr/0003-macvlan-sur-la-prise-des-cameras.md)) ; sous Docker Desktop, pas de MAC pour les vraies caméras.
+
+**Livrée avec un filtre par MAC à la place de l’ajout manuel par MAC** prévu d’abord : la MAC tapée telle qu’écrite sur l’étiquette filtre les Candidats d’une Détection, puis **Ajouter**. Doc : [Reconnaître un Appareil](../cameras/reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras).
+
+## 0.5.0 — Lecture des Flux H.265 sans réencodage
+
+Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (HLS ou fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
 
 ## 1.0.0 — Fil rouge Site → Live RTSP
 
@@ -94,9 +102,9 @@ Accéder au Site depuis internet par un VPN (WireGuard, Tailscale…), sans redi
 
 Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
 
-## Plus tard — Codecs multiples (H.265…)
+## Plus tard — Réencodage H.265 → H.264 en secours
 
-Rendre lisibles dans le Live et l’Aperçu les Caméras qui n’émettent pas du H.264 (H.265 notamment), malgré le support navigateur inégal : **réencodage** en H.264 côté serveur (coûteux en calcul), ou **un autre transport que WebRTC** (HLS / fMP4, lu par les navigateurs qui décodent le H.265). Depuis la 0.4.1, une telle Caméra s’ajoute déjà et est sondée, mais le navigateur ne l’affiche pas.
+Quand le navigateur ne décode pas le HEVC malgré la 0.5.0 (HLS / fMP4), proposer un réencodage serveur vers H.264 pour ces Caméras seulement.
 
 ## Plus tard — Incrustation nom/heure sur les Caméras simulées
 
@@ -105,6 +113,10 @@ Incruster le nom de la Caméra et l’heure dans l’image des Caméras simulée
 ## Plus tard — Détection IA
 
 Personnes / véhicules sur substream, après le cœur live.
+
+## Plus tard — Un Appareil, plusieurs Caméras
+
+Prendre en charge les Appareils qui portent plusieurs Caméras sous une seule adresse MAC (enregistreurs, encodeurs multi-voies, caméras à plusieurs objectifs). Il faut d’abord étudier sur du vrai matériel comment chaque voie expose son chemin RTSP, puis proposer à l’ajout toutes les voies d’un Appareil, et regrouper ses Caméras dans l’Administration. Depuis la 0.4.2, ce cas est seulement toléré : même MAC sur plusieurs Caméras, mises à jour ensemble quand l’IP change.
 
 ## Plus tard — ONVIF et PTZ
 
