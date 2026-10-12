@@ -60,6 +60,10 @@ Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue �
 
 Ajout manuel par adresse MAC : à côté de **Ajouter par adresse IP**, saisir la MAC d’un appareil (lue sur son étiquette) pour l’ajouter par le même parcours.
 
+## 0.5.0 — Lecture des Flux H.265 sans réencodage
+
+Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (HLS ou fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
+
 ## 1.0.0 — Fil rouge Site → Live RTSP
 
 **À redéfinir** : la vidéo arrive en 0.3.0.
@@ -94,9 +98,9 @@ Accéder au Site depuis internet par un VPN (WireGuard, Tailscale…), sans redi
 
 Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
 
-## Plus tard — Codecs multiples (H.265…)
+## Plus tard — Réencodage H.265 → H.264 en secours
 
-Rendre lisibles dans le Live et l’Aperçu les Caméras qui n’émettent pas du H.264 (H.265 notamment), malgré le support navigateur inégal : **réencodage** en H.264 côté serveur (coûteux en calcul), ou **un autre transport que WebRTC** (HLS / fMP4, lu par les navigateurs qui décodent le H.265). Depuis la 0.4.1, une telle Caméra s’ajoute déjà et est sondée, mais le navigateur ne l’affiche pas.
+Quand le navigateur ne décode pas le HEVC malgré la 0.5.0 (HLS / fMP4), proposer un réencodage serveur vers H.264 pour ces Caméras seulement.
 
 ## Plus tard — Incrustation nom/heure sur les Caméras simulées
 
