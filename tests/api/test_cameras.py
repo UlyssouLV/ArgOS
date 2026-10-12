@@ -89,6 +89,8 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "chemin_flux": f"camera-{camera['id']}",
         # Lue seulement sur le réseau, jamais saisie : inconnue pour une Caméra créée par son URL.
         "mac": None,
+        # Lu dans le SDP par l'essai ou la sonde : inconnu tant que la sonde n'a pas joint la Caméra.
+        "codec": None,
     }
 
 

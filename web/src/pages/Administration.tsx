@@ -5,6 +5,7 @@ import {
   messageEchec,
   modifierCamera,
   supprimerCamera,
+  texteCodec,
   texteMac,
   texteRaison,
   type Camera,
@@ -84,6 +85,7 @@ export function Administration() {
               <th>URL RTSP</th>
               <th>Active</th>
               <th>État</th>
+              <th>Codec</th>
               <th>Dernière vérification</th>
               <th>Actions</th>
             </tr>
@@ -92,7 +94,7 @@ export function Administration() {
             {cameras.map((camera) =>
               enEdition === camera.id ? (
                 <tr key={camera.id}>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <FormulaireCamera
                       titre={`Modifier ${camera.nom}`}
                       initiale={camera}
@@ -116,6 +118,7 @@ export function Administration() {
                     <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
                     <Raison raison={camera.raison_etat} />
                   </td>
+                  <td>{texteCodec(camera.codec)}</td>
                   <td>{dateVerification(camera)}</td>
                   <td>
                     <div className="actions">

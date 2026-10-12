@@ -212,7 +212,7 @@ npm run dev     # http://localhost:5173, rechargement à chaud
 | `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
 | `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
 | `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
-| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) ; chaque Caméra porte `mac` et `raison_etat` (`autre_appareil` ou `null`), non modifiables |
+| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) ; chaque Caméra porte `mac`, `raison_etat` (`autre_appareil` ou `null`) et `codec` (`H264`, `H265`… ou `null`, relevé à l’ajout puis par la sonde), non modifiables |
 | `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
 | `GET /api/detection` | État de la Détection : `configuree`, `sous_reseaux`, `ports`, `raison` si indisponible |
 | `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `mac`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`, `adresse_mise_a_jour` `{ancienne, nouvelle}` ou `null`, `conflit` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |

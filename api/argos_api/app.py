@@ -445,7 +445,7 @@ def _routes_essai(
             # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
             nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=resultat.url, emplacement=ajout.emplacement)
             with _erreurs_cameras():
-                return cameras.creer(base, nouvelle, mac=resultat.mac)
+                return cameras.creer(base, nouvelle, mac=resultat.mac, codec=resultat.codec)
 
         with _sans_apercu_404():
             return apercus.ajouter(creer)
