@@ -52,7 +52,7 @@ Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml 
 
 Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identifiant et le mot de passe dans `.env` (voir ci-dessus) : rien à recopier à la main.
 
-En dev, la stack porte la **simulation** : `compose.yaml` (la stack de prod : `mediamtx`, `api`, `db`, `web`) plus `compose.simulation.yaml` (les trois Caméras simulées et leur réseau). Toutes les commandes `docker compose` de ce README visent cette stack : une fois par terminal,
+En dev, la stack porte la **simulation** : `compose.yaml` (la stack de prod : `mediamtx`, `api`, `db`, `web`) plus `compose.simulation.yaml` (les quatre Caméras simulées et leur réseau). Toutes les commandes `docker compose` de ce README visent cette stack : une fois par terminal,
 
 ```bash
 export COMPOSE_FILE=compose.yaml:compose.simulation.yaml   # équivaut à -f compose.yaml -f compose.simulation.yaml
@@ -160,13 +160,14 @@ L’onglet **Administration** couvre toute la gestion des Caméras :
 - **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression** ;
 - **Détecter des Caméras**, puis **Ajouter** sur un Candidat, ou **Ajouter par adresse IP** (IP, port `554` modifiable) pour un appareil que la Détection n’a pas trouvé, même si elle n’est pas configurée : voir [Détection des Caméras](#détection-des-caméras). Une IP déjà configurée affiche **Déjà configurée : <nom>**. L’Administration n’offre plus d’ajout par URL RTSP (`POST /api/cameras` reste dans l’API). Déroulé, mot de passe, chemin en repli, codec non lisible : **[Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)**.
 
-**Déclarer les trois Caméras simulées depuis l’UI** (une seule fois : la base les garde). **Détecter des Caméras**, puis **Ajouter** sur chacune :
+**Déclarer les Caméras simulées depuis l’UI** (une seule fois : la base les garde). **Détecter des Caméras**, puis **Ajouter** sur chacune :
 
 | Caméra simulée | Parcours |
 |---|---|
 | 1 | Flux trouvé seul (chemin Hikvision) |
 | 2 | **Cette caméra demande un mot de passe** : identifiant `admin`, mot de passe `argos-simulee` |
 | 3 | **Flux introuvable** : chemin RTSP `/flux` |
+| 4 | Flux trouvé seul (chemin Hikvision), en H.265 |
 
 Elles passent `online` en 15 s au plus, sans recharger la page. Pourquoi `camera-simulee-N` et pas `localhost` : voir [Ajouter les Caméras simulées](#ajouter-les-caméras-simulées).
 
@@ -255,7 +256,7 @@ scripts/cameras/configurer-detection.sh   # écrit ARGOS_DETECTION_CAMERAS_SOUS_
 docker compose up -d --wait               # recrée api avec ce réglage
 ```
 
-`lancer-argos.command` l’appelle tout seul. En repli, écrire `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=192.168.1.0/24` à la main dans `.env` (1024 adresses au plus, voir `.env.example`). Réglage vide ou invalide : l’Administration affiche la raison, le reste d’ArgOS marche. En dev, `compose.simulation.yaml` ajoute `172.30.0.0/24` : la Détection trouve les trois Caméras simulées, et aussi tout appareil RTSP du réseau de la box. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
+`lancer-argos.command` l’appelle tout seul. En repli, écrire `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=192.168.1.0/24` à la main dans `.env` (1024 adresses au plus, voir `.env.example`). Réglage vide ou invalide : l’Administration affiche la raison, le reste d’ArgOS marche. En dev, `compose.simulation.yaml` ajoute `172.30.0.0/24` : la Détection trouve les quatre Caméras simulées, et aussi tout appareil RTSP du réseau de la box. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
 
 ### Adresse MAC et suivi d’adresse
 
@@ -272,15 +273,16 @@ Adresse IP, sous-réseau, trouver le sien sur la machine Linux, DHCP et adresses
 
 ## Caméras simulées
 
-Déclarées par `compose.simulation.yaml`, jamais par `compose.yaml` : la stack de prod n’en garde aucune trace. Chacune est un conteneur à part, comme une vraie caméra IP : il diffuse sa vidéo de dev en boucle, sans réencodage, en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra : style Hikvision (1), style Dahua (2), chemin exotique `flux` (3).
+Déclarées par `compose.simulation.yaml`, jamais par `compose.yaml` : la stack de prod n’en garde aucune trace. Chacune est un conteneur à part, comme une vraie caméra IP : il diffuse sa vidéo de dev en boucle, sans réencodage, en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra : style Hikvision (1), style Dahua (2), chemin exotique `flux` (3), style Hikvision en H.265 (4).
 
 | Caméra simulée | URL RTSP (vue de `api` et du pont) | Vidéo |
 |----------------|------------------------------------|-------|
 | `camera-simulee-1` | `rtsp://camera-simulee-1/Streaming/Channels/101` | `media/simulated/cam1.mp4` |
 | `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` (identifiants exigés) | `media/simulated/cam2.mp4` |
 | `camera-simulee-3` | `rtsp://camera-simulee-3/flux` | `media/simulated/cam3.mp4` |
+| `camera-simulee-4` | `rtsp://camera-simulee-4/Streaming/Channels/101` (H.265) | `media/simulated/cam4.mp4` |
 
-Chacune a une IP et une MAC fixes sur `cameras-simulees` : `172.30.0.11` à `.13`, `02:a6:05:00:00:01` à `:03`.
+Chacune a une IP et une MAC fixes sur `cameras-simulees` : `172.30.0.11` à `.14`, `02:a6:05:00:00:01` à `:04`.
 
 Elles vivent sur leur propre réseau Compose, `cameras-simulees` (sous-réseau fixe `172.30.0.0/24`), rejoint par `api` (sonde, Détection) et `mediamtx` (pont). Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX` de `api`. Elles ne sont **pas publiées** sur la machine hôte : on les regarde par le [Live](#live), une fois déclarées comme Caméras. Format et conversion des vidéos : [media/simulated/README.md](media/simulated/README.md).
 
@@ -358,12 +360,12 @@ cd tests/web && uv sync && uv run playwright install chromium
 
 Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f compose.yaml -f compose.simulation.yaml`).
 
-- `tests/flux/` lance la stack (`up -d --wait` : les Caméras simulées sont `healthy` quand leur vidéo est diffusée), puis vérifie chaque Caméra simulée depuis son réseau Compose : RTSP en H.264 1280×720 décodable, `camera-simulee-2` refusée sans identifiants ou avec un mauvais mot de passe, un seul chemin par Caméra (son chemin de vraie caméra, plus `flux` pour `camera-simulee-1`) ; et la séparation dev / prod : aucun port publié pour les Caméras simulées, réseau `cameras-simulees` en `172.30.0.0/24` rejoint par `api` et `mediamtx`, sous-réseau ajouté à la Détection, aucune trace de simulation dans `compose.yaml` seul ni dans `media/mediamtx.yml`. WebRTC n’est pas testé ici.
+- `tests/flux/` lance la stack (`up -d --wait` : les Caméras simulées sont `healthy` quand leur vidéo est diffusée), puis vérifie chaque Caméra simulée depuis son réseau Compose : RTSP 1280×720 décodable, en H.264 (HEVC pour `camera-simulee-4`), `camera-simulee-2` refusée sans identifiants ou avec un mauvais mot de passe, un seul chemin par Caméra (son chemin de vraie caméra, plus `flux` pour `camera-simulee-1`) ; et la séparation dev / prod : aucun port publié pour les Caméras simulées, réseau `cameras-simulees` en `172.30.0.0/24` rejoint par `api` et `mediamtx`, sous-réseau ajouté à la Détection, aucune trace de simulation dans `compose.yaml` seul ni dans `media/mediamtx.yml`. WebRTC n’est pas testé ici.
 - `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `camera-simulee-1`, et sur `camera-simulee-2` avec ses identifiants, `offline` sans, sur une URL injoignable ou un chemin inconnu, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
 - `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : plus de formulaire d’ajout par URL, Caméra créée sur `camera-simulee-1` (par l’API) qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire de modification, URL modifiable, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active) ; Live : première Caméra active par nom dont la `<video>` joue vraiment (`currentTime` qui avance), Suivant puis flèche droite qui font le tour en gardant une seule connexion WebRTC ouverte, message avec lien vers Administration sans Caméra active, « Flux indisponible » sur une URL injoignable. Les tests Live désactivent les Caméras actives existantes le temps du test, puis les réactivent. Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
 - `tests/api/` couvre aussi le pont (Caméra simulée, avec ou sans identifiants, relue en H.264 sur `camera-<id>`) et le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
-- `tests/api/` et `tests/web/` couvrent la Détection : les trois Caméras simulées trouvées (dont celle à identifiants), ni la base ni le pont parmi les Candidats, Caméra correspondante sur un Candidat déjà déclaré, `409` pour une seconde Détection simultanée, `401` sans session ; dans l’UI, chargement, liste des Candidats, « Déjà configurées » repliée puis dépliée.
-- `tests/api/` et `tests/web/` couvrent l’ajout d’une Caméra depuis un Candidat : `camera-simulee-1` trouvée seule (chemin Hikvision, H.264, Aperçu présent dans le pont), `camera-simulee-2` mot de passe requis puis refusé puis accepté, `camera-simulee-3` Flux introuvable puis trouvé par le chemin saisi ; Caméra ajoutée active qui passe `online`, identifiants conservés mais jamais renvoyés ; doublon `409` avec l’essai toujours ouvert ; Aperçu retiré par `DELETE`, par un nouvel essai, par l’ajout, sans renouvellement, et orphelins retirés au démarrage ; IP injoignable, hors du réseau local ou d’ArgOS, déjà configurée ; essai simultané `409`, `401` sans session, aucun identifiant dans les journaux. Dans l’UI : les trois parcours avec Aperçu qui joue, Annuler, codec non lisible nommé, Ajouter par adresse IP.
+- `tests/api/` et `tests/web/` couvrent la Détection : les quatre Caméras simulées trouvées (dont celle à identifiants), ni la base ni le pont parmi les Candidats, Caméra correspondante sur un Candidat déjà déclaré, `409` pour une seconde Détection simultanée, `401` sans session ; dans l’UI, chargement, liste des Candidats, « Déjà configurées » repliée puis dépliée.
+- `tests/api/` et `tests/web/` couvrent l’ajout d’une Caméra depuis un Candidat : `camera-simulee-1` trouvée seule (chemin Hikvision, H.264, Aperçu présent dans le pont), `camera-simulee-2` mot de passe requis puis refusé puis accepté, `camera-simulee-3` Flux introuvable puis trouvé par le chemin saisi, `camera-simulee-4` trouvée seule en `H265` ; Caméra ajoutée active qui passe `online`, identifiants conservés mais jamais renvoyés ; doublon `409` avec l’essai toujours ouvert ; Aperçu retiré par `DELETE`, par un nouvel essai, par l’ajout, sans renouvellement, et orphelins retirés au démarrage ; IP injoignable, hors du réseau local ou d’ArgOS, déjà configurée ; essai simultané `409`, `401` sans session, aucun identifiant dans les journaux. Dans l’UI : les trois parcours avec Aperçu qui joue, Annuler, codec non lisible nommé, Ajouter par adresse IP.
 - `tests/api/` et `tests/web/` couvrent l’identité par MAC : MAC fixe des Caméras simulées sur les Candidats, l’essai et la Caméra ajoutée ; Caméra simulée déplacée (même MAC, autre IP) suivie par la Détection (« adresse mise à jour »), échange d’IP, Caméra désactivée suivie, conflit avec une Caméra sans MAC ; IP prêtée à une autre Caméra simulée (« autre appareil à cette adresse », plus relayée) ; doublons à l’ajout par MAC ; filtre par MAC. `tests/regles-sessions/` vérifie le refus des requêtes arrivées par le réseau des caméras.
 - `tests/scripts/` lance `scripts/cameras/configurer-detection.sh` avec de fausses sorties `ip` / `ifconfig` et un `.env` temporaire : une seule prise sans question, sous-réseau recalculé, Docker, boucle locale et `169.254` écartés, prise sans adresse, plage de plus de 1024 adresses refusée ; réseau des caméras (Linux) : IP libre proposée depuis le haut du sous-réseau, remplaçable, retenue sans terminal, avertissements (hors sous-réseau, répond en ARP), `COMPOSE_FILE` complété sur Linux et jamais sur macOS, `compose.reseau-cameras.yaml` valide.
 - `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.

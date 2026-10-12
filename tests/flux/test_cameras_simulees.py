@@ -12,6 +12,7 @@ import pytest
 from conftest import (
     CAMERAS_SIMULEES,
     CHEMINS,
+    CODECS,
     FICHIER_PROD,
     FICHIER_SIMULATION,
     IDENTIFIANTS,
@@ -54,12 +55,13 @@ def ffprobe(reseau: str, url_rtsp: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
-def test_diffuse_du_h264_1280x720_decodable(reseau_simulation, camera):
+def test_diffuse_son_codec_en_1280x720_decodable(reseau_simulation, camera):
+    """H.264 pour les trois premières, HEVC pour camera-simulee-4."""
     resultat = ffprobe(reseau_simulation, url(camera, identifiants=IDENTIFIANTS.get(camera)))
 
     assert resultat.returncode == 0, resultat.stderr
     (flux,) = json.loads(resultat.stdout)["streams"]
-    assert flux["codec_name"] == "h264"
+    assert flux["codec_name"] == CODECS[camera]
     assert (flux["width"], flux["height"]) == (1280, 720)
     assert int(flux["nb_read_frames"]) >= 1
 

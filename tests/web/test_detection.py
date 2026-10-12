@@ -4,7 +4,7 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from stack_compose import adresses_ip
+from stack_compose import IPS_SIMULEES, adresses_ip
 from test_administration import administration, api, noms, url_simulee  # noqa: F401 (fixtures)
 
 # Un /24 sur deux ports tient en une dizaine de secondes : large marge.
@@ -12,7 +12,7 @@ DELAI_DETECTION_MS = 60_000
 
 
 def test_detection_affiche_le_chargement_puis_les_candidats(administration: Page):
-    cameras_simulees = sorted(ip for n in (1, 2, 3) for ip in adresses_ip(f"camera-simulee-{n}"))
+    cameras_simulees = sorted(ip for n in IPS_SIMULEES for ip in adresses_ip(f"camera-simulee-{n}"))
     section = administration.get_by_role("region", name="Détecter des Caméras")
     expect(section).to_contain_text("172.30.0.0/24")
 

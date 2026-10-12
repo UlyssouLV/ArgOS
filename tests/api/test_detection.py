@@ -1,7 +1,7 @@
 """Détection des Caméras, vue de l'extérieur de la stack.
 
 La simulation ajoute son sous-réseau (172.30.0.0/24) à ceux de `.env` : la Détection y trouve les
-trois Caméras simulées comme de vraies caméras. Seuls les Candidats de ce sous-réseau sont vérifiés,
+quatre Caméras simulées comme de vraies caméras. Seuls les Candidats de ce sous-réseau sont vérifiés,
 `.env` pouvant autoriser aussi le réseau local de la machine.
 """
 
@@ -37,8 +37,8 @@ def test_get_decrit_la_configuration(connecte):
     assert 554 in etat["ports"]
 
 
-def test_post_trouve_les_trois_cameras_simulees_ni_la_base_ni_le_pont(connecte):
-    cameras_simulees = {ip for n in (1, 2, 3) for ip in adresses_ip(f"camera-simulee-{n}")}
+def test_post_trouve_les_quatre_cameras_simulees_ni_la_base_ni_le_pont(connecte):
+    cameras_simulees = {ip for n in MACS_SIMULEES for ip in adresses_ip(f"camera-simulee-{n}")}
     argos = adresses_ip("db") | adresses_ip("mediamtx") | adresses_ip("api")
 
     reponse = connecte.post("/api/detection", timeout=DELAI_DETECTION_S)
@@ -89,7 +89,7 @@ def test_candidat_deja_configure_porte_sa_camera_active_ou_desactivee(connecte, 
     assert creer_camera(url_rtsp=url_camera_simulee(1, unique("detection"))).status_code == 201
     desactivee = creer_camera(url_rtsp=url_camera_simulee(2, unique("detection"))).json()
     assert connecte.patch(f"/api/cameras/{desactivee['id']}", json={"active": False}).status_code == 200
-    attendues = {ip_de(n): correspondance(connecte, n) for n in (1, 2, 3)}
+    attendues = {ip_de(n): correspondance(connecte, n) for n in MACS_SIMULEES}
 
     reponse = connecte.post("/api/detection", timeout=DELAI_DETECTION_S)
 
@@ -105,7 +105,7 @@ def test_candidats_portent_statut_rtsp_et_serveur(connecte):
 
     assert reponse.status_code == 200
     simules = candidats_simules(reponse.json())
-    assert len(simules) == 3
+    assert len(simules) == len(MACS_SIMULEES)
     for candidat in simules.values():
         # Caméras simulées : MediaMTX répond 200 à OPTIONS, même celle à identifiant.
         assert candidat["statut_rtsp"] == 200
@@ -117,7 +117,7 @@ def test_candidats_portent_la_mac_fixe_de_chaque_camera_simulee(connecte):
 
     assert reponse.status_code == 200
     simules = candidats_simules(reponse.json())
-    assert {ip: c["mac"] for ip, c in simules.items()} == {ip_de(n): MACS_SIMULEES[n] for n in (1, 2, 3)}
+    assert {ip: c["mac"] for ip, c in simules.items()} == {ip_de(n): MACS_SIMULEES[n] for n in MACS_SIMULEES}
 
 
 def test_seconde_detection_simultanee_409(administrateur):
@@ -145,7 +145,7 @@ def test_journaux_une_ligne_par_candidat_et_un_bilan(connecte):
     journaux = compose("logs", "--no-log-prefix", "--since", depuis, "api").stdout.splitlines()
     lignes_candidats = [ligne for ligne in journaux if "Détection : Candidat" in ligne]
     assert len(lignes_candidats) == len(resultat["candidats"])
-    for ip in (ip_de(n) for n in (1, 2, 3)):
+    for ip in (ip_de(n) for n in MACS_SIMULEES):
         (ligne,) = [ligne for ligne in lignes_candidats if f" {ip}:554 " in ligne]
         assert "RTSP 200" in ligne
         assert "Server gortsplib" in ligne

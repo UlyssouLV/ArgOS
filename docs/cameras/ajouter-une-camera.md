@@ -76,13 +76,14 @@ Avant d’essayer, ArgOS refuse :
 
 ## 7. Les Caméras simulées
 
-En dev, chacune des trois Caméras simulées montre un parcours :
+En dev, chacune des quatre Caméras simulées montre un parcours :
 
 | Caméra simulée | Parcours |
 |---|---|
 | `camera-simulee-1` | Flux trouvé seul, chemin style Hikvision (`/Streaming/Channels/101`) |
 | `camera-simulee-2` | **Cette caméra demande un mot de passe** : identifiant `admin`, mot de passe `argos-simulee` ; chemin style Dahua trouvé ensuite |
 | `camera-simulee-3` | **Flux introuvable** : chemin RTSP `/flux` |
+| `camera-simulee-4` | Flux trouvé seul, chemin style Hikvision, en **H.265** : message codec du § 5 |
 
 ## 8. Diagnostiquer
 
