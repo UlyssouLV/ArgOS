@@ -81,6 +81,16 @@ Depuis la 0.4.1, **Ajouter** sur un Candidat (ou **Ajouter par adresse IP**) fai
 - **Journaux** : une ligne par essai (IP, port, issue, chemin, codec), jamais d'identifiant ni d'URL complète.
 - **Aperçu lisible sans authentification** : pendant l'ajout, le pont relaie le Flux sur `apercu-<jeton aléatoire>`, lisible comme les autres Flux **par tout poste du réseau local** qui connaît son nom (dette « Flux sans auth »). Le jeton aléatoire n'est donné qu'à l'Administrateur : il ne se devine pas, mais circule en clair (HTTP, WHEP) tant qu'il n'y a pas HTTPS. Un seul Aperçu à la fois, retiré à l'ajout, à l'annulation, au remplacement, ou 2 minutes sans renouvellement (`ARGOS_APERCU_EXPIRATION_S`) ; les `apercu-*` orphelins sont retirés au démarrage de l'API.
 
+### Réseau des caméras : une sortie seulement
+
+Depuis la 0.4.2, en prod Linux, `api` rejoint le réseau des caméras par une interface **macvlan** (`compose.reseau-cameras.yaml`, [ADR 0003](adr/0003-macvlan-sur-la-prise-des-cameras.md)) pour y lire les adresses MAC. Explication complète : [Reconnaître un Appareil](cameras/reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras).
+
+- **Sortie seulement** : `api` y parle aux caméras (Détection, essai, sonde), mais toute requête HTTP arrivée sur son adresse de ce réseau reçoit `403` avant tout traitement (ni routage, ni session, ni CORS ; une connexion WebSocket est fermée). Une caméra compromise ne peut donc ni appeler l'API, ni tenter le mot de passe de l'Administrateur. Le healthcheck (`localhost`) et le bridge (UI, postes du réseau de la box) restent servis.
+- **Une IP d'ArgOS sur ce réseau** : fixe (`ARGOS_RESEAU_CAMERAS_IP`), proposée par le script hôte parmi les adresses libres (vérifiées par ARP), à garder **hors de la plage DHCP**. Elle n'est jamais un Candidat. Le script avertit et désactive le réseau des caméras si elle sort du sous-réseau ou si un autre appareil y répond.
+- **Ce que la sonde lit** : après chaque connexion réussie (Détection, essai, état), la table de voisinage (ARP) du conteneur, pour l'IP qui vient de répondre : seulement sa MAC. Rien n'est envoyé de plus aux caméras ; l'ARP est le mécanisme ordinaire de tout appareil du réseau local. Les MAC sont gardées en base avec les Caméras, et affichées à l'Administrateur.
+- **Ce que la MAC prouve** : qu'un **autre** appareil répond à l'adresse d'une Caméra (elle passe `offline`, « autre appareil à cette adresse », et le pont cesse de la relayer). Elle ne prouve **pas** que c'est la vraie caméra : une MAC se falsifie sans peine. Elle protège d'une erreur (bail DHCP repris), pas d'un attaquant sur le réseau des caméras (§ 1, rejeu).
+- **Pas de MAC** sous Docker Desktop (Mac), derrière un routeur, ni sur une autre prise que la première retenue : ces Caméras gardent le comportement de la 0.4.1.
+
 ### UI et API : deux origines, CORS avec credentials
 
 L'UI (`web`, port 8080) et l'API (port 8000) sont deux **origines** différentes sur le même hôte. Le front appelle l'API avec `credentials: 'include'` : le navigateur joint le cookie de session, et l'API doit l'autoriser par CORS.

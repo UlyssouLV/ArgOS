@@ -2,7 +2,7 @@
 
 Comprendre ce que fait ArgOS quand l’Administrateur clique sur **Ajouter**, et quoi faire quand ça bloque. Depuis la 0.4.1, l’Administrateur n’écrit plus jamais d’URL RTSP pour ajouter une Caméra : ArgOS cherche seul le Flux, demande un mot de passe ou un chemin seulement s’il en a besoin, et montre l’image avant l’ajout.
 
-Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma des Flux](../dev/schema-flux.md).
+Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [Reconnaître un Appareil par sa MAC](reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras) (MAC, changement d’IP, Appareil à plusieurs Caméras), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma des Flux](../dev/schema-flux.md).
 
 ## 1. Le déroulé
 
@@ -50,6 +50,7 @@ Aucun chemin courant ne répond `200` : **Flux introuvable.**, et un champ **Che
 
 Dès que le Flux est trouvé, son **Aperçu** s’affiche dans le panneau : la vraie image de la caméra, pour vérifier que c’est la bonne avant de la nommer.
 
+- Au-dessus, la **MAC de l’Appareil** (`aa:bb:cc:dd:ee:ff`, ou « — » si illisible) : à comparer à l’étiquette de la caméra. La Caméra ajoutée la garde ([pourquoi](reseau-et-detection.md#10-quand-une-caméra-change-dip)).
 - C’est un chemin éphémère du pont MediaMTX, `apercu-<jeton aléatoire>`, lu en WebRTC comme le Live. Il n’apparaît **jamais** dans le Live, qui ne montre que des Caméras.
 - **Un seul à la fois** pour le Site : ouvrir un autre Candidat ferme le précédent.
 - Retiré à l’ajout, à l’annulation, au lancement d’un autre essai, et de lui-même **2 minutes** après son dernier renouvellement (`ARGOS_APERCU_EXPIRATION_S`). Le panneau le renouvelle tant qu’il est ouvert : on peut prendre son temps pour le nommer. Onglet fermé sans **Annuler** : l’Aperçu expire seul. Au démarrage, l’API retire les `apercu-*` laissés par une instance précédente.
@@ -101,6 +102,7 @@ Un essai à la fois : un second, lancé pendant la recherche, est refusé (« Un
 
 - **Pas d’ONVIF** : ArgOS ne demande pas son chemin à la caméra, il essaie une liste. Pas de PTZ.
 - **Pas de choix entre flux principal et secondaire** : le principal est pris quand il répond.
-- **Pas d’adresse MAC** : si la caméra change d’IP, la Caméra devient `offline`, et il faut corriger son URL (**Modifier**). Identité par MAC : 0.4.2.
+- **Pas d’ajout par MAC** : pour retrouver une caméra parmi les Candidats, **Filtrer par MAC** dans la liste ([Détection](reseau-et-detection.md#4-ce-que-fait-la-détection-et-ce-quelle-ne-fait-pas)), puis **Ajouter**.
+- **Pas de MAC modifiable** : ArgOS la lit sur le réseau, l’Administrateur ne la saisit jamais. Une Caméra sans MAC (réseau routé, Mac de dev avec de vraies caméras) qui change d’IP reste `offline` jusqu’à ce qu’on corrige son URL (**Modifier**) ; avec sa MAC, une Détection la retrouve seule ([quand une caméra change d’IP](reseau-et-detection.md#10-quand-une-caméra-change-dip)).
 - **Pas de lecture du H.265** dans le navigateur (§ 5).
 - **Modifier une Caméra** passe toujours par son URL RTSP : l’URL affichée est masquée, la laisser telle quelle conserve le mot de passe.
