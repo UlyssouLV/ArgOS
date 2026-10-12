@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from argos_api import cameras, detection, essai, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
-from argos_api.cameras import CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
+from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
@@ -79,8 +79,13 @@ class CandidatLu(BaseModel):
     serveur: str | None
     # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : illisible (hors du réseau local direct).
     mac: str | None
-    # Caméra du Site (active ou désactivée) à la même IP résolue et au même port ; `None` : nouveau.
+    # Caméra du Site (active ou désactivée) du même Appareil (MAC), sinon à la même IP résolue et au même
+    # port ; `None` : nouveau.
     camera: CameraCorrespondante | None
+    # Appareil connu vu à une autre IP : hôte de l'URL de ses Caméras mis à jour par cette Détection.
+    adresse_mise_a_jour: AdresseMiseAJour | None
+    # Caméra qui occupe la nouvelle URL : celle de l'Appareil n'a pas été modifiée.
+    conflit: CameraCorrespondante | None
 
 
 class ResultatDetection(BaseModel):
@@ -311,9 +316,16 @@ def _routes_detection(
             duree_s = round(monotonic() - debut, 1)
         finally:
             une_seule.release()
-        connues = cameras.par_adresse(base)
+        rapprochements = cameras.rapprocher(base, candidats)
         for c in candidats:
             journal.info("Détection : Candidat %s:%s RTSP %s Server %s", c.ip, c.port, c.statut_rtsp, c.serveur)
+            rapprochement = rapprochements[c]
+            if rapprochement.adresse_mise_a_jour is not None:
+                ancienne = rapprochement.adresse_mise_a_jour.ancienne
+                journal.info("Détection : Appareil %s suivi de %s à %s", c.mac, ancienne, c.ip)
+            if rapprochement.conflit is not None:
+                id_conflit = rapprochement.conflit.id
+                journal.warning("Détection : Appareil %s vu à %s, URL déjà prise par la Caméra %s", c.mac, c.ip, id_conflit)
         journal.info(
             "Détection : bilan sous-réseaux %s, ports %s, %s s, %s Candidat(s)",
             ",".join(sous_reseaux), ",".join(map(str, reglage.ports)), duree_s, len(candidats),
@@ -329,7 +341,7 @@ def _routes_detection(
                     statut_rtsp=c.statut_rtsp,
                     serveur=c.serveur,
                     mac=c.mac,
-                    camera=connues.get((c.ip, c.port)),
+                    **rapprochements[c].model_dump(),
                 )
                 for c in candidats
             ],

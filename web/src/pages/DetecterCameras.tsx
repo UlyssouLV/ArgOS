@@ -275,7 +275,10 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
                     <td>{candidat.ip}</td>
                     <td>{candidat.port}</td>
                     <td className="mac">{texteMac(candidat.mac)}</td>
-                    <td>{candidat.camera?.nom}</td>
+                    <td>
+                      {candidat.camera?.nom}
+                      <Suivi candidat={candidat} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -285,4 +288,18 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
       )}
     </>
   );
+}
+
+/** Ce que la Détection a fait de l'adresse d'un Appareil connu vu à une autre IP. */
+function Suivi({ candidat }: Readonly<{ candidat: Candidat }>) {
+  const { adresse_mise_a_jour: adresse, conflit } = candidat;
+  if (conflit) return <span className="suivi erreur">adresse non mise à jour : URL déjà prise par {conflit.nom}</span>;
+  if (adresse) {
+    return (
+      <span className="suivi">
+        adresse mise à jour ({adresse.ancienne} → {adresse.nouvelle})
+      </span>
+    );
+  }
+  return null;
 }

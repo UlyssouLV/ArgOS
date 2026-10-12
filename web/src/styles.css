@@ -190,6 +190,12 @@ input {
   cursor: pointer;
 }
 
+/* Adresse suivie (ou conflit) sous le nom de la Caméra d'un Candidat déjà configuré. */
+.suivi {
+  display: block;
+  font-size: 0.85em;
+}
+
 .etat {
   padding: 0.1rem 0.5rem;
   border-radius: 999px;

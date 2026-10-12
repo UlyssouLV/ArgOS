@@ -13,15 +13,19 @@ export type EtatDetection = {
 export type Adresse = { ip: string; port: number };
 
 /**
- * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) à la même
- * IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic, l'UI ne les montre pas.
- * `mac` : celle de l'Appareil, `null` si illisible.
+ * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) du même Appareil
+ * (MAC), sinon à la même IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic,
+ * l'UI ne les montre pas. `mac` : celle de l'Appareil, `null` si illisible.
+ * Appareil connu vu à une autre IP : `adresse_mise_a_jour` si la Détection a suivi ses Caméras, `conflit` si
+ * une autre Caméra occupait déjà la nouvelle URL (Caméra non modifiée).
  */
 export type Candidat = Adresse & {
   statut_rtsp: number;
   serveur: string | null;
   mac: string | null;
   camera: { id: number; nom: string } | null;
+  adresse_mise_a_jour: { ancienne: string; nouvelle: string } | null;
+  conflit: { id: number; nom: string } | null;
 };
 
 export type ResultatDetection = {
