@@ -15,10 +15,12 @@ export type Adresse = { ip: string; port: number };
 /**
  * Hôte qui répond en RTSP sur un port caméra. `camera` : Caméra du Site (active ou désactivée) à la même
  * IP et au même port, sinon `null`. `statut_rtsp` et `serveur` servent au diagnostic, l'UI ne les montre pas.
+ * `mac` : celle de l'Appareil, `null` si illisible.
  */
 export type Candidat = Adresse & {
   statut_rtsp: number;
   serveur: string | null;
+  mac: string | null;
   camera: { id: number; nom: string } | null;
 };
 
@@ -57,6 +59,8 @@ export type Essai = {
   chemin: string | null;
   codec: string | null;
   apercu: string | null;
+  /** MAC de l'Appareil dès qu'il a répondu ; `null` si injoignable ou illisible. */
+  mac: string | null;
   expiration_s: number;
 };
 

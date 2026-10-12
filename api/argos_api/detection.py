@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv4Network
 
+from argos_api import voisinage
+
 # Sondes simultanées : un /24 sur deux ports (508 sondes) tient en quelques tours de délai.
 CONCURRENCE = 128
 STATUT_RTSP = re.compile(rb"^RTSP/\d\.\d (\d{3})")
@@ -29,10 +31,14 @@ class Cible:
 
 @dataclass(frozen=True, order=True)
 class Candidat(Cible):
-    """Diagnostic en plus de l'adresse : statut de la réponse à `OPTIONS` et en-tête `Server` annoncé."""
+    """Diagnostic en plus de l'adresse : statut de la réponse à `OPTIONS` et en-tête `Server` annoncé.
+
+    `mac` : celle de l'Appareil, lue juste après la réponse ; `None` hors du réseau local direct.
+    """
 
     statut_rtsp: int = field(compare=False)
     serveur: str | None = field(compare=False)
+    mac: str | None = field(compare=False, default=None)
 
 
 def detecter(
@@ -70,6 +76,8 @@ def interroger(cible: Cible, delai: float) -> Candidat | None:
         cible.port,
         int(statut.group(1)),
         serveur.group(1).decode(errors="replace") if serveur else None,
+        # La connexion vient de remplir la table de voisinage.
+        voisinage.mac_de(cible.ip),
     )
 
 

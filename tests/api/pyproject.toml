@@ -13,4 +13,6 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["."]
+# Tests unitaires du module de voisinage : importé depuis api/ (sans dépendance hors stdlib).
+pythonpath = ["../../api"]
 addopts = "-ra"

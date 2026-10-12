@@ -77,6 +77,8 @@ class CandidatLu(BaseModel):
     # Diagnostic, non affiché par l'UI : statut de la réponse à OPTIONS et en-tête `Server`.
     statut_rtsp: int
     serveur: str | None
+    # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : illisible (hors du réseau local direct).
+    mac: str | None
     # Caméra du Site (active ou désactivée) à la même IP résolue et au même port ; `None` : nouveau.
     camera: CameraCorrespondante | None
 
@@ -104,6 +106,8 @@ class EssaiLu(BaseModel):
     codec: str | None
     # Chemin MediaMTX de l'Aperçu, à lire en WebRTC ; seulement si `flux_trouve`.
     apercu: str | None
+    # MAC de l'Appareil dès qu'il a répondu ; `None` si injoignable ou illisible.
+    mac: str | None
     # Sans `POST /api/essai/renouveler` pendant ce délai, l'Aperçu est retiré.
     expiration_s: float
 
@@ -324,6 +328,7 @@ def _routes_detection(
                     port=c.port,
                     statut_rtsp=c.statut_rtsp,
                     serveur=c.serveur,
+                    mac=c.mac,
                     camera=connues.get((c.ip, c.port)),
                 )
                 for c in candidats
@@ -396,6 +401,7 @@ def _routes_essai(
             chemin=resultat.chemin,
             codec=resultat.codec,
             apercu=apercu,
+            mac=resultat.mac,
             expiration_s=configuration.expiration_apercu,
         )
 
@@ -410,10 +416,11 @@ def _routes_essai(
 
     @routes.post("/camera", status_code=status.HTTP_201_CREATED)
     def ajouter(ajout: AjoutDepuisEssai, base: Base) -> CameraLue:
-        def creer(url: str) -> CameraLue:
+        def creer(resultat: essai.Resultat) -> CameraLue:
             # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
+            nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=resultat.url, emplacement=ajout.emplacement)
             with _erreurs_cameras():
-                return cameras.creer(base, NouvelleCamera(nom=ajout.nom, url_rtsp=url, emplacement=ajout.emplacement))
+                return cameras.creer(base, nouvelle, mac=resultat.mac)
 
         with _sans_apercu_404():
             return apercus.ajouter(creer)

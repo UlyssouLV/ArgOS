@@ -33,3 +33,7 @@ class Camera(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     etat: Mapped[str] = mapped_column(String(16), default="unknown")
     etat_verifie_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # MAC de l'Appareil (`aa:bb:cc:dd:ee:ff`), lue sur le réseau, jamais saisie ; non unique.
+    mac: Mapped[str | None] = mapped_column(String(17))
+    # Pourquoi l'état est ce qu'il est, quand ArgOS le sait (ex. `autre_appareil`).
+    raison_etat: Mapped[str | None] = mapped_column(String(32))

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
-import { messageEchec, type Camera } from "../cameras";
+import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
   ajouterDepuisEssai,
   essayer,
@@ -153,6 +153,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
     <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={soumettre}>
       {essai === null && erreur === null && <output>Recherche du Flux…</output>}
       {essai && essai.issue !== "flux_trouve" && <p className="erreur">{MESSAGES[essai.issue]}</p>}
+      {essai && essai.issue !== "injoignable" && <p className="mac">MAC de l'Appareil : {texteMac(essai.mac)}</p>}
       {identifiantsDemandes && (
         <>
           <label>

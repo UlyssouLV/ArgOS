@@ -52,6 +52,8 @@ class Resultat:
     codec: str | None = None
     # Identifiants compris : ni renvoyée au navigateur, ni journalisée.
     url: str | None = field(default=None, repr=False)
+    # MAC de l'Appareil, lue dès sa réponse à `OPTIONS`, même sans Flux trouvé.
+    mac: str | None = None
 
 
 def essayer(
@@ -72,10 +74,11 @@ def essayer(
         if description is None:
             continue
         if description.statut == 401:
-            return Resultat(Issue.IDENTIFIANTS_REFUSES if identifiant else Issue.IDENTIFIANTS_REQUIS)
+            issue = Issue.IDENTIFIANTS_REFUSES if identifiant else Issue.IDENTIFIANTS_REQUIS
+            return Resultat(issue, mac=candidat.mac)
         if description.statut == 200 and sonde.sonder(url, delai):
-            return Resultat(Issue.FLUX_TROUVE, essaye, description.codec, url)
-    return Resultat(Issue.FLUX_INTROUVABLE)
+            return Resultat(Issue.FLUX_TROUVE, essaye, description.codec, url, candidat.mac)
+    return Resultat(Issue.FLUX_INTROUVABLE, mac=candidat.mac)
 
 
 def chemins_ordonnes(serveur: str | None) -> list[str]:

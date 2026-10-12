@@ -83,8 +83,11 @@ class CameraLue(BaseModel):
     active: bool
     etat: Etat
     etat_verifie_le: datetime | None
+    raison_etat: str | None
     # Chemin MediaMTX qui relaie le Flux (docs/adr/0001-mediamtx-en-pont.md) ; aucun si désactivée.
     chemin_flux: str | None
+    # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : inconnue. Jamais modifiable par l'Administrateur.
+    mac: str | None
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -99,7 +102,9 @@ class CameraLue(BaseModel):
             active=camera.active,
             etat=camera.etat,
             etat_verifie_le=camera.etat_verifie_le,
+            raison_etat=camera.raison_etat,
             chemin_flux=chemin_flux(camera.id) if camera.active else None,
+            mac=camera.mac,
         )
 
 
@@ -143,8 +148,9 @@ def lire(base: Session, id_camera: int) -> CameraLue:
     return CameraLue.depuis(_trouver(base, id_camera))
 
 
-def creer(base: Session, nouvelle: NouvelleCamera) -> CameraLue:
-    camera = Camera(**nouvelle.model_dump(), active=True, etat="unknown", etat_verifie_le=None)
+def creer(base: Session, nouvelle: NouvelleCamera, mac: str | None = None) -> CameraLue:
+    """`mac` : lue sur le réseau pendant l'essai, jamais saisie par l'Administrateur."""
+    camera = Camera(**nouvelle.model_dump(), active=True, etat="unknown", etat_verifie_le=None, mac=mac)
     _enregistrer(base, camera)
     return CameraLue.depuis(camera)
 

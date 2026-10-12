@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 
-import { messageEchec, type Camera } from "../cameras";
+import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
   essayer,
   lancerDetection,
@@ -205,6 +205,7 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
             <tr>
               <th>IP</th>
               <th>Port</th>
+              <th>MAC</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -214,6 +215,7 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
                 <tr>
                   <td>{candidat.ip}</td>
                   <td>{candidat.port}</td>
+                  <td className="mac">{texteMac(candidat.mac)}</td>
                   <td>
                     <button type="button" disabled={enAjout === cle(candidat)} onClick={() => onOuvrir(candidat)}>
                       Ajouter
@@ -222,7 +224,7 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
                 </tr>
                 {enAjout === cle(candidat) && (
                   <tr>
-                    <td colSpan={3}>
+                    <td colSpan={4}>
                       <AjoutCandidat
                         candidat={candidat}
                         onAjoutee={(camera) => onAjoutee(candidat, camera)}
@@ -244,6 +246,7 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
               <tr>
                 <th>IP</th>
                 <th>Port</th>
+                <th>MAC</th>
                 <th>Caméra</th>
               </tr>
             </thead>
@@ -252,6 +255,7 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
                 <tr key={cle(candidat)}>
                   <td>{candidat.ip}</td>
                   <td>{candidat.port}</td>
+                  <td className="mac">{texteMac(candidat.mac)}</td>
                   <td>{candidat.camera?.nom}</td>
                 </tr>
               ))}

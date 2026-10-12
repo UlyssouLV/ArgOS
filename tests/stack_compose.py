@@ -23,6 +23,8 @@ EXPIRATION_APERCU_S = 30
 IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
 # Chemins de vraies caméras des Caméras simulées (media/simulated/README.md).
 CHEMINS_SIMULES = {1: "Streaming/Channels/101", 2: "cam/realmonitor?channel=1&subtype=0", 3: "flux"}
+# MAC fixes des Caméras simulées (compose.simulation.yaml), au format affiché par ArgOS.
+MACS_SIMULEES = {1: "02:a6:05:00:00:01", 2: "02:a6:05:00:00:02", 3: "02:a6:05:00:00:03"}
 
 
 def compose(*args: str) -> subprocess.CompletedProcess[str]:
