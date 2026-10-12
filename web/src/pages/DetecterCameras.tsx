@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { messageEchec, texteMac, type Camera } from "../cameras";
 import {
   essayer,
+  filtrerParMac,
   lancerDetection,
   lireEtatDetection,
   type Adresse,
@@ -187,14 +188,30 @@ type PropsCandidats = Readonly<{
 
 /**
  * Nouveaux Candidats en tableau, chacun avec « Ajouter » : le panneau d'ajout s'ouvre sous sa ligne.
- * Ceux déjà configurés à part, repliés, avec le nom de leur Caméra.
+ * Ceux déjà configurés à part, repliés, avec le nom de leur Caméra. « Filtrer par MAC » restreint les deux.
  */
 function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCandidats) {
-  const nouveaux = resultat.candidats.filter((candidat) => candidat.camera === null);
-  const configures = resultat.candidats.filter((candidat) => candidat.camera !== null);
+  const [filtre, setFiltre] = useState("");
+  // Le Candidat en cours d'ajout reste affiché : le masquer fermerait son Aperçu.
+  const retenus = new Set(filtrerParMac(resultat.candidats, filtre));
+  const filtres = resultat.candidats.filter((candidat) => retenus.has(candidat) || enAjout === cle(candidat));
+  const nouveaux = filtres.filter((candidat) => candidat.camera === null);
+  const configures = filtres.filter((candidat) => candidat.camera !== null);
+  const aucunNeCorrespond = resultat.candidats.length > 0 && filtres.length === 0;
   return (
     <>
-      {nouveaux.length === 0 && (
+      {resultat.candidats.length > 0 && (
+        <label className="filtre-mac">
+          <span>Filtrer par MAC</span>
+          <input
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="AA-BB-CC-DD-EE-FF"
+            value={filtre} onChange={(e) => setFiltre(e.target.value)} />
+        </label>
+      )}
+      {aucunNeCorrespond && <p>Aucun Candidat ne correspond à ce filtre.</p>}
+      {!aucunNeCorrespond && nouveaux.length === 0 && (
         <p>
           Aucun {configures.length > 0 && "nouveau "}Candidat sur {couverture(resultat.sous_reseaux, resultat.ports)}.
         </p>
@@ -238,29 +255,32 @@ function Candidats({ resultat, enAjout, onOuvrir, onFermer, onAjoutee }: PropsCa
           </tbody>
         </table>
       )}
-      {configures.length > 0 && (
+      {/* Monté tant que la Détection en a : un filtre qui les masque toutes ne replie pas la section. */}
+      {resultat.candidats.some((candidat) => candidat.camera !== null) && (
         <details className="deja-configurees">
           <summary>Déjà configurées ({configures.length})</summary>
-          <table className="cameras candidats" aria-label="Déjà configurées">
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>Port</th>
-                <th>MAC</th>
-                <th>Caméra</th>
-              </tr>
-            </thead>
-            <tbody>
-              {configures.map((candidat) => (
-                <tr key={cle(candidat)}>
-                  <td>{candidat.ip}</td>
-                  <td>{candidat.port}</td>
-                  <td className="mac">{texteMac(candidat.mac)}</td>
-                  <td>{candidat.camera?.nom}</td>
+          {configures.length > 0 && (
+            <table className="cameras candidats" aria-label="Déjà configurées">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Port</th>
+                  <th>MAC</th>
+                  <th>Caméra</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {configures.map((candidat) => (
+                  <tr key={cle(candidat)}>
+                    <td>{candidat.ip}</td>
+                    <td>{candidat.port}</td>
+                    <td className="mac">{texteMac(candidat.mac)}</td>
+                    <td>{candidat.camera?.nom}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </details>
       )}
     </>

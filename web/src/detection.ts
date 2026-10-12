@@ -32,6 +32,21 @@ export type ResultatDetection = {
   candidats: Candidat[];
 };
 
+/** Chiffres d'une MAC, comme l'API la normalise : séparateurs `:` `-` `.` et espaces retirés, en minuscules. */
+function chiffresMac(mac: string): string {
+  return mac.replaceAll(/[\s:.-]/g, "").toLowerCase();
+}
+
+/**
+ * Candidats dont la MAC contient `saisie`, tapée telle qu'écrite sur l'étiquette (`AA-BB-…`, `aabb.ccdd.eeff`,
+ * partielle). Saisie vide : tous ; sinon, ceux sans MAC sont écartés.
+ */
+export function filtrerParMac(candidats: Candidat[], saisie: string): Candidat[] {
+  const filtre = chiffresMac(saisie);
+  if (filtre === "") return candidats;
+  return candidats.filter((candidat) => candidat.mac !== null && chiffresMac(candidat.mac).includes(filtre));
+}
+
 async function lire<T>(reponse: Response): Promise<T> {
   if (reponse.ok) return reponse.json();
   const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
