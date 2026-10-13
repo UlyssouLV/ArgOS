@@ -53,7 +53,7 @@ jobs:
       - name: Install dependencies
         working-directory: docs-site
         run: |
-          if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+          npm ci --ignore-scripts
 
       - name: Build
         working-directory: docs-site
