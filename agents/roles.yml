@@ -41,3 +41,4 @@ roles:
       - tests/regles-sessions/
       - tests/web/
       - tests/scripts/
+      - simulation/onvif/

@@ -1,0 +1,18 @@
+[project]
+name = "argos-simulation-onvif"
+version = "0.6.0"
+description = "Caméra simulée ONVIF de dev : service SOAP en bibliothèque standard, et ses tests."
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Le service tient en un module, importé tel quel par les tests.
+pythonpath = ["."]
+addopts = "-ra"

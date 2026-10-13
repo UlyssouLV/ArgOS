@@ -11,6 +11,8 @@ Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : u
 | `camera-simulee-3` | `172.30.0.13` / `02:a6:05:00:00:03` | `rtsp://camera-simulee-3/flux` | exotique (aucun chemin courant) | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
 | `camera-simulee-4` | `172.30.0.14` / `02:a6:05:00:00:04` | `rtsp://camera-simulee-4/Streaming/Channels/101` | Hikvision, en **H.265** | `cam4.mp4` | `cam1.mp4` réencodée en H.265 (voir plus bas) |
 
+Les Caméras simulées 2 et 4 répondent aussi en **ONVIF** (Réglages de la Caméra) : voir [`simulation/onvif/`](../../simulation/onvif/README.md).
+
 ## Identifiants de `camera-simulee-2`
 
 `camera-simulee-2` exige, comme beaucoup de vraies caméras, un identifiant et un mot de passe pour lire le Flux :
