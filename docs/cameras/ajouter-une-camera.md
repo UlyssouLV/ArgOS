@@ -2,7 +2,7 @@
 
 Comprendre ce que fait ArgOS quand l’Administrateur clique sur **Ajouter**, et quoi faire quand ça bloque. Depuis la 0.4.1, l’Administrateur n’écrit plus jamais d’URL RTSP pour ajouter une Caméra : ArgOS cherche seul le Flux, demande un mot de passe ou un chemin seulement s’il en a besoin, et montre l’image avant l’ajout.
 
-Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [Reconnaître un Appareil par sa MAC](reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras) (MAC, changement d’IP, Appareil à plusieurs Caméras), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma des Flux](../dev/schema-flux.md), [HLS pour les Flux H.265](../adr/0004-hls-pour-les-flux-h265.md) (pourquoi deux transports).
+Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [Reconnaître un Appareil par sa MAC](reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras) (MAC, changement d’IP, Appareil à plusieurs Caméras), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma des Flux](../dev/schema-flux.md), [HLS pour les Flux H.265](../adr/0004-hls-pour-les-flux-h265.md) (pourquoi deux transports), [Paramétrer une Caméra](parametrer-une-camera.md) (nom et heure incrustés, ONVIF).
 
 ## 1. Le déroulé
 
@@ -77,7 +77,7 @@ Avant de lire, l’UI demande au navigateur s’il décode le HEVC. S’il ne le
 Sans navigateur qui décode le HEVC, deux remèdes :
 
 - **Sur la caméra** (son interface web) : passer le flux principal en H.264, quand le modèle le permet. ArgOS suit le changement au passage suivant de la sonde.
-- **Dans ArgOS, en 0.5.1** : réencodage H.265 → H.264 **à la demande**, seulement pendant qu’un tel navigateur regarde ([feuille de route](../dev/feuille-de-route-dev.md)).
+- **Dans ArgOS, plus tard** : réencodage H.265 → H.264 **à la demande**, seulement pendant qu’un tel navigateur regarde ([feuille de route](../dev/feuille-de-route-dev.md)).
 
 Un codec **ni H.264 ni H.265** (MJPEG…) n’est toujours pas montré : le panneau le nomme (« Cette caméra émet en MJPEG, que le navigateur ne sait pas lire… ») ; l’ajout reste permis, la Caméra est sondée normalement, mais le Live ne l’affiche pas.
 
@@ -122,5 +122,5 @@ Un essai à la fois : un second, lancé pendant la recherche, est refusé (« Un
 - **Pas de choix entre flux principal et secondaire** : le principal est pris quand il répond.
 - **Pas d’ajout par MAC** : pour retrouver une caméra parmi les Candidats, **Filtrer par MAC** dans la liste ([Détection](reseau-et-detection.md#4-ce-que-fait-la-détection-et-ce-quelle-ne-fait-pas)), puis **Ajouter**.
 - **Pas de MAC modifiable** : ArgOS la lit sur le réseau, l’Administrateur ne la saisit jamais. Une Caméra sans MAC (réseau routé, Mac de dev avec de vraies caméras) qui change d’IP reste `offline` jusqu’à ce qu’on corrige son URL (**Modifier**) ; avec sa MAC, une Détection la retrouve seule ([quand une caméra change d’IP](reseau-et-detection.md#10-quand-une-caméra-change-dip)).
-- **Pas de réencodage** : un navigateur qui ne décode pas le HEVC ne montre pas les Caméras H.265 (§ 5) avant la 0.5.1. Pas de lecture des autres codecs (MJPEG…).
+- **Pas de réencodage** : un navigateur qui ne décode pas le HEVC ne montre pas les Caméras H.265 (§ 5). Pas de lecture des autres codecs (MJPEG…).
 - **Modifier une Caméra** passe toujours par son URL RTSP : l’URL affichée est masquée, la laisser telle quelle conserve le mot de passe.

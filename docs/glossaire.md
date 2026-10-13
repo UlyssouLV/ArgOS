@@ -20,6 +20,18 @@ _Avoid_ : device, équipement, hôte
 Flux d’un Appareil connu du Site, identifié par une URL RTSP.
 _Avoid_ : Device, capteur, stream
 
+**Incrustation** :
+Texte que l’Appareil dessine lui-même dans l’image d’une Caméra avant de l’encoder (le nom, la date et heure).
+_Avoid_ : OSD, overlay, filigrane
+
+**Horloge** :
+Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes ses Caméras.
+_Avoid_ : heure système
+
+**Réglages de la Caméra** :
+Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations et l’Horloge de son Appareil.
+_Avoid_ : configuration, paramètres
+
 **Caméra désactivée** :
 Caméra que le Site connaît encore mais ne surveille plus.
 _Avoid_ : Caméra archivée, Caméra supprimée

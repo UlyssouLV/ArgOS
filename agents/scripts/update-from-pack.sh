@@ -2,11 +2,33 @@
 # From a project root that already has agents/skills/: refresh pack-owned
 # skills and hooks from this checkout. Adds names that exist only in the
 # pack. Never deletes a skill or hook that exists only in the project.
-# Does not touch AGENTS.md, roles.yml, README, .env, or adapter settings.
+# Does not touch AGENTS.md, README, .env, or adapter settings by default.
+#
+# Usage: update-from-pack.sh [--with-docs] [--with-suivi]
+#   --with-docs   scaffold docs-site if missing; else refresh PACK_OWNED paths
+#   --with-suivi  scaffold suivi-avancement if missing (role + README + template)
 set -euo pipefail
+
+WITH_DOCS=0
+WITH_SUIVI=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-docs) WITH_DOCS=1 ;;
+    --with-suivi) WITH_SUIVI=1 ;;
+    -h|--help)
+      echo "Usage: $0 [--with-docs] [--with-suivi]" >&2
+      exit 0
+      ;;
+    *)
+      echo "Option inconnue : $arg (attendu : --with-docs | --with-suivi)" >&2
+      exit 1
+      ;;
+  esac
+done
 
 PACK="$(cd "$(dirname "$0")/../.." && pwd)"
 TARGET="$(pwd)"
+REFS="$PACK/agents/skills/process/initialise-le-repo/references"
 
 if [ ! -d "$TARGET/agents/skills" ]; then
   echo "À lancer à la racine d’un repo déjà initialisé (agents/skills/ introuvable)." >&2
@@ -85,11 +107,79 @@ if [ -d "$PACK/agents/hooks" ]; then
 fi
 
 mkdir -p "$TARGET/agents/scripts"
-for f in dispatch.py gate-code-review.py update-from-pack.sh adopter-le-pack.sh; do
+for f in dispatch.py gate-code-review.py update-from-pack.sh adopter-le-pack.sh scaffold-docs-site.sh; do
   if [ -f "$PACK/agents/scripts/$f" ]; then
     rsync -a "$PACK/agents/scripts/$f" "$TARGET/agents/scripts/$f"
+    chmod +x "$TARGET/agents/scripts/$f" 2>/dev/null || true
   fi
 done
+
+# Keep pack templates available for later --with-docs / scaffold
+if [ -d "$PACK/agents/templates" ]; then
+  mkdir -p "$TARGET/agents/templates"
+  rsync -a --exclude .DS_Store --exclude node_modules --exclude build \
+    "$PACK/agents/templates/" "$TARGET/agents/templates/"
+  echo "copié  agents/templates/"
+fi
+
+# --- docs-site ---
+if [ "$WITH_DOCS" -eq 1 ]; then
+  if [ -d "$TARGET/docs-site" ] && [ -f "$TARGET/docs-site/package.json" ]; then
+    bash "$TARGET/agents/scripts/scaffold-docs-site.sh" "$TARGET" --force-owned
+  else
+    bash "$TARGET/agents/scripts/scaffold-docs-site.sh" "$TARGET"
+  fi
+else
+  if [ ! -d "$TARGET/docs-site" ]; then
+    echo "Astuce : pour ajouter Docusaurus + GitHub Pages → $0 --with-docs"
+  fi
+fi
+
+# --- suivi ---
+if [ "$WITH_SUIVI" -eq 1 ]; then
+  mkdir -p "$TARGET/docs/suivi-avancement"
+  if [ ! -f "$TARGET/docs/suivi-avancement/README.md" ] && [ -f "$REFS/suivi-avancement/README.md" ]; then
+    rsync -a "$REFS/suivi-avancement/README.md" "$TARGET/docs/suivi-avancement/README.md"
+    echo "créé   docs/suivi-avancement/README.md"
+  fi
+  if [ ! -f "$TARGET/docs/suivi-avancement/template-semaine.html" ] && [ -f "$REFS/suivi-avancement/template-semaine.html" ]; then
+    rsync -a "$REFS/suivi-avancement/template-semaine.html" "$TARGET/docs/suivi-avancement/template-semaine.html"
+    echo "créé   docs/suivi-avancement/template-semaine.html"
+  fi
+  if [ -f "$TARGET/agents/roles.yml" ] && ! grep -q 'suivi-avancement:' "$TARGET/agents/roles.yml"; then
+    python3 - "$TARGET/agents/roles.yml" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text()
+block = """  suivi-avancement:
+    paths:
+      - docs/suivi-avancement/
+"""
+if "suivi-avancement:" in text:
+    raise SystemExit(0)
+lines = text.splitlines(keepends=True)
+out = []
+i = 0
+inserted = False
+while i < len(lines):
+    out.append(lines[i])
+    if not inserted and lines[i].startswith("  roadmap:"):
+        i += 1
+        while i < len(lines) and (lines[i].startswith("    ") or lines[i].strip() == ""):
+            out.append(lines[i])
+            i += 1
+        out.append(block if block.endswith("\n") else block + "\n")
+        inserted = True
+        continue
+    i += 1
+if not inserted:
+    out.append(block if block.endswith("\n") else block + "\n")
+path.write_text("".join(out))
+PY
+    echo "ajouté rôle suivi-avancement dans agents/roles.yml"
+  fi
+fi
 
 (
   cd "$TARGET"
@@ -97,4 +187,4 @@ done
   python3 agents/scripts/dispatch.py --check
 )
 
-echo "Pack à jour : $updated mis à jour, $added ajouté(s). Rien de local n’a été effacé."
+echo "Pack à jour : $updated mis à jour, $added ajouté(s). Rien de local n’a été effacé (hors chemins docs PACK_OWNED si --with-docs)."

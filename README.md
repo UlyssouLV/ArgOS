@@ -189,7 +189,7 @@ L’onglet **Live** montre en grand le Flux d’**une** Caméra active à la foi
 - au-dessus de la vidéo : nom, emplacement et état de la Caméra (rafraîchi toutes les 10 s) ;
 - aucune Caméra active : un message renvoie vers **Administration** ;
 - la vidéo ne vient pas ou se coupe : **Flux indisponible**, puis nouvelle tentative toutes les 5 s. Une Caméra tout juste créée ou réactivée peut mettre jusqu’à 10 s à être relayée : le Live la rattrape seul ;
-- Caméra H.265 dans un navigateur qui ne décode pas le HEVC : **Ce navigateur ne lit pas le H.265**, sans nouvelle tentative. Safari le lit ; Chrome et Edge avec un décodage matériel (Mac M1 et suivants, PC récents) ; Firefox le plus souvent non. Le réencodage à la demande est prévu en 0.5.1.
+- Caméra H.265 dans un navigateur qui ne décode pas le HEVC : **Ce navigateur ne lit pas le H.265**, sans nouvelle tentative. Safari le lit ; Chrome et Edge avec un décodage matériel (Mac M1 et suivants, PC récents) ; Firefox le plus souvent non. Le réencodage à la demande est dans la [feuille de route](docs/dev/feuille-de-route-dev.md).
 
 Le front lit un Flux H.264 (ou au codec inconnu) par un client **WHEP** : `POST http://<hôte>:8889/<chemin_flux>/whep` (offre SDP), puis la vidéo arrive dans un `<video>`. Un Flux H.265 se lit en HLS : `http://<hôte>:8888/<chemin_flux>/index.m3u8`, par hls.js (HLS natif sur iPhone), après avoir demandé au navigateur s’il décode le HEVC. Pas d’iframe. Changer de Caméra ferme la connexion précédente : une seule est ouverte à la fois. `<chemin_flux>` (`camera-<id>`) vient de l’API ([ADR 0004](docs/adr/0004-hls-pour-les-flux-h265.md)).
 
@@ -393,7 +393,7 @@ tests/api/                Tests HTTP de l’API contre la stack lancée (pytest,
 tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
 tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
 tests/scripts/            Tests du script de configuration de la Détection (fausses sorties ip / ifconfig)
-docs/cameras/             Réseau du Site et Détection des Caméras, Ajouter une Caméra (docs pédagogiques)
+docs/cameras/             Réseau du Site et Détection des Caméras, Ajouter une Caméra, Paramétrer une Caméra (ONVIF) (docs pédagogiques)
 docs/dev/                 Feuille de route de dev, schéma des Flux (Mermaid)
 docs/specs/               Specs de version et contexte initial
 docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge, macvlan, HLS pour le H.265)

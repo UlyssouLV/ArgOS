@@ -3,13 +3,14 @@ name: finaliser-la-version
 description: >-
   When the user says « Finalise la version », « finalize the version »,
   « clôture la version », or asks to ship/squash-merge the current version
-  PR, create the GitHub Release, and delete the feature branch. Not for a
-  single child ticket or /implement.
+  PR, create the GitHub Release, and delete the feature branch. Reads the
+  Sonar quality gate once on the PR HEAD before the tag. Not for a single
+  child ticket or /implement.
 ---
 
 # Finalise the version
 
-Triggered by **« Finalise la version »** (or equivalent). Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`).
+Triggered by **« Finalise la version »** (or equivalent), only after the user accepted a **`/code-review`** of this branch. Do **not** run `/code-review` here. Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`). The quality gate is step 3, after that review and after the docs.
 
 A version = one feature branch + one PR that ships a **set** of child issues (parent spec). Starting a version is skill `ouvrir-la-version`.
 
@@ -27,7 +28,7 @@ Infer **`X.Y.Z`** from the branch `vX.Y.Z-<slug>` or the PR title `VX.Y.Z — �
 
 Related = listed in the PR body (`Fixes` / `Part of`) **and** children of the parent spec that are in scope for this PR. Ignore `wontfix` and issues the PR or parent spec mark as out of this version. See `agents/issue-tracker.md`.
 
-**Published** = each in-scope **child** is **Closed**.
+**Published** = each in-scope **child** is **Closed** — including the **human-test** child (`ready-for-human` / title `Tests humains — VX.Y.Z`). An Open human-test ticket **blocks** Finalise; tell the user to finish with **`/th`** first.
 
 If any in-scope child is still **Open**: **stop**. List what’s missing. Do not tag, merge, or delete.
 
@@ -44,17 +45,49 @@ Read each role below (paths from `agents/roles.yml`), against the parent spec / 
 - **`agent-adapter`** — adapter still valid (hook, `/implement` close, Standards pointer); skills named there exist under `agents/skills/` (synced to the IDE adapters); implement / finalise cycle matches those skills; process docs still match (tracker, labels, domain).
 - **`spec`** — spec for this version exists there.
 - **`adr`** — new ADRs if decisions changed.
-- **`roadmap`** — **`X.Y.Z`** is recorded as delivered; upcoming versions stay listed; drop claims this version has **not** delivered. Do not invent new versions; only reshuffle what is already listed.
+- **`roadmap`** — follow **`docs/dev/feuille-de-route/README.md`**: move **`X.Y.Z`** into **Déjà livré** (one bullet `**X.Y.Z** — titre : résumé…`); drop it from **Prochaine** / **Ensuite**; the first remaining **Ensuite** becomes the sole **Prochaine** (keep its Objectif / Hors périmètre). Drop claims this version has **not** delivered. Do not invent new versions; only reshuffle what is already listed. New version ideas → leave for **`/afr`**.
+- **Bugs fixed by this version** (same docs commit as roadmap):
+  1. From the open PR body, collect every `Fixes #<n>` / `Fix #<n>` / `Closes #<n>`.
+  2. Keep only issues that still have label **`bug`** (`gh issue view <n> --json labels`). Also include any `#n` the parent **spec** / version narrative explicitly says this version closes, if it has label `bug` and is missing from the PR — then **edit the PR body** to add `Fixes #<n>` (same rule as step 1 for the parent).
+  3. On role **`roadmap`**: delete each matching `### Bug — … (#n)` block under **Plus tard** (from that heading through the line before the next `###` / `##`). Already absent → OK.
+  4. For each such `#n` still **Open**: `gh issue close <n> --comment "Corrigé en VX.Y.Z."` (use this version’s semver). Already Closed → one line, continue.
+- **`suivi-avancement`** (opt-in) — if that role is **missing or unresolved** in `agents/roles.yml` → one line soft-skip (suivi not enabled for this repo). Do **not** stop the release. If the role **is** resolved: run skill **`mettre-a-jour-suivi-avancement`** as if the user had typed **`/msa`** for this **`X.Y.Z`** (convention: **`docs/suivi-avancement/README.md`**). That skill soft-skips with a **`/os`** reminder when there is no current-week folder (do **not** stop the release). PDF failure after an HTML edit (when `generer-pdf.mjs` exists) → **stop** the release until fixed. Do not create a week folder here. Do not edit other weeks.
+- **`docs-site`** (opt-in) — if that role is resolved: one line that the Docusaurus site will refresh via GitHub Pages after merge/release (workflow `deploy-docs.yml`). Do **not** run `npm run build` locally here. If the role is missing → soft-skip (no site).
 
-If anything is stale: **stop the release**. Update those files on the **feature branch**, then run skill **`commit`** as if the user had typed **`/c -a -p`**. Then re-read this section. Do **not** `/crel` or `/mpr` until this gate is green — the tag must include the docs.
+If anything is stale (except soft-skip on missing suivi / docs-site role / missing week HTML / missing PDF script): **stop the release**. Update those files on the **feature branch**, then run skill **`commit`** as if the user had typed **`/c -a -p`**. Then re-read this section. Do **not** `/crel` or `/mpr` until this gate is green — the tag must include the docs (HTML + PDF when updated). Bug issue closes (step above) may run in that same docs turn; they do not require a second commit.
 
-## 3. Release, then squash
+## 3. Quality gate
+
+One read, on the PR `HEAD` after the docs commit. This analysis covers the branch, not one child. Do not reopen children. Do not add a label.
+
+Load `.env` the same way **`quality-gate`** does. If any of that skill’s three `SONAR_*` keys is missing or empty → continue. One line that Sonar is skipped. Do not `/qg`. Do not `/cqg`.
+
+Otherwise run **`quality-gate`** as if **`/qg -w`**.
+
+- No analysis for `HEAD` after the wait → **stop**. Do not `/crel` or `/mpr`.
+- **`OK`** → continue.
+- Not **`OK`** (`ERROR`, `WARN`, …) → run skill **`corriger-quality-gate`** as if **`/cqg`**.
+  - That skill stopped without a code change (policy / user needed) → **stop**. Do not `/crel` or `/mpr`.
+  - Working tree dirty after the fix → run **`/t`** (fail → **stop**). Stage the files that fix touched and run skill **`commit`** as if **`/c -p`**. Then **`/qg -w`** once. Not **`OK`**, or no analysis this time → **stop**. Do not `/crel` or `/mpr`.
+
+## 4. Release, then squash
 
 Run skill **`creer-release`** as if the user had typed **`/crel vX.Y.Z`**. That skill owns title (`VX.Y.Z — <purpose>`) and notes layout. Wait until the release is visible.
 
 Then run skill **`fusionner-pr`** as if the user had typed **`/mpr`**.
 
-## 4. Stop
+## 5. Annotate earlier versions
+
+Read the spec section **Changements apportés aux versions antérieures** (format and blocks: `agents/issue-tracker.md`, *Changes to earlier versions* **and** the Critical newline rules there). `Aucun.` or no section → one line, go to step 6. Otherwise annotate each row's targets:
+
+1. `gh release view <tag> --json body` — keep the existing notes.
+2. Prepend each new `> **Modifié en VX.Y.Z** …` blockquote **with blank lines between blocks**, then a blank line, then the previous body starting at `## Pourquoi` (or whatever already headed the notes).
+3. Write with `gh release edit <tag> --notes-file` (UTF-8 file). Never collapse the body to a single line.
+4. Same block as a comment on each listed issue.
+
+Never stop the version on this step: a target that fails is listed in the final reply.
+
+## 6. Stop
 
 Do not start the next version’s branch unless the user asks.
 
@@ -65,4 +98,5 @@ Do not start the next version’s branch unless the user asks.
 - Commit / push → `commit` (`/c`)
 - Child wrap → `encadrer-implement`
 - Open a version → `ouvrir-la-version`
+- Human-test results / close → `tests-humains` (`/th`)
 - Feuille de route de dev only → `augmenter-la-feuille-de-route-dev` (`/afr`)
