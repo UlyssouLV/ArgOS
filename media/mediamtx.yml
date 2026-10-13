@@ -4,6 +4,8 @@
 
 rtspAddress: :8554
 hlsAddress: :8888
+# Flux H.265 (docs/adr/0004-hls-pour-les-flux-h265.md) : LL-HLS en fMP4, images remballées sans réencodage.
+hlsVariant: lowLatency
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
 # Candidats ICE annoncés aux navigateurs : voir MTX_WEBRTCADDITIONALHOSTS dans compose.yaml.

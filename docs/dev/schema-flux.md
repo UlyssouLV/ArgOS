@@ -1,18 +1,18 @@
 # Schéma des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.4.1, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md). Limites de sécurité : [docs/securite.md](../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.5.0, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `media/mediamtx.yml`, [ADR 0001](../adr/0001-mediamtx-en-pont.md), [ADR 0004](../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265). Limites de sécurité : [docs/securite.md](../securite.md).
 
 Lecture : trait plein = flux continu ou à la demande ; trait épais = vidéo vers le navigateur ; pointillés = sonde et pilotage ; double flèche = requête / réponse. Les deux cadres « Réseau local du Site » sont **le même** réseau, coupé en deux pour que la vidéo se lise de gauche à droite.
 
 ```mermaid
 flowchart LR
     subgraph LANC["Réseau local du Site · côté Caméras"]
-        CAMR["Caméra réelle<br/>rtsp://user:mdp@192.168.x.y:554/…<br/>H.264"]
+        CAMR["Caméra réelle<br/>rtsp://user:mdp@192.168.x.y:554/…<br/>H.264 ou H.265"]
     end
 
     subgraph HOTE["Machine hôte · Docker Desktop · ports publiés sur toutes ses interfaces"]
         subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
-            SIM["camera-simulee-1 · -2 · -3<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 · chemins Hikvision, Dahua, /flux · -2 avec identifiants<br/>non publiées"]
+            SIM["camera-simulee-1 · -2 · -3 · -4<br/>Caméras simulées, une par conteneur<br/>ffmpeg camN.mp4 en boucle, -c copy<br/>RTSP :554 · chemins Hikvision, Dahua, /flux · -2 avec identifiants · -4 en H.265<br/>non publiées"]
         end
         subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service"]
             subgraph MTX["mediamtx"]
@@ -27,15 +27,16 @@ flowchart LR
     end
 
     subgraph LANP["Réseau local du Site · côté postes (Wi-Fi / Ethernet)"]
-        NAV["Navigateur<br/>Mac, tablette, téléphone<br/>UI React + client WHEP"]
+        NAV["Navigateur<br/>Mac, tablette, téléphone<br/>UI React + client WHEP + hls.js"]
         VLC["VLC / ffprobe<br/>debug"]
     end
 
     SIM -- "RTSP :554 · à la demande" --> PONT
     CAMR -- "RTSP :554 · à la demande" --> PONT
     CAMR -- "RTSP :554 · pendant un ajout" --> APERCU
-    APERCU == "WebRTC · Aperçu dans l'Administration" ==> NAV
+    APERCU == "WebRTC ou HLS (H.265) · Aperçu dans l'Administration" ==> NAV
     PONT == "WebRTC UDP :8189 · SRTP H.264<br/>continu pendant le Live, < 1 s" ==> NAV
+    PONT == "HLS :8888 · LL-HLS fMP4 H.265<br/>pendant le Live, 1 à 3 s · sans auth" ==> NAV
     PONT -- "RTSP :8554 · HLS :8888<br/>sans auth" --> VLC
 
     CAMR <-. "sonde RTSP :554 · 10 s" .-> API
@@ -68,18 +69,19 @@ flowchart LR
 | `mediamtx` (`apercu-<jeton>`) → Candidat | RTSP/TCP | pendant qu’un ajout montre l’Aperçu | le Flux du Candidat, relayé sans réencodage, identifiants de l’essai compris |
 | navigateur → `web` | HTTP · `:8080` | au chargement | `index.html` et le JS de l’UI |
 | navigateur → `api` | HTTP · `:8000` | connexion, Administration (10 s), Live (10 s), Détection (`POST /api/detection`, synchrone), ajout (`/api/essai`, renouvelé tant que le panneau est ouvert) | JSON, cookie `argos_session` |
-| navigateur → `mediamtx` | HTTP · `:8889` (WHEP) | à chaque Caméra affichée dans le Live, et à l’Aperçu d’un ajout | négociation SDP et candidats ICE |
+| navigateur → `mediamtx` | HTTP · `:8889` (WHEP) | à chaque Caméra H.264 (ou au codec inconnu) affichée dans le Live, et à l’Aperçu d’un ajout | négociation SDP et candidats ICE |
 | `mediamtx` → navigateur | WebRTC · UDP `:8189` | pendant le Live ou l’Aperçu, une connexion à la fois par vue | vidéo H.264 en SRTP |
+| navigateur → `mediamtx` | HTTP · `:8888` (HLS) | pendant le Live ou l’Aperçu d’une Caméra H.265, si le navigateur décode le HEVC | playlist `index.m3u8` relue en boucle, morceaux fMP4 H.265 sans réencodage, en clair |
 | VLC / ffprobe → `mediamtx` | RTSP `:8554`, HLS `:8888` | à la demande | lecture directe des `camera-<id>` (debug), et de l’`apercu-<jeton>` pendant un ajout ; les Caméras simulées ne sont pas publiées |
 
 ## Réseaux
 
 - **Réseau Compose `argos_default`** : un réseau Docker privé, créé par `docker compose`. Les conteneurs s’y joignent par leur nom de service (`db`, `mediamtx`, `api`, `web`). Il est **le seul** à voir `db:5432` et `mediamtx:9997`.
-- **Réseau Compose `cameras-simulees`** (dev seulement, `compose.simulation.yaml`) : sous-réseau fixe `172.30.0.0/24`, où vivent les trois Caméras simulées. `api` (sonde, Détection) et `mediamtx` (pont) le rejoignent et les y joignent comme de vraies caméras, sur le port 554. Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX`. La stack de prod (`compose.yaml` seul) n’a ni ce réseau ni Caméras simulées.
+- **Réseau Compose `cameras-simulees`** (dev seulement, `compose.simulation.yaml`) : sous-réseau fixe `172.30.0.0/24`, où vivent les quatre Caméras simulées. `api` (sonde, Détection) et `mediamtx` (pont) le rejoignent et les y joignent comme de vraies caméras, sur le port 554. Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX`. La stack de prod (`compose.yaml` seul) n’a ni ce réseau ni Caméras simulées.
 - **Ports publiés** sur la machine hôte, donc joignables depuis tout le réseau local : `8080` (UI), `8000` (API), `8889/tcp` + `8189/udp` (WebRTC), `8554` (RTSP), `8888` (HLS).
 - **Réseau local du Site** (Wi-Fi ou Ethernet) : les navigateurs y joignent la machine hôte par son IP, et la machine hôte y joint les Caméras réelles. Docker Desktop fait sortir `api` et `mediamtx` vers ce réseau par la machine hôte (NAT).
 - **WebRTC hors de la machine hôte** : MediaMTX doit annoncer l’IP de la machine (`MTX_WEBRTCADDITIONALHOSTS` dans `.env`), et l’origine de l’UI doit figurer dans `ARGOS_ORIGINES_AUTORISEES`.
-- **En clair** : tout circule en HTTP et RTSP non chiffrés sur le réseau local, à part la vidéo WebRTC (SRTP). Les Flux se lisent sans authentification. Pas de vraies caméras avant HTTPS et l’authentification des Flux ([feuille de route](feuille-de-route-dev.md)).
+- **En clair** : tout circule en HTTP et RTSP non chiffrés sur le réseau local (vidéo HLS comprise), à part la vidéo WebRTC (SRTP). Les Flux se lisent sans authentification. Pas de vraies caméras avant HTTPS et l’authentification des Flux ([feuille de route](feuille-de-route-dev.md)).
 
 ## Détection
 

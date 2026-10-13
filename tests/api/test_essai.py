@@ -81,6 +81,15 @@ def test_essai_trouve_le_chemin_hikvision_et_ouvre_l_apercu(essai):
     attendre_lisible(resultat["apercu"], True)
 
 
+def test_essai_trouve_le_flux_h265_de_camera_simulee_4(essai):
+    resultat = essai(4)
+
+    assert resultat["issue"] == "flux_trouve"
+    assert resultat["chemin"] == "/Streaming/Channels/101"
+    assert resultat["codec"] == "H265"
+    assert resultat["mac"] == MACS_SIMULEES[4]
+
+
 def test_delete_retire_l_apercu(connecte, essai):
     apercu = essai(1)["apercu"]
     attendre_lisible(apercu, True)

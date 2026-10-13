@@ -91,6 +91,8 @@ class CameraLue(BaseModel):
     chemin_flux: str | None
     # MAC de l'Appareil, `aa:bb:cc:dd:ee:ff` ; `None` : inconnue. Jamais modifiable par l'Administrateur.
     mac: str | None
+    # Nom d'encodage lu dans le SDP (`H264`, `H265`…) ; `None` : jamais lu. Jamais modifiable par l'Administrateur.
+    codec: str | None
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -108,6 +110,7 @@ class CameraLue(BaseModel):
             raison_etat=camera.raison_etat,
             chemin_flux=chemin_flux(camera.id) if camera.active else None,
             mac=camera.mac,
+            codec=camera.codec,
         )
 
 
@@ -328,9 +331,11 @@ def lire(base: Session, id_camera: int) -> CameraLue:
     return CameraLue.depuis(_trouver(base, id_camera))
 
 
-def creer(base: Session, nouvelle: NouvelleCamera, mac: str | None = None) -> CameraLue:
-    """`mac` : lue sur le réseau pendant l'essai, jamais saisie par l'Administrateur."""
-    camera = Camera(**nouvelle.model_dump(), active=True, etat="unknown", etat_verifie_le=None, mac=mac)
+def creer(base: Session, nouvelle: NouvelleCamera, mac: str | None = None, codec: str | None = None) -> CameraLue:
+    """`mac` et `codec` : lus sur le réseau pendant l'essai, jamais saisis par l'Administrateur."""
+    camera = Camera(
+        **nouvelle.model_dump(), active=True, etat="unknown", etat_verifie_le=None, mac=mac, codec=codec
+    )
     _enregistrer(base, camera)
     return CameraLue.depuis(camera)
 

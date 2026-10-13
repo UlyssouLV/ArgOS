@@ -43,3 +43,5 @@ class Camera(Base):
     mac: Mapped[str | None] = mapped_column(String(17))
     # Pourquoi l'état est ce qu'il est, quand ArgOS le sait (ex. `autre_appareil`).
     raison_etat: Mapped[str | None] = mapped_column(String(32))
+    # Nom d'encodage lu dans le SDP (`H264`, `H265`, `MJPEG`…), relevé à l'ajout puis par la sonde ; jamais saisi.
+    codec: Mapped[str | None] = mapped_column(String)

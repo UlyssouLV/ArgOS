@@ -75,8 +75,8 @@ export function Live() {
               Suivant
             </button>
           </div>
-          {/* Une clé par Flux : changer de Caméra démonte le lecteur, qui ferme sa connexion WebRTC. */}
-          <LecteurFlux key={courante.chemin_flux} cheminFlux={courante.chemin_flux} />
+          {/* Une clé par Flux : changer de Caméra démonte le lecteur, qui ferme sa connexion (WebRTC ou HLS). */}
+          <LecteurFlux key={courante.chemin_flux} cheminFlux={courante.chemin_flux} codec={courante.codec} />
         </>
       )}
     </section>

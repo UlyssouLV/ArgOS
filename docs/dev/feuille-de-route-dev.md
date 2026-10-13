@@ -56,6 +56,8 @@ Depuis l’Administration, **Ajouter** sur un Candidat : ArgOS cherche seul le F
 
 ## 0.4.2 — Identité stable par adresse MAC
 
+**Livrée** ([PR #44](https://github.com/UlyssouLV/ArgOS/pull/44)).
+
 Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue à la détection ou à l’ajout) pour la reconnaître si son IP change (DHCP), mettre à jour l’URL RTSP en conséquence, et éviter de traiter le même appareil physique comme une nouvelle Caméra.
 
 Spec : [v0.4.2](../specs/v0.4.2-identite-stable-par-adresse-mac.md).
@@ -66,7 +68,17 @@ ArgOS retient la MAC de l’**Appareil** de chaque Caméra (à l’ajout, à la 
 
 ## 0.5.0 — Lecture des Flux H.265 sans réencodage
 
-Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (HLS ou fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
+**Livrée** ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51)).
+
+Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (LL-HLS fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
+
+Spec : [v0.5.0](../specs/v0.5.0-lecture-flux-h265.md).
+
+Le Site retient le codec de chaque Caméra (essai, puis sonde) ; H.265 → **LL-HLS fMP4** depuis MediaMTX, décodé par la puce vidéo du poste ([ADR 0004](../adr/0004-hls-pour-les-flux-h265.md)). Un navigateur qui ne décode pas le HEVC affiche « Ce navigateur ne lit pas le H.265 ». Codec affiché dans l’Administration ; quatrième Caméra simulée en H.265.
+
+## 0.5.1 — Réencodage H.265 → H.264 à la demande
+
+Pour un navigateur qui ne décode pas le HEVC malgré la 0.5.0, réencoder vers H.264 **seulement pendant qu’il regarde** : chemin MediaMTX `camera-<id>-h264` lancé à la demande (ffmpeg), Caméra par Caméra, arrêté quand plus personne ne le lit. Le CPU du serveur n’est consommé que pendant la lecture.
 
 ## 1.0.0 — Fil rouge Site → Live RTSP
 
@@ -101,10 +113,6 @@ Accéder au Site depuis internet par un VPN (WireGuard, Tailscale…), sans redi
 ## Plus tard — Détection de Flux figé ou rejoué
 
 Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
-
-## Plus tard — Réencodage H.265 → H.264 en secours
-
-Quand le navigateur ne décode pas le HEVC malgré la 0.5.0 (HLS / fMP4), proposer un réencodage serveur vers H.264 pour ces Caméras seulement.
 
 ## Plus tard — Incrustation nom/heure sur les Caméras simulées
 

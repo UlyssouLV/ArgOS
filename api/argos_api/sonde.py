@@ -1,4 +1,4 @@
-"""Sonde RTSP : une Caméra livre-t-elle au moins un paquet RTP vidéo dans le délai ?
+"""Sonde RTSP : une Caméra livre-t-elle au moins un paquet RTP vidéo dans le délai, et en quel codec ?
 
 Session `DESCRIBE` / `SETUP` / `PLAY` en RTP entrelacé sur la connexion TCP (aucun port UDP à
 ouvrir), identifiants de l'URL pris en charge (Basic ou Digest), puis `TEARDOWN`. Sans ffmpeg.
@@ -22,13 +22,24 @@ class _Echec(Exception):
     """La Caméra a répondu autre chose qu'attendu : pas de vidéo."""
 
 
-def sonder(url: str, delai: float) -> bool:
-    """Vrai si au moins un paquet RTP vidéo arrive dans `delai` secondes ; faux sinon, sans lever."""
+@dataclass(frozen=True)
+class Sondage:
+    """`en_ligne` : au moins un paquet RTP vidéo arrivé dans le délai. `codec` : lu dans le SDP du `DESCRIBE`
+    de cette session ; `None` sans vidéo ou sans `a=rtpmap`."""
+
+    en_ligne: bool
+    codec: str | None
+
+
+def sonder(url: str, delai: float) -> Sondage:
+    """Sonde `url` dans `delai` secondes, sans lever."""
     try:
         with _SessionRtsp(url, time.monotonic() + delai) as session:
-            return session.recoit_de_la_video()
+            description = session.decrire()
+            en_ligne = session.recoit_de_la_video(description)
     except (OSError, ValueError, _Echec):
-        return False
+        return Sondage(False, None)
+    return Sondage(en_ligne, _codec_video(description.corps.decode(errors="replace")))
 
 
 @dataclass(frozen=True)
@@ -85,8 +96,8 @@ class _SessionRtsp:
     def decrire(self) -> "_Reponse":
         return self._echanger("DESCRIBE", self._url, {"Accept": "application/sdp"})
 
-    def recoit_de_la_video(self) -> bool:
-        description = self.decrire()
+    def recoit_de_la_video(self, description: "_Reponse") -> bool:
+        """Depuis la réponse à `DESCRIBE` de cette session : `SETUP`, `PLAY`, puis le premier paquet vidéo."""
         if description.statut != 200:
             raise _Echec(f"DESCRIBE : {description.statut}")
         base = description.entetes.get("content-base") or description.entetes.get("content-location") or self._url

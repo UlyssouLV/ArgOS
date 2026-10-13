@@ -19,6 +19,8 @@ export type Camera = {
   raison_etat: RaisonEtat | null;
   /** MAC de l'Appareil (`aa:bb:cc:dd:ee:ff`), lue sur le réseau ; `null` : inconnue. */
   mac: string | null;
+  /** Nom d'encodage lu dans le SDP (`H264`, `H265`, `MJPEG`…) ; `null` : jamais lu. */
+  codec: string | null;
   /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
   chemin_flux: string | null;
 };
@@ -28,6 +30,13 @@ export type SaisieCamera = { nom: string; url_rtsp: string; emplacement: string 
 /** MAC à afficher ; « — » si inconnue (réseau routé, Caméra d'avant la 0.4.2). */
 export function texteMac(mac: string | null): string {
   return mac ?? "—";
+}
+
+const CODECS: Record<string, string> = { H264: "H.264", H265: "H.265" };
+
+/** Codec à afficher : « H.264 », « H.265 », « inconnu » si jamais lu, tout autre tel quel. */
+export function texteCodec(codec: string | null): string {
+  return codec === null ? "inconnu" : (CODECS[codec] ?? codec);
 }
 
 const RAISONS_ETAT: Record<RaisonEtat, string> = {

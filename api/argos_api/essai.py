@@ -76,7 +76,7 @@ def essayer(
         if description.statut == 401:
             issue = Issue.IDENTIFIANTS_REFUSES if identifiant else Issue.IDENTIFIANTS_REQUIS
             return Resultat(issue, mac=candidat.mac)
-        if description.statut == 200 and sonde.sonder(url, delai):
+        if description.statut == 200 and sonde.sonder(url, delai).en_ligne:
             return Resultat(Issue.FLUX_TROUVE, essaye, description.codec, url, candidat.mac)
     return Resultat(Issue.FLUX_INTROUVABLE, mac=candidat.mac)
 

@@ -45,7 +45,9 @@ Si on publiait le port (`ports: "5432:5432"`), PostgreSQL écouterait sur **tout
 
 Aujourd'hui, MediaMTX sert les Flux (RTSP, HLS, WebRTC) **sans authentification** sur tout le réseau local. Acceptable avec des Caméras simulées. Avec de vraies caméras, n'importe qui sur le Wi-Fi pourrait regarder sans passer par la connexion d'ArgOS : le login de l'API deviendrait décoratif.
 
-Depuis la 0.3.0, MediaMTX est le **pont** entre toute Caméra active et le navigateur ([ADR 0001](adr/0001-mediamtx-en-pont.md)) : l'API le configure pour relayer chaque Caméra active sur un chemin `camera-<id>`. Ces chemins sont lisibles **sans authentification par tout poste du réseau local** : la dette « Flux sans auth » couvre désormais **toutes** les Caméras du Site, pas seulement les simulées. Un chemin n'est retiré qu'au tour de réconciliation suivant (≤ 10 s) après la désactivation ou la suppression de la Caméra.
+Depuis la 0.3.0, MediaMTX est le **pont** entre toute Caméra active et le navigateur ([ADR 0001](adr/0001-mediamtx-en-pont.md)) : l'API le configure pour relayer chaque Caméra active sur un chemin `camera-<id>`. Ces chemins sont lisibles **sans authentification par tout poste du réseau local** : la dette « Flux sans auth » couvre désormais **toutes** les Caméras du Site, pas seulement les simulées.
+
+Depuis la 0.5.0, le Live et l'Aperçu lisent les Flux H.265 en **HLS** (port 8888, déjà publié) plutôt qu'en WebRTC ([ADR 0004](adr/0004-hls-pour-les-flux-h265.md)). Les chemins HLS (`http://<hôte>:8888/camera-<id>/`, `apercu-*` pendant un ajout) sont, **comme WHEP**, lisibles sans authentification par tout poste du réseau local, et pour **toute** Caméra active, quel que soit son codec : MediaMTX sert chaque chemin sur tous ses lecteurs. Même dette « Flux sans auth », rien de plus ouvert qu'avant : le port 8888 l'était déjà. Un chemin n'est retiré qu'au tour de réconciliation suivant (≤ 10 s) après la désactivation ou la suppression de la Caméra.
 
 Le pont n'accepte aucune publication : il ne fait que tirer les Flux des Caméras. Les Caméras simulées (dev seulement, `compose.simulation.yaml`) sont des conteneurs à part, non publiés sur la machine hôte, où seul leur ffmpeg interne publie ; `camera-simulee-2` exige un identifiant et un mot de passe de dev, publics dans le dépôt.
 
@@ -79,7 +81,7 @@ Depuis la 0.4.1, **Ajouter** sur un Candidat (ou **Ajouter par adresse IP**) fai
 - **Mot de passe en clair sur le réseau** : tant qu'il n'y a pas HTTPS, l'identifiant et le mot de passe de la caméra passent en clair du navigateur à l'API (`POST /api/essai`), comme le mot de passe de l'Administrateur. Vers la caméra, RTSP les envoie en Digest ou en Basic selon ce qu'elle demande : en Basic, ils sont lisibles sur le réseau des caméras.
 - **En clair en base** : la Caméra ajoutée garde ses identifiants dans son URL RTSP, en clair en base, masqués (`***`) dans les réponses de l'API (§ 3). Une fois envoyé, le mot de passe ne revient jamais au navigateur : l'URL de l'essai reste côté serveur, et la Caméra est créée à partir d'elle.
 - **Journaux** : une ligne par essai (IP, port, issue, chemin, codec), jamais d'identifiant ni d'URL complète.
-- **Aperçu lisible sans authentification** : pendant l'ajout, le pont relaie le Flux sur `apercu-<jeton aléatoire>`, lisible comme les autres Flux **par tout poste du réseau local** qui connaît son nom (dette « Flux sans auth »). Le jeton aléatoire n'est donné qu'à l'Administrateur : il ne se devine pas, mais circule en clair (HTTP, WHEP) tant qu'il n'y a pas HTTPS. Un seul Aperçu à la fois, retiré à l'ajout, à l'annulation, au remplacement, ou 2 minutes sans renouvellement (`ARGOS_APERCU_EXPIRATION_S`) ; les `apercu-*` orphelins sont retirés au démarrage de l'API.
+- **Aperçu lisible sans authentification** : pendant l'ajout, le pont relaie le Flux sur `apercu-<jeton aléatoire>`, lisible comme les autres Flux, en WHEP comme en HLS, **par tout poste du réseau local** qui connaît son nom (dette « Flux sans auth »). Le jeton aléatoire n'est donné qu'à l'Administrateur : il ne se devine pas, mais circule en clair (HTTP, WHEP, HLS) tant qu'il n'y a pas HTTPS. Un seul Aperçu à la fois, retiré à l'ajout, à l'annulation, au remplacement, ou 2 minutes sans renouvellement (`ARGOS_APERCU_EXPIRATION_S`) ; les `apercu-*` orphelins sont retirés au démarrage de l'API.
 
 ### Réseau des caméras : une sortie seulement
 
@@ -109,7 +111,7 @@ Passer par un **VPN** (WireGuard, Tailscale…) plutôt que par une redirection 
 |---|---|---|---|
 | Identifiants RTSP stockés **en clair** en base (masqués dans les réponses de l'API) | 0.2.0 | Lecture de la base → accès à toutes les caméras | Chiffrement des identifiants RTSP |
 | Pas de HTTPS (API, Live) | 0.2.0 | Mot de passe et session lisibles sur le Wi-Fi | HTTPS |
-| Flux MediaMTX sans authentification (`camN`, `camera-<id>` pour toute Caméra active depuis la 0.3.0, `apercu-*` pendant un ajout depuis la 0.4.1) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
+| Flux MediaMTX sans authentification (`camN`, `camera-<id>` pour toute Caméra active depuis la 0.3.0, `apercu-*` pendant un ajout depuis la 0.4.1 ; en WHEP comme en HLS, lu par le Live pour les Flux H.265 depuis la 0.5.0) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
 | Mot de passe de l'Administrateur en clair dans `.env` | 0.2.0 | Lecture du serveur → accès à ArgOS | À revoir avec les comptes multiples |
 | Frein à la force brute en mémoire | 0.2.0 | Remis à zéro à chaque redémarrage de l'API | À revoir avec HTTPS / comptes multiples |
 

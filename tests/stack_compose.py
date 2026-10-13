@@ -22,10 +22,15 @@ EXPIRATION_APERCU_S = 30
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS_SIMULES = {2: "admin:argos-simulee"}
 # Chemins de vraies caméras des Caméras simulées (media/simulated/README.md).
-CHEMINS_SIMULES = {1: "Streaming/Channels/101", 2: "cam/realmonitor?channel=1&subtype=0", 3: "flux"}
+CHEMINS_SIMULES = {
+    1: "Streaming/Channels/101",
+    2: "cam/realmonitor?channel=1&subtype=0",
+    3: "flux",
+    4: "Streaming/Channels/101",
+}
 # MAC et IP fixes des Caméras simulées (compose.simulation.yaml), MAC au format affiché par ArgOS.
-MACS_SIMULEES = {1: "02:a6:05:00:00:01", 2: "02:a6:05:00:00:02", 3: "02:a6:05:00:00:03"}
-IPS_SIMULEES = {1: "172.30.0.11", 2: "172.30.0.12", 3: "172.30.0.13"}
+MACS_SIMULEES = {n: f"02:a6:05:00:00:0{n}" for n in CHEMINS_SIMULES}
+IPS_SIMULEES = {n: f"172.30.0.1{n}" for n in CHEMINS_SIMULES}
 RESEAU_SIMULATION = "cameras-simulees"
 
 

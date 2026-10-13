@@ -11,21 +11,30 @@ FICHIER_PROD = "compose.yaml"
 FICHIER_SIMULATION = "compose.simulation.yaml"
 RESEAU_SIMULATION = "cameras-simulees"
 SOUS_RESEAU_SIMULATION = "172.30.0.0/24"
-CAMERAS_SIMULEES = ["camera-simulee-1", "camera-simulee-2", "camera-simulee-3"]
-# Chemins de vraies caméras : style Hikvision, style Dahua (requête comprise), chemin exotique.
+CAMERAS_SIMULEES = ["camera-simulee-1", "camera-simulee-2", "camera-simulee-3", "camera-simulee-4"]
+# Chemins de vraies caméras : style Hikvision, style Dahua (requête comprise), chemin exotique, Hikvision en H.265.
 CHEMINS = {
     "camera-simulee-1": "Streaming/Channels/101",
     "camera-simulee-2": "cam/realmonitor?channel=1&subtype=0",
     "camera-simulee-3": "flux",
+    "camera-simulee-4": "Streaming/Channels/101",
 }
+# Codec diffusé, tel que nommé par ffprobe : camera-simulee-4 en H.265 (HEVC), les autres en H.264.
+CODECS = {camera: "hevc" if camera == "camera-simulee-4" else "h264" for camera in CAMERAS_SIMULEES}
 # Identifiants de dev de camera-simulee-2 (media/simulated/README.md).
 IDENTIFIANTS = {"camera-simulee-2": "admin:argos-simulee"}
 # Adresses fixes des Caméras simulées sur leur réseau (media/simulated/README.md).
-IPS = {"camera-simulee-1": "172.30.0.11", "camera-simulee-2": "172.30.0.12", "camera-simulee-3": "172.30.0.13"}
+IPS = {
+    "camera-simulee-1": "172.30.0.11",
+    "camera-simulee-2": "172.30.0.12",
+    "camera-simulee-3": "172.30.0.13",
+    "camera-simulee-4": "172.30.0.14",
+}
 MACS = {
     "camera-simulee-1": "02:a6:05:00:00:01",
     "camera-simulee-2": "02:a6:05:00:00:02",
     "camera-simulee-3": "02:a6:05:00:00:03",
+    "camera-simulee-4": "02:a6:05:00:00:04",
 }
 
 
