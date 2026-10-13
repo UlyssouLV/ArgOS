@@ -56,6 +56,8 @@ Depuis l’Administration, **Ajouter** sur un Candidat : ArgOS cherche seul le F
 
 ## 0.4.2 — Identité stable par adresse MAC
 
+**Livrée** ([PR #44](https://github.com/UlyssouLV/ArgOS/pull/44)).
+
 Conserver en base l’**adresse MAC** de chaque Caméra (quand elle est connue à la détection ou à l’ajout) pour la reconnaître si son IP change (DHCP), mettre à jour l’URL RTSP en conséquence, et éviter de traiter le même appareil physique comme une nouvelle Caméra.
 
 Spec : [v0.4.2](../specs/v0.4.2-identite-stable-par-adresse-mac.md).
@@ -66,7 +68,9 @@ ArgOS retient la MAC de l’**Appareil** de chaque Caméra (à l’ajout, à la 
 
 ## 0.5.0 — Lecture des Flux H.265 sans réencodage
 
-Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (HLS ou fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
+**Livrée** ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51)).
+
+Rendre visibles en **Aperçu** et en **Live** les Caméras dont le Flux est en H.265, via un **transport navigateur** (LL-HLS fMP4) **sans** réencodage côté serveur, pour ne pas consommer du CPU en continu sur chaque Caméra. Les Flux H.264 restent en WebRTC comme aujourd’hui.
 
 Spec : [v0.5.0](../specs/v0.5.0-lecture-flux-h265.md).
 
