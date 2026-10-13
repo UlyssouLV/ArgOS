@@ -52,7 +52,7 @@ A remaining ticket is **unblocked** when GitHub reports no open blockers (`issue
 2. `gh issue edit` that issue: replace `## Plan de tests` with checkboxes for each scenario (leave `## Résultats` and `## Ce qu’on peut faire maintenant` for `/th`).
 3. Stop after telling the user, in French (adapt `#n` / PR):
 
-   Tous les tickets d’implémentation sont Closed. Plan de tests humains proposé sur #<n>. Jouez ce que vous voulez (plan partiel OK). Quand c’est fait, lancez **`/th`** avec les résultats (et des captures si vous en avez). Ne lancez pas `/code-review` tant que #<n> est Open.
+   Tous les tickets d’implémentation sont Closed. Plan de tests humains proposé sur #<n>. Jouez ce que vous voulez (plan partiel OK). Quand c’est fait, lancez **`/th`** avec le récit précis des résultats (`/th` vérifie ce qui est observable). Ajoutez **captures** / **preuves** dans le même message si vous voulez des screenshots après vérif OK (ou joignez vos images). Ne lancez pas `/code-review` tant que #<n> est Open.
 
 4. Do **not** propose `/code-review` or Finalise here. Do not merge, tag, or start the next version.
 

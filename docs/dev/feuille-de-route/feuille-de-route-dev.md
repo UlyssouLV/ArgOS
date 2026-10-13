@@ -8,23 +8,23 @@ Contraintes transverses :
 - README type repos Ulysse : sections claires (**quoi**, **prérequis**, **comment lancer**, structure) — enrichi dès qu’une version devient lançable ; avant ça, pas de fausse « souche » runnable.
 - Preuve 0.1.0 : flux RTSP simulés **joignables**, y compris un accès **navigateur** (ex. page HLS/WebRTC MediaMTX), plus tests auto (`ffprobe` / équivalent) via `/t`.
 - Auth 1.0.0 : compte **local** suffit. États caméra minimaux : `unknown` / `online` / `offline`.
-- **Pas d’installation sur de vraies caméras avant HTTPS et authentification des Flux.** Limites et dettes : [sécurité](../securite.md).
+- **Pas d’installation sur de vraies caméras avant HTTPS et authentification des Flux.** Limites et dettes : [sécurité](../../securite.md).
 
 ## Déjà livré
 
 - **0.1.0** — Flux RTSP simulés : MediaMTX et source en boucle, vérifiables en CLI et dans le navigateur, tests auto si le tuyau est cassé ([PR #5](https://github.com/UlyssouLV/ArgOS/pull/5)).
 - **0.2.0** — API Site, auth et caméras : API d’un Site, auth locale, CRUD caméras, états `unknown` / `online` / `offline` ; identifiants RTSP encore en clair en base, masqués dans les réponses API ([PR #11](https://github.com/UlyssouLV/ArgOS/pull/11)).
-- **0.3.0** — UI login, Admin et Live : frontend React branché sur l’API ; Live en WebRTC (WHEP) via MediaMTX en pont, chemins `camera-<id>` ([PR #17](https://github.com/UlyssouLV/ArgOS/pull/17), [ADR 0001](../adr/0001-mediamtx-en-pont.md)).
-- **0.4.0** — Détection des Caméras sur le réseau : Candidats (ports `554` / `8554`, `OPTIONS` RTSP, sans identifiants) ; script hôte pour les sous-réseaux ([PR #24](https://github.com/UlyssouLV/ArgOS/pull/24), [spec](../specs/v0.4.0-detection-des-cameras.md), [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md)).
-- **0.4.1** — Ajout d’une Caméra depuis un Candidat : essai des chemins courants, aperçu, ajout par IP ; plus d’ajout par URL RTSP depuis l’Administration ([PR #34](https://github.com/UlyssouLV/ArgOS/pull/34), [spec](../specs/v0.4.1-ajout-camera-depuis-candidat.md)).
-- **0.4.2** — Identité stable par adresse MAC : MAC de l’Appareil, MAJ d’IP, filtre par MAC à la place de l’ajout manuel par MAC ([PR #44](https://github.com/UlyssouLV/ArgOS/pull/44), [spec](../specs/v0.4.2-identite-stable-par-adresse-mac.md), [ADR 0003](../adr/0003-macvlan-sur-la-prise-des-cameras.md)).
-- **0.5.0** — Lecture des Flux H.265 sans réencodage : LL-HLS fMP4 pour le HEVC, WebRTC inchangé pour le H.264 ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51), [spec](../specs/v0.5.0-lecture-flux-h265.md), [ADR 0004](../adr/0004-hls-pour-les-flux-h265.md)).
+- **0.3.0** — UI login, Admin et Live : frontend React branché sur l’API ; Live en WebRTC (WHEP) via MediaMTX en pont, chemins `camera-<id>` ([PR #17](https://github.com/UlyssouLV/ArgOS/pull/17), [ADR 0001](../../adr/0001-mediamtx-en-pont.md)).
+- **0.4.0** — Détection des Caméras sur le réseau : Candidats (ports `554` / `8554`, `OPTIONS` RTSP, sans identifiants) ; script hôte pour les sous-réseaux ([PR #24](https://github.com/UlyssouLV/ArgOS/pull/24), [spec](../../specs/v0.4.0-detection-des-cameras.md), [ADR 0002](../../adr/0002-detection-depuis-le-reseau-bridge.md)).
+- **0.4.1** — Ajout d’une Caméra depuis un Candidat : essai des chemins courants, aperçu, ajout par IP ; plus d’ajout par URL RTSP depuis l’Administration ([PR #34](https://github.com/UlyssouLV/ArgOS/pull/34), [spec](../../specs/v0.4.1-ajout-camera-depuis-candidat.md)).
+- **0.4.2** — Identité stable par adresse MAC : MAC de l’Appareil, MAJ d’IP, filtre par MAC à la place de l’ajout manuel par MAC ([PR #44](https://github.com/UlyssouLV/ArgOS/pull/44), [spec](../../specs/v0.4.2-identite-stable-par-adresse-mac.md), [ADR 0003](../../adr/0003-macvlan-sur-la-prise-des-cameras.md)).
+- **0.5.0** — Lecture des Flux H.265 sans réencodage : LL-HLS fMP4 pour le HEVC, WebRTC inchangé pour le H.264 ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51), [spec](../../specs/v0.5.0-lecture-flux-h265.md), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md)).
 
 ## Prochaine : 0.6.0 — Paramétrage des Caméras par ONVIF
 
-**Objectif.** Régler depuis l’Administration ce que la caméra incruste dans l’image et son horloge, sans passer par son interface web ni par le cloud du fabricant : texte, position et affichage du nom incrusté et de la date et heure, fuseau et NTP, lus et vérifiés après envoi. Une Caméra simulée répond en ONVIF. Doc : [Paramétrer une Caméra](../cameras/parametrer-une-camera.md).
+**Objectif.** Régler depuis l’Administration ce que la caméra incruste dans l’image et son horloge, sans passer par son interface web ni par le cloud du fabricant : texte, position et affichage du nom incrusté et de la date et heure, fuseau, et mise à l’heure sur celle du Site, lus et vérifiés après envoi. Une Caméra simulée répond en ONVIF. Doc : [Paramétrer une Caméra](../../cameras/parametrer-une-camera.md).
 
-**Hors périmètre :** image, vidéo et événements ONVIF ; PTZ ; HTTPS et authentification des Flux (versions suivantes).
+**Hors périmètre :** réglage du NTP des caméras (pas d’accès à internet ; le Site deviendra leur serveur de temps, Plus tard) ; image et vidéo (0.6.3) ; événements ONVIF ; PTZ ; HTTPS et authentification des Flux (0.6.1, 0.6.2).
 
 ## Ensuite : 0.6.1 — HTTPS
 
@@ -37,6 +37,12 @@ Contraintes transverses :
 **Objectif.** Fermer l’accès libre aux Flux côté MediaMTX (WHEP, HLS, RTSP), pour que regarder une Caméra passe par la connexion d’ArgOS.
 
 **Hors périmètre :** images versionnées et compose de prod (0.7.0). Préalable, avec 0.6.1, à toute installation sur de vraies caméras.
+
+## Ensuite : 0.6.3 — Réglages image et vidéo par ONVIF
+
+**Objectif.** Régler depuis les Réglages de la Caméra son image (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, contre-jour…) et sa vidéo (résolution, images par seconde, débit), lus et vérifiés après envoi, comme les Incrustations en 0.6.0.
+
+**Hors périmètre :** réseau, IP, utilisateurs et ports de la caméra (jamais) ; événements ONVIF ; PTZ.
 
 ## Ensuite : 0.7.0 — Serveur installable sans le dépôt
 
@@ -111,3 +117,19 @@ Prendre en charge les Appareils qui portent plusieurs Caméras sous une seule ad
 ### PTZ
 
 Après le paramétrage ONVIF (0.6.0) : pilotage PTZ des Caméras motorisées, et tracking éventuel.
+
+### Le Site, serveur de temps des Caméras
+
+Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Après la 0.7.0 (conteneurs). Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
+
+### Catalogue du matériel connu
+
+Retenir par modèle de caméra ce qu’on sait (port ONVIF, chemins RTSP, réglages qui marchent ou non) pour accélérer l’ajout et les Réglages.
+
+### Recherche des caméras ONVIF sur le réseau (WS-Discovery)
+
+Trouver les caméras par l’annonce ONVIF plutôt qu’en essayant les ports courants.
+
+### Identifiants ONVIF distincts
+
+Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui séparent les comptes (Hikvision…).
