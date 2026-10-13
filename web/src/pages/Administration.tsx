@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
   listerCameras,
@@ -13,6 +13,7 @@ import {
   type SaisieCamera,
 } from "../cameras";
 import { DetecterCameras } from "./DetecterCameras";
+import { ReglagesCamera } from "./ReglagesCamera";
 
 const RAFRAICHISSEMENT_MS = 10_000;
 
@@ -31,6 +32,7 @@ export function Administration() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [enEdition, setEnEdition] = useState<number | null>(null);
   const [aSupprimer, setASupprimer] = useState<number | null>(null);
+  const [enReglages, setEnReglages] = useState<number | null>(null);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -105,34 +107,44 @@ export function Administration() {
                   </td>
                 </tr>
               ) : (
-                <tr key={camera.id}>
-                  <td>{camera.nom}</td>
-                  <td>{camera.emplacement ?? "—"}</td>
-                  <td>
-                    {camera.hote}:{camera.port}
-                  </td>
-                  <td className="mac">{texteMac(camera.mac)}</td>
-                  <td className="url">{camera.url_rtsp}</td>
-                  <td>{camera.active ? "active" : "désactivée"}</td>
-                  <td>
-                    <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
-                    <Raison raison={camera.raison_etat} />
-                  </td>
-                  <td>{texteCodec(camera.codec)}</td>
-                  <td>{dateVerification(camera)}</td>
-                  <td>
-                    <div className="actions">
-                      <ActionsCamera
-                        camera={camera}
-                        confirmation={aSupprimer === camera.id}
-                        onModifier={() => setEnEdition(camera.id)}
-                        onActiver={(active) => agir(() => modifierCamera(camera.id, { active }))}
-                        onDemanderSuppression={(demande) => setASupprimer(demande ? camera.id : null)}
-                        onSupprimer={() => agir(() => supprimerCamera(camera.id))}
-                      />
-                    </div>
-                  </td>
-                </tr>
+                <Fragment key={camera.id}>
+                  <tr>
+                    <td>{camera.nom}</td>
+                    <td>{camera.emplacement ?? "—"}</td>
+                    <td>
+                      {camera.hote}:{camera.port}
+                    </td>
+                    <td className="mac">{texteMac(camera.mac)}</td>
+                    <td className="url">{camera.url_rtsp}</td>
+                    <td>{camera.active ? "active" : "désactivée"}</td>
+                    <td>
+                      <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
+                      <Raison raison={camera.raison_etat} />
+                    </td>
+                    <td>{texteCodec(camera.codec)}</td>
+                    <td>{dateVerification(camera)}</td>
+                    <td>
+                      <div className="actions">
+                        <ActionsCamera
+                          camera={camera}
+                          confirmation={aSupprimer === camera.id}
+                          onModifier={() => setEnEdition(camera.id)}
+                          onReglages={() => setEnReglages(camera.id)}
+                          onActiver={(active) => agir(() => modifierCamera(camera.id, { active }))}
+                          onDemanderSuppression={(demande) => setASupprimer(demande ? camera.id : null)}
+                          onSupprimer={() => agir(() => supprimerCamera(camera.id))}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                  {enReglages === camera.id && camera.active && (
+                    <tr>
+                      <td colSpan={10}>
+                        <ReglagesCamera camera={camera} onFermer={() => setEnReglages(null)} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ),
             )}
           </tbody>
@@ -147,13 +159,14 @@ type PropsActions = Readonly<{
   camera: Camera;
   confirmation: boolean;
   onModifier: () => void;
+  onReglages: () => void;
   onActiver: (active: boolean) => void;
   onDemanderSuppression: (demande: boolean) => void;
   onSupprimer: () => void;
 }>;
 
-/** Pas de suppression offerte sur une Caméra active ; sur une désactivée, seulement après confirmation. */
-function ActionsCamera({ camera, confirmation, onModifier, onActiver, onDemanderSuppression, onSupprimer }: PropsActions) {
+/** Réglages seulement pour une Caméra active ; suppression seulement pour une désactivée, après confirmation. */
+function ActionsCamera({ camera, confirmation, onModifier, onReglages, onActiver, onDemanderSuppression, onSupprimer }: PropsActions) {
   if (confirmation) {
     return (
       <>
@@ -173,9 +186,14 @@ function ActionsCamera({ camera, confirmation, onModifier, onActiver, onDemander
         Modifier
       </button>
       {camera.active ? (
-        <button type="button" onClick={() => onActiver(false)}>
-          Désactiver
-        </button>
+        <>
+          <button type="button" onClick={onReglages}>
+            Réglages
+          </button>
+          <button type="button" onClick={() => onActiver(false)}>
+            Désactiver
+          </button>
+        </>
       ) : (
         <>
           <button type="button" onClick={() => onActiver(true)}>

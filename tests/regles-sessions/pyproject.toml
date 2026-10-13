@@ -16,6 +16,9 @@ dev = [
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
     "pydantic-settings>=2.6",
+    "zeep>=4.3",
+    "tzdata>=2025.2",
+    "requests>=2.31",
 ]
 
 [tool.uv]

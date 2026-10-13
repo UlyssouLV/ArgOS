@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, essai, sessions, soi, sonde
+from argos_api import cameras, detection, essai, onvif, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
@@ -125,6 +125,21 @@ class DejaConfiguree(BaseModel):
 
     detail: str
     camera: CameraCorrespondante
+
+
+# Messages des `502` des Réglages de la Caméra, par code (l'UI affiche les mêmes).
+MESSAGES_ONVIF: dict[onvif.CodeErreur, str] = {
+    "sans_onvif": "Cette caméra ne répond pas en ONVIF.",
+    "identifiants_refuses": "La caméra refuse ces identifiants en ONVIF.",
+    "injoignable": "Caméra injoignable.",
+}
+
+
+class ErreurOnvifLue(BaseModel):
+    """`502` des Réglages de la Caméra : `code` pour l'UI, `detail` à afficher tel quel."""
+
+    code: onvif.CodeErreur
+    detail: str
 
 
 class AjoutDepuisEssai(BaseModel):
@@ -235,7 +250,7 @@ def creer_app(
         """Identité de cette instance, sans session : la Détection s'y reconnaît (argos_api/soi.py)."""
         return Instance(instance=soi.JETON_INSTANCE)
 
-    app.include_router(_routes_cameras(base, administrateur_connecte))
+    app.include_router(_routes_cameras(base, administrateur_connecte, horloge))
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
     def adresses_d_argos() -> set[IPv4Address]:
@@ -259,7 +274,9 @@ def _journaux_sur_la_sortie() -> None:
         racine.setLevel(logging.INFO)
 
 
-def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connecte: Callable) -> APIRouter:
+def _routes_cameras(
+    base: Callable[[], Iterator[Session]], administrateur_connecte: Callable, horloge: Horloge
+) -> APIRouter:
     """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
     Base = Annotated[Session, Depends(base)]
     routes = APIRouter(prefix="/api/cameras", dependencies=[Depends(administrateur_connecte)])
@@ -287,6 +304,20 @@ def _routes_cameras(base: Callable[[], Iterator[Session]], administrateur_connec
     def supprimer(id_camera: int, base: Base) -> None:
         with _erreurs_cameras():
             cameras.supprimer(base, id_camera)
+
+    @routes.get(
+        "/{id_camera}/reglages",
+        response_model=onvif.Reglages,
+        responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
+    )
+    def lire_reglages(id_camera: int, base: Base) -> onvif.Reglages | JSONResponse:
+        """Réglages lus sur la caméra à chaque appel, jamais gardés en base (seul le port ONVIF l'est)."""
+        with _erreurs_cameras():
+            try:
+                return cameras.lire_reglages(base, id_camera, horloge)
+            except onvif.ErreurOnvif as erreur:
+                lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
+                return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
 
     return routes
 

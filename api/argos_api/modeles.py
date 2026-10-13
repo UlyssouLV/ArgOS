@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
@@ -45,3 +45,5 @@ class Camera(Base):
     raison_etat: Mapped[str | None] = mapped_column(String(32))
     # Nom d'encodage lu dans le SDP (`H264`, `H265`, `MJPEG`…), relevé à l'ajout puis par la sonde ; jamais saisi.
     codec: Mapped[str | None] = mapped_column(String)
+    # Port ONVIF qui a répondu à la dernière lecture des Réglages, cherché par ArgOS ; jamais saisi.
+    port_onvif: Mapped[int | None] = mapped_column(Integer)

@@ -293,3 +293,40 @@ button.danger {
   margin: 0;
   color: #8a5a00;
 }
+
+.reglages {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reglages-en-tete {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.reglages h3,
+.reglages h4 {
+  margin: 0;
+}
+
+.reglages-valeurs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.reglages dl {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: 0.3rem 1rem;
+  margin: 0.5rem 0 0;
+}
+
+.reglages dt {
+  color: #5a636b;
+}
+
+.reglages dd {
+  margin: 0;
+}

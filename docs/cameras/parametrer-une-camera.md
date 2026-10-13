@@ -1,6 +1,6 @@
 # Paramétrer une Caméra : ONVIF
 
-Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. ArgOS **ne règle encore rien** sur les caméras : il lit leur Flux, sans jamais leur envoyer de réglage. Cette page prépare la version qui le fera (voir la [feuille de route](../dev/feuille-de-route-dev.md)).
+Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit** par ONVIF les Réglages de la Caméra (Incrustations et Horloge) : voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos). Leur modification depuis ArgOS arrive dans la même version (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
 
 Pour aller plus loin : [Ajouter une Caméra](ajouter-une-camera.md), [Réseau du Site et Détection des Caméras](reseau-et-detection.md), [sécurité](../securite.md).
 
@@ -82,3 +82,32 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 - **Ne jamais changer** son IP, son mot de passe ni ses ports sans plan de repli : une erreur la rend injoignable, et il ne reste que le bouton de réinitialisation.
 - Un changement de **résolution ou de codec** change le Flux : la sonde d’ArgOS suit le codec seule, mais l’Aperçu et le Live peuvent couper quelques secondes.
 - Tant qu’il n’y a pas HTTPS, le mot de passe de la caméra passe déjà en clair ou en Digest sur le réseau des caméras (RTSP) ; ONVIF l’envoie en WS-Security (empreinte, pas en clair).
+
+## 6. Les Réglages de la Caméra dans ArgOS
+
+Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les valeurs sont pour l’instant en lecture seule.
+
+### Ce qu’ArgOS lit
+
+- **Horloge** (celle de l’Appareil, partagée par toutes ses Caméras) : date et heure de la caméra (UTC), **écart avec l’heure du Site** (« en retard de 26 ans », « en avance de 3 min »), fuseau, et si la caméra se règle sur un serveur de temps (NTP), avec son nom.
+  - Le fuseau est donné par la caméra au format POSIX (`CET-1CEST,M3.5.0,M10.5.0/3`). ArgOS le montre en nom lisible (`Europe/Paris`) s’il le reconnaît parmi les fuseaux courants, sinon tel quel (`AWST-8`).
+- **Incrustations** de la **première source vidéo** (premier profil média) :
+  - le **nom** : texte, position, affiché ou caché ;
+  - la **date et heure** : format (non modifiable), position, affichée ou cachée.
+  - Une position hors des quatre coins s’affiche « position personnalisée ».
+
+### Port et identifiants
+
+- **Port ONVIF** : rien à saisir. À la première ouverture, ArgOS demande l’heure (`GetSystemDateAndTime`, sans identifiants) sur `http://<hôte de l’URL RTSP>:<port>/onvif/device_service`, ports `80`, `8899`, `2000`, `8000`, `8080`, et retient le premier qui répond **en SOAP** (une page web ne compte pas). Ce port est gardé sur la Caméra ; s’il ne répond plus, ArgOS cherche à nouveau. Changer l’URL RTSP de la Caméra l’oublie.
+- **Identifiants** : ceux de l’URL RTSP de la Caméra, envoyés en WS-Security (empreinte du mot de passe, jamais en clair). Une URL sans identifiants : requêtes sans authentification.
+- Délais courts : quelques secondes par requête.
+
+### Messages
+
+| Message | Cause |
+|---|---|
+| « Cette caméra ne répond pas en ONVIF » | L’appareil répond sur le réseau, mais aucun port courant ne répond en SOAP (ou sa réponse n’est pas celle qu’ArgOS attend). |
+| « La caméra refuse ces identifiants en ONVIF » | Les identifiants de l’URL RTSP sont refusés, ou l’URL n’en a pas et la caméra en exige. |
+| « Caméra injoignable » | Rien ne répond à l’adresse de la caméra, même si son état était `online`. |
+
+Pour développer sans matériel, les Caméras simulées 2 (port `8899`, identifiants) et 4 (port `80`, sans identifiants) répondent en ONVIF, « sortie d’usine » comme la caméra de dev : voir `simulation/onvif/README.md` dans le dépôt.
