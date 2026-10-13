@@ -9,8 +9,7 @@
     "module": "esnext",
     "noEmit": true,
     "paths": {
-      "@site/*": ["./*"],
-      "@/*": ["../poste/frontend/src/*"]
+      "@site/*": ["./*"]
     },
     "skipLibCheck": true
   },
