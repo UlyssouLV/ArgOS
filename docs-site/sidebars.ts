@@ -69,6 +69,11 @@ const sidebars: SidebarsConfig = {
           id: 'adr/0005-https-par-une-origine-unique-et-une-autorite-du-site',
           label: '0005 — HTTPS / Autorité du Site',
         },
+        {
+          type: 'doc',
+          id: 'adr/0006-flux-authentifies-par-nginx',
+          label: '0006 — Flux authentifiés',
+        },
       ],
     },
   ],
