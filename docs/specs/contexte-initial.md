@@ -35,4 +35,4 @@ Schémas PoE, switches, fibre, dimensionnement débit/stockage : utiles pour une
 
 ## Suite
 
-La [feuille de route de dev](../dev/feuille-de-route-dev.md) tranche l’ordre des versions. Les décisions structurantes iront dans `docs/adr/`.
+La [feuille de route de dev](../dev/feuille-de-route/feuille-de-route-dev.md) tranche l’ordre des versions. Les décisions structurantes iront dans `docs/adr/`.

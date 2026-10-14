@@ -19,14 +19,9 @@ Contraintes transverses :
 - **0.4.1** — Ajout d’une Caméra depuis un Candidat : essai des chemins courants, aperçu, ajout par IP ; plus d’ajout par URL RTSP depuis l’Administration ([PR #34](https://github.com/UlyssouLV/ArgOS/pull/34), [spec](../../specs/v0.4.1-ajout-camera-depuis-candidat.md)).
 - **0.4.2** — Identité stable par adresse MAC : MAC de l’Appareil, MAJ d’IP, filtre par MAC à la place de l’ajout manuel par MAC ([PR #44](https://github.com/UlyssouLV/ArgOS/pull/44), [spec](../../specs/v0.4.2-identite-stable-par-adresse-mac.md), [ADR 0003](../../adr/0003-macvlan-sur-la-prise-des-cameras.md)).
 - **0.5.0** — Lecture des Flux H.265 sans réencodage : LL-HLS fMP4 pour le HEVC, WebRTC inchangé pour le H.264 ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51), [spec](../../specs/v0.5.0-lecture-flux-h265.md), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md)).
+- **0.6.0** — Paramétrage des Caméras par ONVIF : Réglages d’une Caméra active dans l’Administration, lus par ONVIF (port trouvé seul, identifiants du Flux) ; Incrustations (texte, coin, affichage du nom et de la date et heure) et Horloge (fuseau, mise à l’heure manuelle du Site, NTP en lecture seule), relues après envoi avec un statut par champ ; Caméras simulées 2 et 4 en ONVIF ; ONVIF en HTTP jusqu’à la 0.6.3 ([PR #58](https://github.com/UlyssouLV/ArgOS/pull/58), [spec](../../specs/v0.6.0-parametrage-des-cameras-par-onvif.md), [doc](../../cameras/parametrer-une-camera.md)).
 
-## Prochaine : 0.6.0 — Paramétrage des Caméras par ONVIF
-
-**Objectif.** Régler depuis l’Administration ce que la caméra incruste dans l’image et son horloge, sans passer par son interface web ni par le cloud du fabricant : texte, position et affichage du nom incrusté et de la date et heure, fuseau, et mise à l’heure sur celle du Site, lus et vérifiés après envoi. Une Caméra simulée répond en ONVIF. Doc : [Paramétrer une Caméra](../../cameras/parametrer-une-camera.md).
-
-**Hors périmètre :** réglage du NTP des caméras (pas d’accès à internet ; le Site deviendra leur serveur de temps, Plus tard) ; image et vidéo (0.6.4) ; événements ONVIF ; PTZ ; HTTPS et authentification des Flux (0.6.1, 0.6.2) ; HTTPS vers la caméra (0.6.3).
-
-## Ensuite : 0.6.1 — HTTPS
+## Prochaine : 0.6.1 — HTTPS
 
 **Objectif.** Servir l’UI, l’API et le Live en HTTPS (cookie de session `Secure`), pour que mot de passe et session ne circulent plus en clair sur le réseau local.
 
