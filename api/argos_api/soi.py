@@ -3,9 +3,13 @@
 Deux façons de le reconnaître, sans rien savoir de la simulation :
 - ses conteneurs : les adresses de `api` et celles du pont (résolues par son nom Compose) ;
 - toute machine qui publie cette API (l'hôte du Site, vu par son adresse locale ou par la passerelle
-  d'un réseau Docker) : elle publie aussi le pont, et renvoie le jeton de cette instance sur l'origine
-  HTTPS du Site (ADR 0005), en présentant exactement le certificat du Site (signé par l'Autorité du Site ou
-  fourni par l'Administrateur) : seule cette machine a sa clé.
+  d'un réseau Docker) : elle renvoie le jeton de cette instance sur l'origine HTTPS du Site (ADR 0005), en
+  présentant exactement le certificat du Site (signé par l'Autorité du Site ou fourni par l'Administrateur) :
+  seule cette machine a sa clé.
+
+Depuis la 0.6.2, l'hôte du Site ne publie plus le RTSP du pont (ADR 0006) : il ne répond plus à l'`OPTIONS`
+et n'est donc plus Candidat. Ce second contrôle n'est plus qu'un garde-fou : il ne joue que si `8554` (ou
+`554`) est republié sur l'hôte.
 """
 
 import http.client

@@ -1,12 +1,12 @@
 # Schéma du réseau et des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.6.1, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md) (Flux authentifiés par nginx). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.6.2, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md) (Flux authentifiés par nginx). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
 
 ## En bref
 
 - Le navigateur ne parle au Site que par **une seule origine HTTPS** : `https://<IP du Site>` (port `443`). Le nginx du conteneur `web` y sert l’UI et relaie l’API (`/api/`) et le Live (`/flux/webrtc/`, `/flux/hls/`). Le Live n’est relayé que pour une **session ArgOS** valide : `401` sinon.
 - Les ports HTTP `80` et `8080` ne font que **rediriger** vers HTTPS, et servir la partie publique de l’Autorité du Site (`/argos-ca.crt`).
-- Hors de l’origine HTTPS, la machine hôte ne publie plus que la vidéo WebRTC (`8189/udp`, chiffrée) et **RTSP `8554`** (en clair, sans authentification jusqu’à la 0.6.2).
+- Hors de l’origine HTTPS, la machine hôte ne publie plus que la vidéo WebRTC (`8189/udp`, chiffrée). **RTSP `8554`** est fermé sur l’hôte depuis la 0.6.2 : seuls les conteneurs du réseau Compose lisent le pont en RTSP.
 - Le service ponctuel `certificats` crée l’Autorité du Site et le certificat serveur avant `web`, puis s’arrête.
 - Côté Caméras, rien ne change : RTSP et ONVIF restent **en clair** sur le réseau des caméras.
 
@@ -20,18 +20,18 @@ flowchart LR
         CAMR["Caméra réelle<br/>RTSP :554 · ONVIF HTTP :80 / :8899 / …<br/>H.264 ou H.265"]
     end
 
-    subgraph HOTE["Machine hôte · Docker · ports publiés sur toutes ses interfaces : 443, 80, 8080, 8189/udp, 8554"]
+    subgraph HOTE["Machine hôte · Docker · ports publiés sur toutes ses interfaces : 443, 80, 8080, 8189/udp · 8554 fermé"]
         subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
             SIM["camera-simulee-1 · -2 · -3 · -4<br/>ffmpeg en boucle, RTSP :554<br/>ONVIF sur -2 et -4<br/>non publiées"]
         end
-        subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service · rien de publié sauf web et mediamtx"]
+        subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service · rien de publié sauf web et le WebRTC de mediamtx"]
             CERT["certificats · ponctuel<br/>crée l'Autorité du Site<br/>et le certificat serveur, puis s'arrête"]
             VAUT[("volume autorite<br/>clé de l'Autorité<br/>monté dans certificats seul")]
             VSRV[("volume certificats-serveur<br/>certificat + clé serveur<br/>argos-ca.crt")]
             WEB["web · nginx<br/>HTTPS :443 · origine unique<br/>HTTP :8080 → 301 + /argos-ca.crt"]
             API["api · FastAPI :8000<br/>non publiée<br/>sonde 10 s · pont 10 s"]
             subgraph MTX["mediamtx"]
-                PONT["camera-&lt;id&gt; · une par Caméra active<br/>apercu-&lt;jeton&gt; · pendant un ajout<br/>WHEP :8889 · HLS :8888 non publiés"]
+                PONT["camera-&lt;id&gt; · une par Caméra active<br/>apercu-&lt;jeton&gt; · pendant un ajout<br/>RTSP :8554 · WHEP :8889 · HLS :8888 non publiés"]
                 CTRL["API de contrôle :9997<br/>non publiée"]
             end
             DB[("db · PostgreSQL :5432<br/>non publiée")]
@@ -40,7 +40,6 @@ flowchart LR
 
     subgraph LANP["Réseau local du Site · côté postes (Wi-Fi / Ethernet)"]
         NAV["Navigateur<br/>Mac, tablette, téléphone<br/>Autorité du Site installée"]
-        VLC["VLC / ffprobe<br/>debug"]
     end
 
     CERT -. "écrit" .-> VAUT
@@ -54,7 +53,6 @@ flowchart LR
     WEB <-- "HTTP /api/session · avant chaque /flux/<br/>session valide ? sinon 401" --> API
     WEB <-- "HTTP /flux/webrtc/ → :8889 · WHEP<br/>/flux/hls/ → :8888 · en clair, interne<br/>après session vérifiée" --> PONT
     PONT == "WebRTC UDP :8189 · chiffré (DTLS-SRTP)<br/>H.264, < 1 s" ==> NAV
-    PONT -- "RTSP :8554 · en clair, sans auth" --> VLC
 
     CAMR -- "RTSP :554 · en clair · à la demande" --> PONT
     SIM -- "RTSP :554 · en clair · à la demande" --> PONT
@@ -99,7 +97,7 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 | `web` → `api` | HTTP · `api:8000/api/session` | en clair, réseau Compose | avant chaque requête `/flux/…` | cookie de session du navigateur → `204` (session valide) ou `401` |
 | `web` → `mediamtx` | HTTP · `mediamtx:8889` (WHEP), `mediamtx:8888` (HLS) | en clair, réseau Compose | à chaque Caméra affichée dans le Live, et à l’Aperçu, après la session vérifiée | relais de la signalisation WHEP et du LL-HLS ; ne sort pas de la machine hôte |
 | `mediamtx` → navigateur | WebRTC · UDP `:8189` | **chiffré** (DTLS-SRTP) | pendant le Live ou l’Aperçu d’une Caméra H.264 (ou au codec inconnu), une connexion par vue | vidéo H.264, hors de l’origine HTTPS |
-| VLC / ffprobe → `mediamtx` | RTSP · `:8554` | **en clair, sans authentification** (jusqu’à la 0.6.2) | à la demande | lecture directe des `camera-<id>`, et de l’`apercu-<jeton>` pendant un ajout (debug) |
+| ffprobe / VLC → `mediamtx` | RTSP · `mediamtx:8554` | en clair, sans authentification, réseau Compose | à la demande (debug) | lecture directe des `camera-<id>` par un conteneur du réseau Compose ; en dev seulement, la simulation republie `127.0.0.1:8554` pour la machine du développeur. Fermé au réseau local depuis la 0.6.2 |
 | `certificats` → volumes | fichiers | — | à chaque `docker compose up`, avant `web` et `api` | crée l’Autorité si elle manque ; crée ou garde le certificat serveur ; copie `argos-ca.crt` |
 | `api` → `db` | SQL · `db:5432` | en clair, réseau Compose | à chaque requête | Caméras, sessions, états |
 | `api` → `mediamtx` | HTTP · `mediamtx:9997` (API de contrôle) | en clair, réseau Compose | toutes les 10 s ; au Flux trouvé, à l’ajout, à l’annulation, à l’expiration d’un Aperçu | ajoute / modifie / retire les chemins `camera-<id>` et `apercu-<jeton>` |
@@ -121,10 +119,9 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
   | `443/tcp` | `web` | le Site : UI, API, signalisation WHEP, HLS (Flux : session ArgOS exigée) | **oui** (TLS) |
   | `80/tcp`, `8080/tcp` | `web` | redirection vers HTTPS, `/argos-ca.crt` | non (rien de secret) |
   | `8189/udp` | `mediamtx` | média WebRTC | **oui** (DTLS-SRTP) |
-  | `8554/tcp` | `mediamtx` | RTSP, lecture directe des Flux | **non**, sans authentification (0.6.2) |
 
-- **Fermés depuis la 0.6.1** : `8000` (API), `8888` (HLS), `8889` (WHEP). Ils n’écoutent plus que dans le réseau Compose, derrière `web`. Jamais publiés : `5432` (PostgreSQL), `9997` (API de contrôle de MediaMTX).
-- **Réseau Compose `argos_default`** : un réseau Docker privé, créé par `docker compose`. Les conteneurs s’y joignent par leur nom de service (`db`, `mediamtx`, `api`, `web`, `certificats`). Il est **le seul** à voir `api:8000`, `mediamtx:8888`, `mediamtx:8889`, `mediamtx:9997` et `db:5432`. Ce qui y circule en clair ne quitte pas la machine hôte.
+- **Fermés depuis la 0.6.1** : `8000` (API), `8888` (HLS), `8889` (WHEP). Ils n’écoutent plus que dans le réseau Compose, derrière `web`. **Fermé depuis la 0.6.2** : `8554` (RTSP du pont, sans authentification), à ne jamais republier ; en dev, `compose.simulation.yaml` le republie sur `127.0.0.1` seulement. Jamais publiés : `5432` (PostgreSQL), `9997` (API de contrôle de MediaMTX).
+- **Réseau Compose `argos_default`** : un réseau Docker privé, créé par `docker compose`. Les conteneurs s’y joignent par leur nom de service (`db`, `mediamtx`, `api`, `web`, `certificats`). Il est **le seul** à voir `api:8000`, `mediamtx:8554`, `mediamtx:8888`, `mediamtx:8889`, `mediamtx:9997` et `db:5432`. Ce qui y circule en clair ne quitte pas la machine hôte.
 - **Volumes de certificats** : `autorite` (clé et certificat de l’Autorité du Site), monté **seulement** dans `certificats` ; `certificats-serveur` (certificat serveur, sa clé, `argos-ca.crt`), écrit par `certificats`, monté en lecture seule dans `web`, et dans `api` pour le seul certificat serveur (sans clé), qui sert à la Détection à reconnaître l’hôte du Site.
 - **Réseau Compose `cameras-simulees`** (dev seulement, `compose.simulation.yaml`) : sous-réseau fixe `172.30.0.0/24`, où vivent les quatre Caméras simulées. `api` (sonde, Détection, ONVIF) et `mediamtx` (pont) le rejoignent et les y joignent comme de vraies caméras. La stack de prod (`compose.yaml` seul) n’a ni ce réseau ni Caméras simulées.
 - **Réseau des caméras** (prod Linux, `compose.reseau-cameras.yaml`) : `api` y gagne une interface macvlan, pour lire les adresses MAC ; toute requête qui y arrive est refusée ([ADR 0003](../../adr/0003-macvlan-sur-la-prise-des-cameras.md)).
@@ -133,9 +130,8 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 
 ## Ce qui reste en clair
 
-- **RTSP `8554`** : tout poste du réseau local lit les Flux de toutes les Caméras actives, sans mot de passe ni chiffrement, jusqu’à l’authentification des Flux (0.6.2).
 - **Vers les caméras** : RTSP (Flux, sonde, Détection, essai) et ONVIF partent en clair sur le réseau des caméras, jusqu’à la sécurisation d’ONVIF (0.6.3).
-- **Dans la machine hôte** : `web` relaie en HTTP vers `api` et `mediamtx`, sur le réseau Compose ; rien de ce trafic ne sort sur le réseau local.
+- **Dans la machine hôte** : `web` relaie en HTTP vers `api` et `mediamtx`, sur le réseau Compose, et le pont y sert RTSP `8554` sans authentification ; rien de ce trafic ne sort sur le réseau local.
 - **`/argos-ca.crt` en HTTP** : un poste du réseau pourrait le remplacer en route ; d’où l’empreinte à comparer avant de l’installer ([Installer l’Autorité du Site](installer-l-autorite-du-site.md#3-comparer-lempreinte)).
 
 ## Détection
@@ -149,6 +145,6 @@ navigateur ──HTTPS POST /api/detection──▶ web ──▶ api ──TCP 
                                                   api ◀──SQL──▶ db (Caméras déjà configurées)
 ```
 
-L’hôte du Site publie le pont (RTSP `8554`), qui répond comme une caméra. Pour l’écarter, `api` demande `GET /api/instance` à chaque Candidat sur le port HTTPS du Site, et ne le reconnaît que s’il renvoie le jeton de cette instance **avec** exactement le certificat du Site (seule cette machine a sa clé).
+Depuis la 0.6.2, l’hôte du Site ne publie plus le pont (RTSP `8554` fermé) : il ne répond plus à l’`OPTIONS` et n’est plus Candidat. Garde-fou, si `8554` (ou `554`) était republié sur l’hôte : `api` demande `GET /api/instance` à chaque Candidat sur le port HTTPS du Site, et ne le reconnaît que s’il renvoie le jeton de cette instance **avec** exactement le certificat du Site (seule cette machine a sa clé).
 
 Explication complète, ce qu’elle envoie et ce qu’elle ne fait pas : [Réseau du Site et Détection des Caméras](../../cameras/reseau-et-detection.md) ; limites : [sécurité](../../securite.md#détection--argos-agit-sur-le-réseau).

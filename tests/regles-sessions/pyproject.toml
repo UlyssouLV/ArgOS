@@ -19,6 +19,7 @@ dev = [
     "zeep>=4.3",
     "tzdata>=2025.2",
     "requests>=2.31",
+    "cryptography>=44",
 ]
 
 [tool.uv]
