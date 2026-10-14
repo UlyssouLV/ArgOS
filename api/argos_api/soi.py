@@ -18,13 +18,13 @@ from concurrent.futures import ThreadPoolExecutor
 from ipaddress import IPv4Address
 from pathlib import Path
 
+from cryptography import x509
+
 # Change à chaque démarrage : seule cette instance de l'API le connaît.
 JETON_INSTANCE = secrets.token_hex(16)
 CHEMIN_INSTANCE = "/api/instance"
 # Certificat présenté par le Site, monté seul par compose.yaml (sans sa clé) ; chaîne éventuelle à la suite.
 CERTIFICAT_DU_SITE = Path("/etc/argos/serveur.crt")
-# Nom demandé (SNI, Host) : le Site n'a qu'une origine HTTPS, il répond quel que soit le nom.
-NOM_DEMANDE = "localhost"
 _FIN_PEM = "-----END CERTIFICATE-----"
 
 
@@ -48,35 +48,51 @@ def publient_cette_api(ips: Iterable[IPv4Address], port_https: int, delai: float
     if not ips:
         return set()
     try:
-        attendu = _certificat_du_site()
-    except (OSError, ValueError):
+        pem = _certificat_du_site()
+        # Seul certificat de confiance : celui du Site, ancre à lui seul (chaîne partielle), car api ne
+        # connaît pas l'Autorité du Site et un certificat fourni par l'Administrateur n'en a pas.
+        contexte = ssl.create_default_context(cadata=pem)
+        contexte.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+        nom = _un_nom(pem)
+    except (OSError, ValueError, ssl.SSLError):
         return set()
-    # Le certificat est comparé à celui du Site, octet pour octet : l'adresse demandée (passerelle Docker,
-    # IP d'un Candidat) n'est pas forcément un de ses noms, et api ne connaît pas l'Autorité du Site.
-    contexte = ssl.create_default_context()
-    contexte.check_hostname = False
-    contexte.verify_mode = ssl.CERT_NONE
+    # L'adresse demandée (passerelle Docker, IP d'un Candidat) n'est pas forcément un des noms du
+    # certificat : le nom vérifié est le sien ; le certificat présenté est en plus comparé octet pour octet.
+    attendu = ssl.PEM_cert_to_DER_cert(pem)
     with ThreadPoolExecutor(len(ips)) as appels:
-        reponses = list(appels.map(lambda ip: _jeton(ip, port_https, contexte, attendu, delai), ips))
+        reponses = list(appels.map(lambda ip: _jeton(ip, port_https, contexte, nom, attendu, delai), ips))
     return {ip for ip, jeton in zip(ips, reponses, strict=True) if jeton == JETON_INSTANCE}
 
 
-def _certificat_du_site() -> bytes:
-    """Le certificat du Site (DER), premier de son fichier."""
+def _certificat_du_site() -> str:
+    """Le certificat du Site (PEM), premier de son fichier."""
     pem = CERTIFICAT_DU_SITE.read_text()
-    return ssl.PEM_cert_to_DER_cert(pem[: pem.index(_FIN_PEM) + len(_FIN_PEM)].strip())
+    return pem[: pem.index(_FIN_PEM) + len(_FIN_PEM)].strip() + "\n"
+
+
+def _un_nom(pem: str) -> str:
+    """Premier nom (DNS ou IP) du certificat du Site."""
+    try:
+        noms = x509.load_pem_x509_certificate(pem.encode()).extensions.get_extension_for_class(
+            x509.SubjectAlternativeName
+        ).value
+    except x509.ExtensionNotFound as absente:
+        raise ValueError("certificat du Site sans nom") from absente
+    for nom in noms.get_values_for_type(x509.DNSName) + noms.get_values_for_type(x509.IPAddress):
+        return str(nom)
+    raise ValueError("certificat du Site sans nom")
 
 
 def _jeton(
-    ip: IPv4Address, port_https: int, contexte: ssl.SSLContext, attendu: bytes, delai: float
+    ip: IPv4Address, port_https: int, contexte: ssl.SSLContext, nom: str, attendu: bytes, delai: float
 ) -> str | None:
     connexion = http.client.HTTPConnection(str(ip), port_https, timeout=delai)
     try:
         with socket.create_connection((str(ip), port_https), timeout=delai) as brut:
-            connexion.sock = contexte.wrap_socket(brut, server_hostname=NOM_DEMANDE)
+            connexion.sock = contexte.wrap_socket(brut, server_hostname=nom)
         if connexion.sock.getpeercert(binary_form=True) != attendu:
             return None
-        connexion.request("GET", CHEMIN_INSTANCE, headers={"Host": NOM_DEMANDE})
+        connexion.request("GET", CHEMIN_INSTANCE, headers={"Host": nom})
         return json.load(connexion.getresponse()).get("instance")
     except (OSError, ValueError, AttributeError):
         return None

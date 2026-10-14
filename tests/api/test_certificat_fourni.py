@@ -117,7 +117,7 @@ def test_certificat_fourni_manquant_web_ne_demarre_pas(tmp_path: Path):
             recreer_le_site(tmp_path)
 
         journal = compose("logs", "--no-log-prefix", "certificats").stdout
-        assert f"ARGOS_CERTIFICAT_DOSSIER ({tmp_path}) : certificat.crt manquant ou vide." in journal
+        assert f"ARGOS_CERTIFICAT_DOSSIER ({tmp_path}) : certificat.crt manquant, vide ou illisible par l'utilisateur 101." in journal
         assert compose("ps", "-q", "--status", "running", "web").stdout.strip() == ""
     finally:
         recreer_le_site()

@@ -39,8 +39,11 @@ def image() -> str:
 def lancer(image, tmp_path: Path):
     autorite = tmp_path / "autorite"
     serveur = tmp_path / "certificats-serveur"
+    # Ouverts à l'utilisateur 101 du service, comme ses volumes neufs (Dockerfile).
     autorite.mkdir()
     serveur.mkdir()
+    autorite.chmod(0o777)
+    serveur.chmod(0o777)
 
     def _lancer(hotes: str = "", fourni: Path | None = None, *, echec: bool = False) -> Lancement:
         """`fourni` : dossier du certificat de l'Administrateur, monté comme le fait compose.yaml."""

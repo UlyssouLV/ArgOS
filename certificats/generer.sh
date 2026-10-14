@@ -17,8 +17,6 @@ AUTORITE=/autorite
 SERVEUR=/certificats-serveur
 # Dossier ARGOS_CERTIFICAT_DOSSIER, monté en lecture seule par compose.yaml.
 FOURNI=/certificat-fourni
-# Utilisateur de nginx dans l'image de web (nginx-unprivileged) : seul lecteur de la clé du serveur.
-UTILISATEUR_WEB=101
 # Le certificat serveur est régénéré quand il lui reste moins que ce délai (30 jours).
 RENOUVELER_AVANT_S=2592000
 
@@ -72,7 +70,6 @@ installer_serveur() {
   cp "$1" "$SERVEUR/serveur.crt.tmp"
   cp "$1" "$SERVEUR/public/serveur.crt.tmp"
   cp "$2" "$SERVEUR/serveur.key.tmp"
-  chown "$UTILISATEUR_WEB:$UTILISATEUR_WEB" "$SERVEUR/serveur.key.tmp"
   chmod 400 "$SERVEUR/serveur.key.tmp"
   chmod 644 "$SERVEUR/serveur.crt.tmp" "$SERVEUR/public/serveur.crt.tmp"
   mv "$SERVEUR/serveur.key.tmp" "$SERVEUR/serveur.key"
@@ -80,10 +77,20 @@ installer_serveur() {
   mv "$SERVEUR/public/serveur.crt.tmp" "$SERVEUR/public/serveur.crt"
 }
 
+# Lancé en utilisateur 101 (Dockerfile) : un volume créé par une version lancée en root lui est fermé.
+for volume in "$AUTORITE" "$SERVEUR"; do
+  if [ ! -w "$volume" ]; then
+    echo "$volume : non modifiable par l'utilisateur $(id -u) (volume créé par une version antérieure d'ArgOS)." >&2
+    echo "Les lui donner, Autorité gardée, puis relancer la stack :" >&2
+    echo "  docker compose run --rm --no-deps --user 0 --entrypoint chown certificats -R 101:101 $AUTORITE $SERVEUR" >&2
+    exit 1
+  fi
+done
+
 if [ -n "${ARGOS_CERTIFICAT_DOSSIER:-}" ]; then
   for fichier in certificat.crt cle.key; do
-    if [ ! -s "$FOURNI/$fichier" ]; then
-      echo "ARGOS_CERTIFICAT_DOSSIER ($ARGOS_CERTIFICAT_DOSSIER) : $fichier manquant ou vide." >&2
+    if [ ! -s "$FOURNI/$fichier" ] || [ ! -r "$FOURNI/$fichier" ]; then
+      echo "ARGOS_CERTIFICAT_DOSSIER ($ARGOS_CERTIFICAT_DOSSIER) : $fichier manquant, vide ou illisible par l'utilisateur $(id -u)." >&2
       echo "Y déposer certificat.crt (certificat du Site, chaîne comprise) et cle.key (sa clé), ou vider la variable dans .env." >&2
       exit 1
     fi
@@ -141,4 +148,4 @@ mv "$SERVEUR/argos-ca.crt.tmp" "$SERVEUR/argos-ca.crt"
 
 empreinte=$(openssl x509 -noout -fingerprint -sha256 -in "$AUTORITE/autorite.crt" | cut -d= -f2)
 echo "Empreinte SHA-256 de l'Autorité du Site : $empreinte"
-echo "À comparer avec celle du fichier téléchargé sur chaque poste (http://<IP du Site>/argos-ca.crt)."
+echo "À comparer avec celle du fichier téléchargé en HTTP sur chaque poste (<IP du Site>/argos-ca.crt)."

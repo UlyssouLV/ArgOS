@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { Agent } from "node:https";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type ProxyOptions } from "vite";
@@ -6,10 +7,26 @@ import { defineConfig, loadEnv, type ProxyOptions } from "vite";
 // Racine du dépôt : compose.yaml et .env.
 const RACINE = "..";
 
+// docker cherché dans ces dossiers seulement, pas dans le PATH : Docker Desktop, Homebrew, paquets Linux.
+const DOCKERS = [
+  "/usr/local/bin/docker",
+  "/opt/homebrew/bin/docker",
+  "/usr/bin/docker",
+  "/Applications/Docker.app/Contents/Resources/bin/docker",
+];
+
+function docker(): string {
+  const trouve = DOCKERS.find((chemin) => existsSync(chemin));
+  if (!trouve) {
+    throw new Error(`docker introuvable dans ${DOCKERS.join(", ")}`);
+  }
+  return trouve;
+}
+
 /** Fichier du volume certificats-serveur, lu par le service certificats, qui l'écrit. */
 function lireCertificat(fichier: string): string {
   return execFileSync(
-    "docker",
+    docker(),
     ["compose", "run", "--rm", "--no-deps", "-T", "--entrypoint", "cat", "certificats", `/certificats-serveur/${fichier}`],
     // Sortie d'erreur de docker compose gardée pour le message d'échec, pas affichée sinon.
     { cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
