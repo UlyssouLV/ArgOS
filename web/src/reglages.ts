@@ -1,8 +1,10 @@
 import { appeler } from "./api";
 import { Refus } from "./cameras";
 
+export type Coin = "UpperLeft" | "UpperRight" | "LowerLeft" | "LowerRight";
 /** Position d'une Incrustation ; `Custom` : hors d'un coin, placée par la caméra. */
-export type Position = "UpperLeft" | "UpperRight" | "LowerLeft" | "LowerRight" | "Custom";
+export type Position = Coin | "Custom";
+export const COINS: Coin[] = ["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"];
 
 export type Horloge = {
   date_heure_utc: string;
@@ -49,6 +51,20 @@ export class ErreurOnvif extends Refus {}
 export async function lireReglages(idCamera: number): Promise<Reglages> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages`);
   if (reponse.ok) return reponse.json();
+  return lever(reponse);
+}
+
+/** Envoie seulement les champs modifiés ; l'API relit la caméra et dit, pour chacun, s'il a été pris. */
+export async function modifierReglages(idCamera: number, modification: Modification): Promise<ResultatModification> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages`, {
+    method: "PATCH",
+    body: JSON.stringify(modification),
+  });
+  if (reponse.ok) return reponse.json();
+  return lever(reponse);
+}
+
+async function lever(reponse: Response): Promise<never> {
   const corps = (await reponse.json().catch(() => ({}))) as { code?: CodeErreurOnvif; detail?: unknown };
   if (reponse.status === 502 && corps.code && corps.code in MESSAGES_ONVIF) {
     throw new ErreurOnvif(MESSAGES_ONVIF[corps.code]);
@@ -94,4 +110,69 @@ export function texteFuseau(horloge: Horloge): string {
 /** Date et heure UTC de la caméra, au format français. */
 export function texteDateHeure(dateHeureUtc: string): string {
   return new Date(dateHeureUtc).toLocaleString("fr-FR", { timeZone: "UTC" });
+}
+
+export type CleIncrustation = "nom" | "date_heure";
+
+/** Champs modifiés d'une Incrustation : seuls ceux présents sont envoyés à la caméra. */
+export type ModificationIncrustation = { affichee?: boolean; texte?: string; position?: Coin };
+
+export type Modification = { incrustations: Partial<Record<CleIncrustation, ModificationIncrustation>> };
+
+export type StatutChamp = "pris" | "pas_pris" | "refuse";
+
+/** Résultat d'un champ envoyé : `champ` vaut `incrustations.nom.texte`, `incrustations.date_heure.position`… */
+export type ChampModifie = {
+  champ: string;
+  demande: string | boolean;
+  relu: string | boolean | null;
+  statut: StatutChamp;
+};
+
+export type ResultatModification = { champs: ChampModifie[]; reglages: Reglages };
+
+/** Valeurs du formulaire d'une Incrustation ; `texte` ne sert qu'au nom. */
+export type IncrustationSaisie = { affichee: boolean; texte: string; position: Position };
+
+export type Saisie = Record<CleIncrustation, IncrustationSaisie>;
+
+// Coin proposé pour une Incrustation cachée qu'on réaffiche : celui de la caméra « sortie d'usine ».
+const COINS_PAR_DEFAUT: Record<CleIncrustation, Coin> = { nom: "UpperLeft", date_heure: "LowerLeft" };
+
+export function saisieDepuis(reglages: Reglages): Saisie {
+  const { nom, date_heure } = reglages.incrustations;
+  return {
+    nom: { affichee: nom.affichee, texte: nom.texte ?? "", position: nom.position ?? COINS_PAR_DEFAUT.nom },
+    date_heure: {
+      affichee: date_heure.affichee,
+      texte: "",
+      position: date_heure.position ?? COINS_PAR_DEFAUT.date_heure,
+    },
+  };
+}
+
+/** Champs de `saisie` qui diffèrent de la caméra (`actuels`) ; une Incrustation réaffichée part avec texte et coin. */
+export function modificationsEntre(actuels: Reglages, saisie: Saisie): Modification {
+  const incrustations: Modification["incrustations"] = {};
+  for (const cle of ["nom", "date_heure"] as const) {
+    const lue = actuels.incrustations[cle];
+    const saisi = saisie[cle];
+    const champs: ModificationIncrustation = {};
+    if (!saisi.affichee) {
+      if (lue.affichee) champs.affichee = false;
+    } else {
+      const reaffichee = !lue.affichee;
+      if (reaffichee) champs.affichee = true;
+      if (cle === "nom" && (reaffichee || saisi.texte !== (lue as IncrustationNom).texte)) champs.texte = saisi.texte;
+      if (saisi.position !== "Custom" && (reaffichee || saisi.position !== lue.position)) {
+        champs.position = saisi.position;
+      }
+    }
+    if (Object.keys(champs).length > 0) incrustations[cle] = champs;
+  }
+  return { incrustations };
+}
+
+export function estVide(modification: Modification): boolean {
+  return Object.keys(modification.incrustations).length === 0;
 }

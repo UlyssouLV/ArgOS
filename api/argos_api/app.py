@@ -313,11 +313,19 @@ def _routes_cameras(
     def lire_reglages(id_camera: int, base: Base) -> onvif.Reglages | JSONResponse:
         """Réglages lus sur la caméra à chaque appel, jamais gardés en base (seul le port ONVIF l'est)."""
         with _erreurs_cameras():
-            try:
-                return cameras.lire_reglages(base, id_camera, horloge)
-            except onvif.ErreurOnvif as erreur:
-                lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
-                return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
+            return _ou_502_onvif(lambda: cameras.lire_reglages(base, id_camera, horloge))
+
+    @routes.patch(
+        "/{id_camera}/reglages",
+        response_model=onvif.ResultatModification,
+        responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
+    )
+    def modifier_reglages(
+        id_camera: int, modification: onvif.ModificationReglages, base: Base
+    ) -> onvif.ResultatModification | JSONResponse:
+        """Envoie seulement les champs reçus, chacun séparément, puis relit la caméra : statut de chaque champ."""
+        with _erreurs_cameras():
+            return _ou_502_onvif(lambda: cameras.modifier_reglages(base, id_camera, modification, horloge))
 
     return routes
 
@@ -495,6 +503,15 @@ def _sans_apercu_404() -> Iterator[None]:
         yield
     except AucunApercu:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucun essai en cours avec un Flux trouvé.") from None
+
+
+def _ou_502_onvif[T](echange: Callable[[], T]) -> T | JSONResponse:
+    """Résultat de l'échange ONVIF, ou `502` avec le code de l'erreur que l'UI traduit."""
+    try:
+        return echange()
+    except onvif.ErreurOnvif as erreur:
+        lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
+        return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
 
 
 @contextmanager

@@ -330,3 +330,56 @@ button.danger {
 .reglages dd {
   margin: 0;
 }
+
+.reglages-formulaire {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.reglages fieldset {
+  display: grid;
+  grid-template-columns: max-content auto;
+  align-items: center;
+  gap: 0.3rem 1rem;
+  border: 1px solid #d4d9de;
+  border-radius: 4px;
+}
+
+.reglages fieldset p,
+.reglages fieldset > button {
+  grid-column: 1 / -1;
+  margin: 0;
+  justify-self: start;
+}
+
+.reglages .origine,
+.reglages .statut {
+  grid-column: 2;
+  font-size: 0.85rem;
+}
+
+.reglages .origine {
+  color: #5a636b;
+}
+
+.reglages .statut-pris {
+  color: #1f7a3a;
+}
+
+.reglages .statut-pas_pris,
+.reglages .statut-refuse {
+  color: #b42318;
+}
+
+.reglages .confirmation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reglages-actions {
+  display: flex;
+  gap: 0.5rem;
+}

@@ -118,3 +118,32 @@ def test_deuxieme_incrustation_du_meme_type_refusee(camera):
     assert reponse.statut == 400
     assert reponse.faute == "ter:MaxOSDs"
     assert lire_osds(camera)["Plain"]["texte"] == "CAM01"
+
+
+def test_texte_trop_long_refuse_sans_rien_changer(camera):
+    token = lire_osds(camera)["Plain"]["token"]
+
+    reponse = camera.media(
+        f'<trt:SetOSD><trt:OSD token="{token}">{osd_nom("UpperLeft", "X" * 33)}</trt:OSD></trt:SetOSD>'
+    )
+
+    assert reponse.statut == 400
+    assert reponse.faute == "ter:InvalidArgVal"
+    assert lire_osds(camera)["Plain"]["texte"] == "CAM01"
+
+
+def test_types_creables_restreints_ni_annonces_ni_recrees(camera_sans_recreation_de_la_date):
+    camera = camera_sans_recreation_de_la_date
+    options = camera.media(
+        f"<trt:GetOSDOptions><trt:ConfigurationToken>{SOURCE}</trt:ConfigurationToken></trt:GetOSDOptions>"
+    )
+    types = {e.text for e in options.xml.findall(".//trt:OSDOptions/tt:TextOption/tt:Type", NS)}
+    assert types == {"Plain"}
+    token = lire_osds(camera)["DateAndTime"]["token"]
+    camera.media(f"<trt:DeleteOSD><trt:OSDToken>{token}</trt:OSDToken></trt:DeleteOSD>")
+
+    creee = camera.media(f'<trt:CreateOSD><trt:OSD token="">{osd_date("UpperRight")}</trt:OSD></trt:CreateOSD>')
+
+    assert creee.statut == 400
+    assert creee.faute == "ter:InvalidArgVal"
+    assert lire_osds(camera).keys() == {"Plain"}

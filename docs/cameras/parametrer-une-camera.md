@@ -1,6 +1,6 @@
 # Paramétrer une Caméra : ONVIF
 
-Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit** par ONVIF les Réglages de la Caméra (Incrustations et Horloge) : voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos). Leur modification depuis ArgOS arrive dans la même version (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
+Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit** par ONVIF les Réglages de la Caméra (Incrustations et Horloge) et **règle** les Incrustations : voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos). Le réglage de l’Horloge arrive dans la même version (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
 
 Pour aller plus loin : [Ajouter une Caméra](ajouter-une-camera.md), [Réseau du Site et Détection des Caméras](reseau-et-detection.md), [sécurité](../securite.md).
 
@@ -85,7 +85,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ## 6. Les Réglages de la Caméra dans ArgOS
 
-Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les valeurs sont pour l’instant en lecture seule.
+Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations se règlent ([plus bas](#régler-les-incrustations)) ; l’Horloge est pour l’instant en lecture seule.
 
 ### Ce qu’ArgOS lit
 
@@ -95,6 +95,29 @@ Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pa
   - le **nom** : texte, position, affiché ou caché ;
   - la **date et heure** : format (non modifiable), position, affichée ou cachée.
   - Une position hors des quatre coins s’affiche « position personnalisée ».
+
+### Régler les Incrustations
+
+Le panneau est un formulaire. Sous chaque champ reste affichée sa **valeur d’origine** (lue à l’ouverture), jusqu’à la fermeture du panneau : de quoi y revenir à la main.
+
+- **Texte du nom** : texte libre. **Reprendre le nom ArgOS** y copie le nom de la Caméra ; les deux ne sont pas liés ensuite.
+- **Position** du nom et de la date et heure : un des quatre coins. Une « position personnalisée » lue sur la caméra est remplacée par le coin choisi.
+- **Affichage** :
+  - **cacher** une Incrustation la retire de la caméra (`DeleteOSD`), après une confirmation : « Certaines caméras ne permettent pas de la réafficher ensuite. » ;
+  - **afficher** une Incrustation cachée la recrée (`CreateOSD`, même type, avec son texte et son coin). C’est proposé **seulement si la caméra annonce savoir la recréer** (`GetOSDOptions`) : sinon ArgOS refuse sans rien envoyer.
+- Le **format de la date** ne s’envoie jamais : les caméras ne le règlent pas de façon fiable.
+
+**Enregistrer** n’envoie que les champs modifiés, **chacun séparément** (un refus n’empêche pas les autres), puis **relit** la caméra et affiche, par champ envoyé :
+
+| Statut | Signification |
+|---|---|
+| « pris » | La valeur relue est celle demandée. |
+| « pas pris » | La caméra a accepté sans appliquer : ArgOS montre la valeur qu’elle a gardée. |
+| « refusé » | La caméra a refusé le réglage (texte trop long, par exemple), ou ArgOS ne l’a pas envoyé (Incrustation que la caméra ne sait pas recréer). |
+
+**Annuler** remet le formulaire aux valeurs d’origine, sans rien envoyer.
+
+Par l’API : `PATCH /api/cameras/{id}/reglages` avec seulement les champs modifiés (`{"incrustations": {"nom": {"texte": "Entrée"}}}`) ; la réponse donne, pour chaque champ envoyé, la valeur demandée, la valeur relue et le statut (`pris`, `pas_pris`, `refuse`), puis les Réglages relus. Mêmes erreurs que la lecture (`404`, `502`).
 
 ### Port et identifiants
 

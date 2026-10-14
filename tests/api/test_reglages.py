@@ -8,7 +8,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from stack_compose import compose, regler_camera_simulee_4_en_onvif, remettre_onvif_en_usine, url_camera_simulee
+from stack_compose import (
+    camera_simulee_4_sans_recreation_de_la_date,
+    compose,
+    regler_camera_simulee_4_en_onvif,
+    remettre_onvif_en_usine,
+    url_camera_simulee,
+)
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_essai import IP_SANS_CAMERA
 
@@ -217,3 +223,178 @@ def test_incrustation_hors_d_un_coin_en_position_personnalisee(connecte, camera_
     nom = lire(connecte, camera_simulee(4)).json()["incrustations"]["nom"]
 
     assert nom["position"] == "Custom"
+
+
+# --- Modifier les Réglages ---------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def remise_en_usine():
+    """Les tests qui modifient une caméra la remettent « sortie d'usine » ensuite."""
+    yield
+    remettre_onvif_en_usine()
+
+
+def modifier(client, id_camera: int, incrustations: dict):
+    return client.patch(
+        f"/api/cameras/{id_camera}/reglages", json={"incrustations": incrustations}, timeout=DELAI_LECTURE_S
+    )
+
+
+def champs(reponse) -> dict[str, dict]:
+    """Résultat par champ envoyé (`incrustations.nom.texte`…), sans la clé `champ`."""
+    assert reponse.status_code == 200, reponse.text
+    return {c.pop("champ"): c for c in reponse.json()["champs"]}
+
+
+def test_modifier_sans_session_401(client):
+    assert client.patch("/api/cameras/1/reglages", json={}).status_code == 401
+
+
+def test_texte_du_nom_pris_et_confirme_par_une_nouvelle_lecture(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(2)
+
+    reponse = modifier(connecte, id_camera, {"nom": {"texte": "Entrée"}})
+
+    assert champs(reponse) == {
+        "incrustations.nom.texte": {"demande": "Entrée", "relu": "Entrée", "statut": "pris"}
+    }
+    assert reponse.json()["reglages"]["incrustations"]["nom"]["texte"] == "Entrée"
+    nom = lire(connecte, id_camera).json()["incrustations"]["nom"]
+    assert (nom["texte"], nom["position"]) == ("Entrée", "UpperLeft")
+
+
+def test_coin_de_chaque_incrustation_pris(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(4)
+
+    reponse = modifier(
+        connecte, id_camera, {"nom": {"position": "LowerRight"}, "date_heure": {"position": "UpperRight"}}
+    )
+
+    assert champs(reponse) == {
+        "incrustations.nom.position": {"demande": "LowerRight", "relu": "LowerRight", "statut": "pris"},
+        "incrustations.date_heure.position": {"demande": "UpperRight", "relu": "UpperRight", "statut": "pris"},
+    }
+    incrustations = lire(connecte, id_camera).json()["incrustations"]
+    assert incrustations["nom"]["texte"] == "CAM01"
+    assert incrustations["date_heure"]["format"] == "yyyy-MM-dd HH:mm:ss"
+
+
+def test_position_personnalisee_remise_dans_un_coin(
+    connecte, camera_simulee, placer_le_nom_hors_d_un_coin, remise_en_usine
+):
+    placer_le_nom_hors_d_un_coin()
+
+    reponse = modifier(connecte, camera_simulee(4), {"nom": {"position": "UpperRight"}})
+
+    assert champs(reponse)["incrustations.nom.position"] == {
+        "demande": "UpperRight",
+        "relu": "UpperRight",
+        "statut": "pris",
+    }
+
+
+@pytest.mark.parametrize("incrustation", ["nom", "date_heure"])
+def test_incrustation_cachee_puis_reaffichee(connecte, camera_simulee, remise_en_usine, incrustation):
+    id_camera = camera_simulee(2)
+
+    cachee = modifier(connecte, id_camera, {incrustation: {"affichee": False}})
+
+    assert champs(cachee) == {
+        f"incrustations.{incrustation}.affichee": {"demande": False, "relu": False, "statut": "pris"}
+    }
+    assert lire(connecte, id_camera).json()["incrustations"][incrustation]["affichee"] is False
+
+    reaffichee = modifier(connecte, id_camera, {incrustation: {"affichee": True}})
+
+    assert champs(reaffichee) == {
+        f"incrustations.{incrustation}.affichee": {"demande": True, "relu": True, "statut": "pris"}
+    }
+    assert lire(connecte, id_camera).json()["incrustations"][incrustation]["affichee"] is True
+
+
+def test_nom_reaffiche_avec_son_texte_et_son_coin(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(4)
+    modifier(connecte, id_camera, {"nom": {"affichee": False}})
+
+    reponse = modifier(connecte, id_camera, {"nom": {"affichee": True, "texte": "Portail", "position": "LowerRight"}})
+
+    assert {champ: c["statut"] for champ, c in champs(reponse).items()} == {
+        "incrustations.nom.affichee": "pris",
+        "incrustations.nom.texte": "pris",
+        "incrustations.nom.position": "pris",
+    }
+    nom = lire(connecte, id_camera).json()["incrustations"]["nom"]
+    assert (nom["affichee"], nom["texte"], nom["position"]) == (True, "Portail", "LowerRight")
+
+
+@pytest.fixture
+def sans_recreation_de_la_date():
+    camera_simulee_4_sans_recreation_de_la_date()
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_afficher_refuse_sans_appel_si_la_camera_n_annonce_pas_la_creation(
+    connecte, camera_simulee, sans_recreation_de_la_date
+):
+    id_camera = camera_simulee(4)
+    date_heure = lire(connecte, id_camera).json()["incrustations"]["date_heure"]
+    assert date_heure["peut_etre_reaffichee"] is False
+    assert champs(modifier(connecte, id_camera, {"date_heure": {"affichee": False}}))[
+        "incrustations.date_heure.affichee"
+    ]["statut"] == "pris"
+
+    reponse = modifier(connecte, id_camera, {"date_heure": {"affichee": True, "position": "UpperRight"}})
+
+    assert champs(reponse) == {
+        "incrustations.date_heure.affichee": {"demande": True, "relu": False, "statut": "refuse"},
+        "incrustations.date_heure.position": {"demande": "UpperRight", "relu": None, "statut": "refuse"},
+    }
+
+
+def test_champ_refuse_par_la_camera_n_empeche_pas_les_autres(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(2)
+    # La Caméra simulée refuse un texte de plus de 32 caractères (simulation/onvif/README.md).
+    trop_long = "X" * 33
+
+    reponse = modifier(
+        connecte,
+        id_camera,
+        {"nom": {"texte": trop_long, "position": "UpperRight"}, "date_heure": {"position": "LowerRight"}},
+    )
+
+    assert champs(reponse) == {
+        "incrustations.nom.texte": {"demande": trop_long, "relu": "CAM01", "statut": "refuse"},
+        "incrustations.nom.position": {"demande": "UpperRight", "relu": "UpperRight", "statut": "pris"},
+        "incrustations.date_heure.position": {"demande": "LowerRight", "relu": "LowerRight", "statut": "pris"},
+    }
+
+
+def test_cacher_avec_d_autres_champs_de_la_meme_incrustation_422(connecte, camera_simulee):
+    reponse = modifier(connecte, camera_simulee(4), {"nom": {"affichee": False, "texte": "Entrée"}})
+
+    assert reponse.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "incrustations",
+    [{"nom": {"position": "Custom"}}, {"date_heure": {"texte": "x"}}, {"date_heure": {"format": "dd/MM/yyyy"}}],
+    ids=["position_personnalisee", "texte_de_la_date", "format_de_la_date"],
+)
+def test_champs_non_reglables_422(connecte, camera_simulee, incrustations):
+    assert modifier(connecte, camera_simulee(4), incrustations).status_code == 422
+
+
+def test_modifier_camera_desactivee_404(connecte, camera_simulee):
+    id_camera = camera_simulee(4)
+    assert connecte.patch(f"/api/cameras/{id_camera}", json={"active": False}).status_code == 200
+
+    assert modifier(connecte, id_camera, {"nom": {"texte": "Entrée"}}).status_code == 404
+
+
+def test_modifier_camera_sans_onvif_502(connecte, camera_simulee):
+    reponse = modifier(connecte, camera_simulee(1), {"nom": {"texte": "Entrée"}})
+
+    assert reponse.status_code == 502
+    assert reponse.json()["code"] == "sans_onvif"

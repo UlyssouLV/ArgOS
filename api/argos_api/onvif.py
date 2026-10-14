@@ -1,11 +1,15 @@
-"""Client ONVIF du Site : lit les Réglages de la Caméra (Horloge de son Appareil, Incrustations) sur la caméra.
+"""Client ONVIF du Site : lit et modifie les Réglages de la Caméra (Horloge de son Appareil, Incrustations).
 
-L'appelant donne l'URL RTSP de la Caméra et le port ONVIF retenu ; il reçoit les Réglages lus et le port qui a
-répondu, ou une `ErreurOnvif` avec son code. SOAP, recherche du port, profils et tokens restent ici.
+L'appelant donne l'URL RTSP de la Caméra et le port ONVIF retenu ; il reçoit les Réglages lus (ou, après une
+modification, le résultat de chaque champ envoyé) et le port qui a répondu, ou une `ErreurOnvif` avec son code.
+SOAP, recherche du port, profils et tokens restent ici.
 
 - Port : celui retenu s'il répond encore en SOAP, sinon recherche sur les ports courants, dans leur ordre.
 - Identifiants : ceux de l'URL RTSP, en WS-Security (empreinte) ; aucun si l'URL n'en a pas.
 - Incrustations : celles de la première source vidéo (premier profil média).
+- Modification : chaque `Set…` part seul (un refus n'empêche pas les autres), puis la caméra est relue : un champ
+  est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
+  elle n'annonce pas savoir recréer une Incrustation) l'a refusé.
 
 WSDL ONVIF d'`onvif-zeep` (licence MIT, `wsdl/LICENSE`), lus par `zeep` : `onvif-zeep` n'est publié qu'en
 sources, et l'image de l'API n'installe que des roues.
@@ -25,7 +29,7 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 import zeep
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, model_validator
 from zeep.exceptions import Error as ErreurZeep
 from zeep.exceptions import Fault, TransportError
 from zeep.transports import Transport
@@ -52,7 +56,11 @@ DEMANDE_HEURE = (
 journal = logging.getLogger("argos_api.onvif")
 
 CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable"]
-Position = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight", "Custom"]
+Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
+Position = Coin | Literal["Custom"]
+# Type de texte ONVIF de chaque Incrustation, et son coin quand ArgOS la réaffiche sans coin demandé.
+TYPES_TEXTE = {"nom": "Plain", "date_heure": "DateAndTime"}
+COINS_PAR_DEFAUT: dict[str, Coin] = {"nom": "UpperLeft", "date_heure": "LowerLeft"}
 
 
 class ErreurOnvif(Exception):
@@ -97,17 +105,85 @@ class Reglages(BaseModel):
     incrustations: Incrustations
 
 
+class _ModificationIncrustation(BaseModel):
+    """Champs modifiés d'une Incrustation ; un champ absent (ou `null`) n'est pas envoyé."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    affichee: bool | None = None
+    position: Coin | None = None
+
+    @model_validator(mode="after")
+    def _cacher_seule(self) -> "_ModificationIncrustation":
+        # Une Incrustation cachée n'a plus ni texte ni coin : rien d'autre à régler en même temps.
+        if self.affichee is False and len(self.model_dump(exclude_none=True)) > 1:
+            raise ValueError("Cacher une Incrustation ne se combine avec aucun autre champ de celle-ci")
+        return self
+
+
+class ModificationNom(_ModificationIncrustation):
+    texte: str | None = None
+
+
+class ModificationDateHeure(_ModificationIncrustation):
+    """Le format de la date et heure ne s'envoie jamais : les caméras ne le règlent pas de façon fiable."""
+
+
+class ModificationIncrustations(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nom: ModificationNom | None = None
+    date_heure: ModificationDateHeure | None = None
+
+
+class ModificationReglages(BaseModel):
+    """Seulement les champs que l'Administrateur a modifiés."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    incrustations: ModificationIncrustations = ModificationIncrustations()
+
+
+class ChampModifie(BaseModel):
+    # Chemin du champ envoyé : `incrustations.nom.texte`…
+    champ: str
+    demande: str | bool
+    # Valeur relue sur la caméra après l'envoi ; `None` : sans valeur (Incrustation cachée).
+    relu: str | bool | None
+    statut: Literal["pris", "pas_pris", "refuse"]
+
+
+class ResultatModification(BaseModel):
+    # Seulement les champs envoyés.
+    champs: list[ChampModifie]
+    # Réglages relus après l'envoi.
+    reglages: Reglages
+
+
 def lire_reglages(
     url_rtsp: str, port_retenu: int | None, maintenant: Callable[[], datetime]
 ) -> tuple[Reglages, int]:
     """Réglages lus sur la caméra de `url_rtsp`, et port ONVIF qui a répondu. Lève `ErreurOnvif`."""
+    camera, port = _joindre(url_rtsp, port_retenu)
+    with _erreurs_onvif():
+        return camera.lire(maintenant), port
+
+
+def modifier_reglages(
+    url_rtsp: str, port_retenu: int | None, modification: ModificationReglages, maintenant: Callable[[], datetime]
+) -> tuple[ResultatModification, int]:
+    """Envoie chaque champ de `modification` à la caméra, la relit, et dit si chacun a été pris. Lève `ErreurOnvif`."""
+    camera, port = _joindre(url_rtsp, port_retenu)
+    with _erreurs_onvif():
+        return camera.modifier(modification, maintenant), port
+
+
+def _joindre(url_rtsp: str, port_retenu: int | None) -> tuple["_Camera", int]:
     morceaux = urlsplit(url_rtsp)
     hote = morceaux.hostname or ""
     identifiants = (unquote(morceaux.username), unquote(morceaux.password or "")) if morceaux.username else None
     port = _trouver_port(hote, port_retenu)
-    with _erreurs_onvif():
-        reglages = _Camera(hote, port, identifiants).lire(maintenant)
-    return reglages, port
+    return _Camera(hote, port, identifiants), port
 
 
 # --- Recherche du port ------------------------------------------------------------------------------------------
@@ -206,21 +282,32 @@ class _Camera:
     def __init__(self, hote: str, port: int, identifiants: tuple[str, str] | None) -> None:
         self.adresse = f"http://{hote}:{port}{CHEMIN_APPAREIL}"
         self.identifiants = identifiants
+        self._appareil: Any = None
+        self._media: Any = None
+        self._source = ""
 
-    def lire(self, maintenant: Callable[[], datetime]) -> Reglages:
+    def _connecter(self) -> None:
+        """Services appareil et média, jeton daté à l'heure de la caméra, source vidéo : une fois par requête."""
+        if self._media is not None:
+            return
         appareil = _service("devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, None)
-        heure = appareil.GetSystemDateAndTime()
-        date_heure_utc = _date_heure_utc(heure)
         jeton = None
         if self.identifiants is not None:
-            jeton = _JetonDecale(*self.identifiants, decalage=date_heure_utc - datetime.now(UTC))
-        appareil = _service("devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, jeton)
-        ntp = appareil.GetNTP()
-        adresse_media = appareil.GetCapabilities(Category="Media").Media.XAddr
-        media = _service("media", "{http://www.onvif.org/ver10/media/wsdl}MediaBinding", adresse_media, jeton)
-        source = media.GetProfiles()[0].VideoSourceConfiguration.token
-        osds = media.GetOSDs(ConfigurationToken=source)
-        options = media.GetOSDOptions(ConfigurationToken=source).OSDOptions
+            decalage = _date_heure_utc(appareil.GetSystemDateAndTime()) - datetime.now(UTC)
+            jeton = _JetonDecale(*self.identifiants, decalage=decalage)
+        self._appareil = _service(
+            "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, jeton
+        )
+        adresse_media = self._appareil.GetCapabilities(Category="Media").Media.XAddr
+        self._media = _service("media", "{http://www.onvif.org/ver10/media/wsdl}MediaBinding", adresse_media, jeton)
+        self._source = self._media.GetProfiles()[0].VideoSourceConfiguration.token
+
+    def lire(self, maintenant: Callable[[], datetime]) -> Reglages:
+        self._connecter()
+        heure = self._appareil.GetSystemDateAndTime()
+        date_heure_utc = _date_heure_utc(heure)
+        ntp = self._appareil.GetNTP()
+        options = self._media.GetOSDOptions(ConfigurationToken=self._source).OSDOptions
         fuseau_posix = heure.TimeZone.TZ if heure.TimeZone is not None else None
         return Reglages(
             horloge=Horloge(
@@ -231,8 +318,85 @@ class _Camera:
                 mode="ntp" if heure.DateTimeType == "NTP" else "manuel",
                 serveur_ntp=_serveur_ntp(ntp),
             ),
-            incrustations=_incrustations(osds or [], options),
+            incrustations=_incrustations(self._osds(), options),
         )
+
+    def modifier(self, modification: ModificationReglages, maintenant: Callable[[], datetime]) -> ResultatModification:
+        avant = self.lire(maintenant).incrustations
+        envois: list[tuple[str, dict[str, Any], set[str]]] = []
+        for cle in TYPES_TEXTE:
+            changement = getattr(modification.incrustations, cle)
+            if changement is None:
+                continue
+            envoyes = changement.model_dump(exclude_none=True)
+            if envoyes:
+                envois.append((cle, envoyes, self._modifier_incrustation(cle, envoyes, getattr(avant, cle))))
+        apres = self.lire(maintenant)
+        champs = []
+        for cle, envoyes, refuses in envois:
+            relue = getattr(apres.incrustations, cle)
+            for champ, demande in envoyes.items():
+                relu = getattr(relue, champ)
+                statut = "refuse" if champ in refuses else "pris" if relu == demande else "pas_pris"
+                champs.append(
+                    ChampModifie(champ=f"incrustations.{cle}.{champ}", demande=demande, relu=relu, statut=statut)
+                )
+        return ResultatModification(champs=champs, reglages=apres)
+
+    def _modifier_incrustation(self, cle: str, envoyes: dict[str, Any], lue: Any) -> set[str]:
+        """Envoie les champs d'une Incrustation ; rend ceux qui ont été refusés."""
+        type_texte = TYPES_TEXTE[cle]
+        if envoyes.get("affichee") is False:
+            osd = self._osd(type_texte)
+            return set() if osd is None or self._envoyer(self._media.DeleteOSD, OSDToken=osd.token) else {"affichee"}
+        if not lue.affichee:
+            # Seule une création la fait revenir, avec son texte et son coin : sans annonce, rien n'est envoyé.
+            if envoyes.get("affichee") is not True or not lue.peut_etre_reaffichee:
+                return set(envoyes)
+            texte = {"PlainText": envoyes.get("texte", "")} if type_texte == "Plain" else {}
+            osd = {
+                "token": "",
+                "VideoSourceConfigurationToken": self._source,
+                "Type": "Text",
+                "Position": {"Type": envoyes.get("position", COINS_PAR_DEFAUT[cle])},
+                "TextString": {"Type": type_texte, **texte},
+            }
+            return set() if self._envoyer(self._media.CreateOSD, OSD=osd) else set(envoyes)
+        refuses = set()
+        # Un `SetOSD` par champ, sur l'Incrustation relue à chaque fois : un refus ne fausse pas le suivant.
+        for champ in ("texte", "position"):
+            if champ not in envoyes:
+                continue
+            osd = self._osd(type_texte)
+            if osd is None:
+                refuses.add(champ)
+                continue
+            if champ == "texte":
+                osd.TextString.PlainText = envoyes["texte"]
+            else:
+                # Un coin remplace une position personnalisée et ses coordonnées.
+                osd.Position.Type = envoyes["position"]
+                osd.Position.Pos = None
+            if not self._envoyer(self._media.SetOSD, OSD=osd):
+                refuses.add(champ)
+        return refuses
+
+    def _envoyer(self, operation: Callable[..., Any], **arguments: Any) -> bool:
+        """`False` si la caméra refuse (faute SOAP autre qu'un refus d'identifiants)."""
+        try:
+            operation(**arguments)
+        except Fault as faute:
+            if _identifiants_refuses(faute):
+                raise
+            journal.info("ONVIF : réglage refusé par la caméra : %s", faute.message)
+            return False
+        return True
+
+    def _osds(self) -> list[Any]:
+        return self._media.GetOSDs(ConfigurationToken=self._source) or []
+
+    def _osd(self, type_texte: str) -> Any:
+        return _textes(self._osds()).get(type_texte)
 
 
 def _date_heure_utc(heure: Any) -> datetime:
@@ -251,10 +415,20 @@ def _serveur_ntp(ntp: Any) -> str | None:
     return None
 
 
+def _textes(osds: list[Any]) -> dict[str, Any]:
+    """Première Incrustation de texte de chaque type : `Plain` (le nom), `DateAndTime` (la date et heure)."""
+    textes: dict[str, Any] = {}
+    for osd in osds:
+        if osd.TextString is None:
+            continue
+        type_texte = "DateAndTime" if osd.TextString.Type in ("DateAndTime", "Date", "Time") else osd.TextString.Type
+        textes.setdefault(type_texte, osd)
+    return textes
+
+
 def _incrustations(osds: list[Any], options: Any) -> Incrustations:
-    textes = [osd for osd in osds if osd.TextString is not None]
-    nom = next((osd for osd in textes if osd.TextString.Type == "Plain"), None)
-    date_heure = next((osd for osd in textes if osd.TextString.Type in ("DateAndTime", "Date", "Time")), None)
+    textes = _textes(osds)
+    nom, date_heure = textes.get("Plain"), textes.get("DateAndTime")
     creables = set(options.TextOption.Type or []) if options.TextOption is not None else set()
     return Incrustations(
         nom=IncrustationNom(

@@ -1,7 +1,7 @@
 """Fixtures : une Caméra simulée ONVIF lancée dans le processus des tests, interrogée en SOAP par HTTP.
 
 `camera` répond sans identifiants (comme la Caméra simulée 4) ; `camera_protegee` exige ceux de la
-Caméra simulée 2. Chaque test part d'une caméra neuve, « sortie d'usine ».
+Caméra simulée 2 ; `camera_sans_recreation_de_la_date` ne sait recréer que le nom. Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
 import base64
@@ -108,8 +108,8 @@ class Camera:
         return self.appeler(corps, chemin=self.chemin_media())
 
 
-def _lancer(identifiants: tuple[str, str] | None):
-    serveur = creer_serveur("127.0.0.1", 0, identifiants)
+def _lancer(identifiants: tuple[str, str] | None, types_creables: tuple[str, ...] | None = None):
+    serveur = creer_serveur("127.0.0.1", 0, identifiants, *([types_creables] if types_creables else []))
     fil = threading.Thread(target=serveur.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     fil.start()
     try:
@@ -127,3 +127,9 @@ def camera():
 @pytest.fixture
 def camera_protegee():
     yield from _lancer(IDENTIFIANTS)
+
+
+@pytest.fixture
+def camera_sans_recreation_de_la_date():
+    """Comme `camera`, mais n'annonce ni ne sait recréer l'Incrustation de la date et de l'heure."""
+    yield from _lancer(None, ("Plain",))

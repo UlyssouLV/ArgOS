@@ -46,11 +46,12 @@ urllib.request.urlopen(requete, timeout=5).read()
 """
 
 
-def compose(*args: str) -> subprocess.CompletedProcess[str]:
+def compose(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """`env` : variables de plus, lues par l'interpolation des fichiers compose."""
     return subprocess.run(
         ["docker", "compose", *(option for fichier in FICHIERS_COMPOSE for option in ("-f", fichier)), *args],
         cwd=REPO_ROOT,
-        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S)},
+        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
         capture_output=True,
         text=True,
         check=True,
@@ -126,6 +127,16 @@ def url_camera_simulee(numero: int, requete: str, identifiants: bool = True, che
 def remettre_onvif_en_usine() -> None:
     """Recrée les simulateurs ONVIF : leur état, en mémoire, revient « sortie d'usine »."""
     compose("up", "-d", "--force-recreate", "--wait", *SIMULATEURS_ONVIF)
+
+
+def camera_simulee_4_sans_recreation_de_la_date() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-4, « sortie d'usine », sans savoir recréer la date et l'heure.
+
+    `remettre_onvif_en_usine` lui rend ensuite les deux types d'Incrustation.
+    """
+    compose(
+        "up", "-d", "--force-recreate", "--wait", "camera-simulee-4-onvif", env={"ONVIF_TYPES_CREABLES_4": "Plain"}
+    )
 
 
 def regler_camera_simulee_4_en_onvif(service: str, corps: str) -> None:

@@ -4,7 +4,8 @@ Seulement les opérations dont ArgOS se sert pour les Réglages de la Caméra (R
 d'une Caméra simulée (compose.simulation.yaml), il lui donne une interface ONVIF : même IP, même MAC.
 
 Configuration par variables d'environnement : `ONVIF_PORT` (80 par défaut), `ONVIF_IDENTIFIANT` et
-`ONVIF_MOT_DE_PASSE` (WS-Security exigé seulement s'ils sont tous deux renseignés).
+`ONVIF_MOT_DE_PASSE` (WS-Security exigé seulement s'ils sont tous deux renseignés), `ONVIF_TYPES_CREABLES`
+(types d'Incrustation que la caméra sait recréer, séparés par des virgules ; les deux par défaut).
 `python camera_onvif.py sonde` lit l'heure du service local : healthcheck du conteneur.
 """
 
@@ -43,6 +44,8 @@ POSITIONS = ("UpperLeft", "UpperRight", "LowerLeft", "LowerRight", "Custom")
 FORMATS_DATE = ("yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy")
 FORMATS_HEURE = ("HH:mm:ss", "hh:mm:ss tt")
 TYPES_TEXTE = ("Plain", "DateAndTime")
+# Texte incrusté le plus long accepté : au-delà, faute, comme beaucoup de caméras.
+LONGUEUR_MAX_TEXTE = 32
 
 
 class Faute(Exception):
@@ -130,6 +133,8 @@ def _lire_incrustation(osd: ET.Element, token: str) -> Incrustation:
         raise Faute("ter:InvalidArgVal", f"Type de texte non pris en charge : {type_texte}")
     if position not in POSITIONS:
         raise Faute("ter:InvalidArgVal", f"Position inconnue : {position}")
+    if len(_texte(osd, "tt:TextString/tt:PlainText")) > LONGUEUR_MAX_TEXTE:
+        raise Faute("ter:InvalidArgVal", f"Texte de plus de {LONGUEUR_MAX_TEXTE} caractères")
     pos = osd.find("tt:Position/tt:Pos", NS)
     return Incrustation(
         token,
@@ -187,8 +192,11 @@ def _faute_xml(faute: Faute) -> str:
 
 
 class Camera:
-    def __init__(self, identifiants: tuple[str, str] | None = None) -> None:
+    def __init__(
+        self, identifiants: tuple[str, str] | None = None, types_creables: tuple[str, ...] = TYPES_TEXTE
+    ) -> None:
         self.identifiants = identifiants
+        self.types_creables = types_creables
         self.etat = Etat()
         self.operations = {
             CHEMIN_APPAREIL: {
@@ -302,10 +310,10 @@ class Camera:
         return f"<trt:GetOSDsResponse>{osds}</trt:GetOSDsResponse>"
 
     def lire_options_incrustations(self, requete: ET.Element, _hote: str) -> str:
-        """Annonce la création des deux types (un de chaque au plus) : une Incrustation cachée peut revenir."""
+        """Annonce la création des types créables (un de chaque au plus) : une Incrustation cachée peut revenir."""
         self._verifier_source(requete)
         positions = "".join(f"<tt:PositionOption>{p}</tt:PositionOption>" for p in POSITIONS)
-        types = "".join(f"<tt:Type>{t}</tt:Type>" for t in TYPES_TEXTE)
+        types = "".join(f"<tt:Type>{t}</tt:Type>" for t in self.types_creables)
         dates = "".join(f"<tt:DateFormat>{f}</tt:DateFormat>" for f in FORMATS_DATE)
         heures = "".join(f"<tt:TimeFormat>{f}</tt:TimeFormat>" for f in FORMATS_HEURE)
         return (
@@ -342,6 +350,8 @@ class Camera:
     def creer_incrustation(self, requete: ET.Element, _hote: str) -> str:
         etat = self.etat
         nouvelle = _lire_incrustation(self._osd_demandee(requete), f"OSD_{etat.prochain_token}")
+        if nouvelle.type_texte not in self.types_creables:
+            raise Faute("ter:InvalidArgVal", f"Création d'une Incrustation {nouvelle.type_texte} non prise en charge")
         if any(osd.type_texte == nouvelle.type_texte for osd in etat.incrustations):
             raise Faute("ter:MaxOSDs", f"Déjà une Incrustation {nouvelle.type_texte}", code="env:Receiver")
         etat.prochain_token += 1
@@ -356,9 +366,14 @@ class Camera:
 # --- Serveur HTTP -----------------------------------------------------------------------------------------------
 
 
-def creer_serveur(adresse: str, port: int, identifiants: tuple[str, str] | None = None) -> ThreadingHTTPServer:
-    """Serveur d'une Caméra simulée neuve (« sortie d'usine ») ; `identifiants` : WS-Security exigé."""
-    camera = Camera(identifiants)
+def creer_serveur(
+    adresse: str, port: int, identifiants: tuple[str, str] | None = None, types_creables: tuple[str, ...] = TYPES_TEXTE
+) -> ThreadingHTTPServer:
+    """Serveur d'une Caméra simulée neuve (« sortie d'usine ») ; `identifiants` : WS-Security exigé.
+
+    `types_creables` : types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte.
+    """
+    camera = Camera(identifiants, types_creables)
 
     class Requetes(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -400,7 +415,8 @@ def main() -> None:
         return
     identifiant, mot_de_passe = os.environ.get("ONVIF_IDENTIFIANT", ""), os.environ.get("ONVIF_MOT_DE_PASSE", "")
     identifiants = (identifiant, mot_de_passe) if identifiant and mot_de_passe else None
-    serveur = creer_serveur("0.0.0.0", port, identifiants)
+    types = tuple(t.strip() for t in (os.environ.get("ONVIF_TYPES_CREABLES") or ",".join(TYPES_TEXTE)).split(",") if t.strip())
+    serveur = creer_serveur("0.0.0.0", port, identifiants, types)
     print(f"Caméra simulée ONVIF sur le port {port}, {'avec' if identifiants else 'sans'} identifiants", flush=True)
     serveur.serve_forever()
 

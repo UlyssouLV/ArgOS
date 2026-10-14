@@ -366,18 +366,33 @@ def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], dateti
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.lire_reglages(url, port, maintenant))
+
+
+def modifier_reglages(
+    base: Session, id_camera: int, modification: onvif.ModificationReglages, maintenant: Callable[[], datetime]
+) -> onvif.ResultatModification:
+    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le port.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.modifier_reglages(url, port, modification, maintenant))
+
+
+def _par_onvif[T](base: Session, id_camera: int, echange: Callable[[str, int | None], tuple[T, int]]) -> T:
+    """Échange ONVIF avec la caméra d'une Caméra active ; retient le port qui a répondu."""
     camera = _trouver(base, id_camera)
     if not camera.active:
         raise CameraIntrouvable
     url, port_retenu = camera.url_rtsp, camera.port_onvif
-    # Pas de transaction ouverte pendant la lecture réseau.
+    # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
-    reglages, port = onvif.lire_reglages(url, port_retenu, maintenant)
+    resultat, port = echange(url, port_retenu)
     if port != port_retenu:
         # Seulement si l'URL n'a pas changé entre-temps : le port est celui de cet hôte.
         base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(port_onvif=port))
         base.commit()
-    return reglages
+    return resultat
 
 
 def supprimer(base: Session, id_camera: int) -> None:

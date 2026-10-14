@@ -93,6 +93,8 @@ services:
     environment:
       # Sans identifiants.
       ONVIF_PORT: "80"
+      # Types d'Incrustation recréables ; les tests en retirent un pour simuler une caméra qui ne sait pas.
+      ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:

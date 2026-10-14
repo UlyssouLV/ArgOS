@@ -25,6 +25,13 @@ def sans_essai(api):
     api.delete("/api/essai")
 
 
+def attendre_la_lecture(page: Page, apercu: Locator) -> None:
+    """L'Aperçu joue : amené à l'écran d'abord, car Chrome ne lance pas une vidéo muette hors de la fenêtre."""
+    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
+    apercu.scroll_into_view_if_needed()
+    page.wait_for_function("(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS)
+
+
 def test_ajout_depuis_un_candidat_au_flux_ouvert(administration: Page, noms, sans_essai):
     (ip,) = adresses_ip("camera-simulee-1")
     nom = noms("Ajout")
@@ -37,10 +44,7 @@ def test_ajout_depuis_un_candidat_au_flux_ouvert(administration: Page, noms, san
 
     panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
     apercu = panneau.locator("video")
-    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
-    administration.wait_for_function(
-        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
-    )
+    attendre_la_lecture(administration, apercu)
     expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)
 
     panneau.get_by_label("Nom").fill(nom)
@@ -82,10 +86,7 @@ def test_l_apercu_reste_tant_que_le_panneau_est_ouvert_et_annuler_le_retire(admi
     candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
     panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
     apercu = panneau.locator("video")
-    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
-    administration.wait_for_function(
-        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
-    )
+    attendre_la_lecture(administration, apercu)
 
     administration.wait_for_timeout((EXPIRATION_APERCU_S + 5) * 1000)
 
@@ -128,10 +129,7 @@ def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page
     panneau.get_by_role("button", name="Valider").click()
 
     apercu = panneau.locator("video")
-    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
-    administration.wait_for_function(
-        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
-    )
+    attendre_la_lecture(administration, apercu)
     expect(panneau.get_by_label("Mot de passe")).to_have_count(0)
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
@@ -157,10 +155,7 @@ def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_
     panneau.get_by_role("button", name="Valider").click()
 
     apercu = panneau.locator("video")
-    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
-    administration.wait_for_function(
-        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
-    )
+    attendre_la_lecture(administration, apercu)
     expect(panneau.get_by_label("Chemin RTSP")).to_have_count(0)
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
@@ -245,10 +240,7 @@ def test_ajout_par_adresse_ip_sans_detection(administration: Page, noms, sans_es
 
     panneau = administration.get_by_role("form", name=f"Ajouter {ip}:554")
     apercu = panneau.locator("video")
-    expect(apercu).to_be_visible(timeout=DELAI_APERCU_MS)
-    administration.wait_for_function(
-        "(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS
-    )
+    attendre_la_lecture(administration, apercu)
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
