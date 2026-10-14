@@ -4,8 +4,8 @@ import { messageEchec, type Camera } from "../cameras";
 import {
   COINS,
   estVide,
-  FUSEAUX,
   fuseauLu,
+  lireFuseaux,
   lireReglages,
   mettreALHeure,
   modificationsEntre,
@@ -27,13 +27,13 @@ type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
 /** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent. */
 export function ReglagesCamera({ camera, onFermer }: Props) {
-  const [origine, setOrigine] = useState<Reglages | null>(null);
+  const [lus, setLus] = useState<{ origine: Reglages; fuseaux: string[] } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
     let ouvert = true;
-    lireReglages(camera.id).then(
-      (lus) => ouvert && setOrigine(lus),
+    Promise.all([lireReglages(camera.id), lireFuseaux()]).then(
+      ([origine, fuseaux]) => ouvert && setLus({ origine, fuseaux }),
       (e: unknown) => ouvert && setErreur(messageEchec(e)),
     );
     return () => {
@@ -49,13 +49,13 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
           Fermer
         </button>
       </div>
-      {!origine && !erreur && <p>Lecture de la caméra…</p>}
+      {!lus && !erreur && <p>Lecture de la caméra…</p>}
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}
         </p>
       )}
-      {origine && <FormulaireReglages camera={camera} origine={origine} />}
+      {lus && <FormulaireReglages camera={camera} origine={lus.origine} fuseaux={lus.fuseaux} />}
     </section>
   );
 }
@@ -73,14 +73,14 @@ const LIBELLES: Record<
   },
 };
 
-type PropsFormulaire = Readonly<{ camera: Camera; origine: Reglages }>;
+type PropsFormulaire = Readonly<{ camera: Camera; origine: Reglages; fuseaux: string[] }>;
 
 /**
  * Formulaire des Réglages (fuseau, Incrustations) : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis
  * montre le statut de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture et
  * toujours affichées. La mise à l'heure du Site part seule, à la demande.
  */
-function FormulaireReglages({ camera, origine }: PropsFormulaire) {
+function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
   // Dernières valeurs lues sur la caméra : à l'ouverture, puis relues après chaque envoi.
   const [actuels, setActuels] = useState(origine);
   const [saisie, setSaisie] = useState<Saisie>(() => saisieDepuis(origine));
@@ -135,6 +135,7 @@ function FormulaireReglages({ camera, origine }: PropsFormulaire) {
           origine={origine}
           actuels={actuels}
           fuseau={saisie.fuseau}
+          fuseaux={fuseaux}
           statuts={statuts}
           onFuseau={(fuseau) => setSaisie((avant) => ({ ...avant, fuseau }))}
           onHorloge={(horloge) => setActuels((avant) => ({ ...avant, horloge }))}
@@ -148,8 +149,8 @@ function FormulaireReglages({ camera, origine }: PropsFormulaire) {
               origine={origine}
               actuels={actuels}
               saisie={saisie.incrustations[cle]}
-            statuts={statuts}
-            confirmation={aCacher === cle}
+              statuts={statuts}
+              confirmation={aCacher === cle}
               nomArgos={camera.nom}
               onChanger={(champs) => changer(cle, champs)}
               onAffichage={(affichee) => changerAffichage(cle, affichee)}
@@ -176,6 +177,7 @@ function FormulaireReglages({ camera, origine }: PropsFormulaire) {
           onClick={() => {
             setSaisie(saisieDepuis(origine));
             setACacher(null);
+            setStatuts({});
           }}
         >
           Annuler
@@ -190,6 +192,7 @@ type PropsHorloge = Readonly<{
   origine: Reglages;
   actuels: Reglages;
   fuseau: string;
+  fuseaux: string[];
   statuts: Record<string, ChampModifie>;
   onFuseau: (fuseau: string) => void;
   onHorloge: (horloge: Horloge) => void;
@@ -199,7 +202,7 @@ type PropsHorloge = Readonly<{
  * Horloge relue sur la caméra (après un envoi ou une mise à l'heure), fuseau à choisir, et mise à l'heure du Site :
  * confirmée quand la caméra se règle sur un serveur de temps, car elle coupe cette synchronisation.
  */
-function ChampsHorloge({ camera, origine, actuels, fuseau, statuts, onFuseau, onHorloge }: PropsHorloge) {
+function ChampsHorloge({ camera, origine, actuels, fuseau, fuseaux, statuts, onFuseau, onHorloge }: PropsHorloge) {
   const id = useId();
   const horloge = actuels.horloge;
   const [confirmation, setConfirmation] = useState(false);
@@ -241,8 +244,8 @@ function ChampsHorloge({ camera, origine, actuels, fuseau, statuts, onFuseau, on
         <label htmlFor={`${id}-fuseau`}>Fuseau</label>
         <select id={`${id}-fuseau`} value={fuseau} onChange={(e) => onFuseau(e.target.value)}>
           {/* Fuseau que la caméra a et qu'ArgOS ne reconnaît pas : montré tel quel tant qu'il n'est pas changé. */}
-          {!FUSEAUX.includes(fuseau) && <option value={fuseau}>{fuseau || "—"}</option>}
-          {FUSEAUX.map((nom) => (
+          {!fuseaux.includes(fuseau) && <option value={fuseau}>{fuseau || "—"}</option>}
+          {fuseaux.map((nom) => (
             <option key={nom} value={nom}>
               {nom}
             </option>
@@ -409,30 +412,24 @@ function Origine({ valeur }: Readonly<{ valeur: string }>) {
   return <span className="origine">d'origine : {valeur}</span>;
 }
 
-/** « pris », « pas pris » avec la valeur que la caméra a gardée, ou « refusé » ; rien si le champ n'a pas été envoyé. */
+const STATUTS: Record<ChampModifie["statut"], string> = { pris: "pris", pas_pris: "pas pris", refuse: "refusé" };
+
+/** Statut d'un champ envoyé, avec la valeur demandée et celle relue sur la caméra ; rien s'il n'a pas été envoyé. */
 function StatutChamp({
   resultat,
   libelle,
 }: Readonly<{ resultat: ChampModifie | undefined; libelle: string }>) {
   if (!resultat) return null;
-  const texte = {
-    pris: "pris",
-    pas_pris: `pas pris (la caméra a gardé : ${texteValeur(resultat)})`,
-    refuse: "refusé",
-  }[resultat.statut];
+  const { champ, demande, relu, statut } = resultat;
   return (
-    <span
-      role="status"
-      aria-label={`Statut : ${libelle}`}
-      className={`statut statut-${resultat.statut}`}
-    >
-      {texte}
+    <span role="status" aria-label={`Statut : ${libelle}`} className={`statut statut-${statut}`}>
+      {STATUTS[statut]} (demandé : {texteValeur(champ, demande)}, relu : {texteValeur(champ, relu)})
     </span>
   );
 }
 
-function texteValeur({ champ, relu }: ChampModifie): string {
-  if (relu === null) return "—";
-  if (typeof relu === "boolean") return relu ? "affichée" : "cachée";
-  return champ.endsWith(".position") ? textePosition(relu as Position) : relu;
+function texteValeur(champ: string, valeur: ChampModifie["relu"]): string {
+  if (valeur === null) return "—";
+  if (typeof valeur === "boolean") return valeur ? "affichée" : "cachée";
+  return champ.endsWith(".position") ? textePosition(valeur as Position) : valeur;
 }

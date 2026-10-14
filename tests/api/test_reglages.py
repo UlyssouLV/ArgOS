@@ -88,6 +88,18 @@ def test_reglages_sans_session_401(client):
     assert client.get("/api/cameras/1/reglages").status_code == 401
 
 
+def test_fuseaux_proposes_europe_paris_en_tete(connecte):
+    reponse = connecte.get("/api/fuseaux")
+
+    assert reponse.status_code == 200
+    assert reponse.json()[:2] == ["Europe/Paris", "UTC"]
+    assert "Pacific/Wallis" in reponse.json()
+
+
+def test_fuseaux_sans_session_401(client):
+    assert client.get("/api/fuseaux").status_code == 401
+
+
 def test_camera_simulee_2_usine_sur_le_port_8899_retenu(connecte, camera_simulee):
     id_camera = camera_simulee(2)
     assert port_onvif(connecte, id_camera) is None

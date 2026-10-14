@@ -10,14 +10,14 @@ from ipaddress import IPv4Address, IPv4Network
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, essai, onvif, sessions, soi, sonde
+from argos_api import cameras, detection, essai, fuseaux, onvif, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
@@ -127,7 +127,7 @@ class DejaConfiguree(BaseModel):
     camera: CameraCorrespondante
 
 
-# Messages des `502` des Réglages de la Caméra, par code (l'UI affiche les mêmes).
+# Messages des `502` des Réglages de la Caméra, par code : l'UI affiche `detail` tel quel.
 MESSAGES_ONVIF: dict[onvif.CodeErreur, str] = {
     "sans_onvif": "Cette caméra ne répond pas en ONVIF.",
     "identifiants_refuses": "La caméra refuse ces identifiants en ONVIF.",
@@ -250,6 +250,17 @@ def creer_app(
         """Identité de cette instance, sans session : la Détection s'y reconnaît (argos_api/soi.py)."""
         return Instance(instance=soi.JETON_INSTANCE)
 
+    @app.exception_handler(onvif.ErreurOnvif)
+    def erreur_onvif(_: Request, erreur: onvif.ErreurOnvif) -> JSONResponse:
+        """`502` des Réglages de la Caméra : la caméra n'a pas pu être lue ou réglée par ONVIF."""
+        lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
+        return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
+
+    @app.get("/api/fuseaux", dependencies=[Depends(administrateur_connecte)])
+    def lister_fuseaux() -> list[str]:
+        """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
+        return list(fuseaux.FUSEAUX_COURANTS)
+
     app.include_router(_routes_cameras(base, administrateur_connecte, horloge))
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
@@ -310,10 +321,10 @@ def _routes_cameras(
         response_model=onvif.Reglages,
         responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
     )
-    def lire_reglages(id_camera: int, base: Base) -> onvif.Reglages | JSONResponse:
+    def lire_reglages(id_camera: int, base: Base) -> onvif.Reglages:
         """Réglages lus sur la caméra à chaque appel, jamais gardés en base (seul le port ONVIF l'est)."""
         with _erreurs_cameras():
-            return _ou_502_onvif(lambda: cameras.lire_reglages(base, id_camera, horloge))
+            return cameras.lire_reglages(base, id_camera, horloge)
 
     @routes.patch(
         "/{id_camera}/reglages",
@@ -322,20 +333,20 @@ def _routes_cameras(
     )
     def modifier_reglages(
         id_camera: int, modification: onvif.ModificationReglages, base: Base
-    ) -> onvif.ResultatModification | JSONResponse:
+    ) -> onvif.ResultatModification:
         """Envoie seulement les champs reçus, chacun séparément, puis relit la caméra : statut de chaque champ."""
         with _erreurs_cameras():
-            return _ou_502_onvif(lambda: cameras.modifier_reglages(base, id_camera, modification, horloge))
+            return cameras.modifier_reglages(base, id_camera, modification, horloge)
 
     @routes.post(
         "/{id_camera}/reglages/mise-a-l-heure",
         response_model=onvif.Horloge,
         responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
     )
-    def mettre_a_l_heure(id_camera: int, base: Base) -> onvif.Horloge | JSONResponse:
+    def mettre_a_l_heure(id_camera: int, base: Base) -> onvif.Horloge:
         """Envoie une fois l'heure UTC du serveur à la caméra (mode manuel, fuseau gardé), puis relit son Horloge."""
         with _erreurs_cameras():
-            return _ou_502_onvif(lambda: cameras.mettre_a_l_heure(base, id_camera, horloge))
+            return cameras.mettre_a_l_heure(base, id_camera, horloge)
 
     return routes
 
@@ -513,15 +524,6 @@ def _sans_apercu_404() -> Iterator[None]:
         yield
     except AucunApercu:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucun essai en cours avec un Flux trouvé.") from None
-
-
-def _ou_502_onvif[T](echange: Callable[[], T]) -> T | JSONResponse:
-    """Résultat de l'échange ONVIF, ou `502` avec le code de l'erreur que l'UI traduit."""
-    try:
-        return echange()
-    except onvif.ErreurOnvif as erreur:
-        lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
-        return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
 
 
 @contextmanager

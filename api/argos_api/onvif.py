@@ -62,9 +62,11 @@ journal = logging.getLogger("argos_api.onvif")
 CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable"]
 Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
 Position = Coin | Literal["Custom"]
+CleIncrustation = Literal["nom", "date_heure"]
+StatutChamp = Literal["pris", "pas_pris", "refuse"]
 # Type de texte ONVIF de chaque Incrustation, et son coin quand ArgOS la réaffiche sans coin demandé.
-TYPES_TEXTE = {"nom": "Plain", "date_heure": "DateAndTime"}
-COINS_PAR_DEFAUT: dict[str, Coin] = {"nom": "UpperLeft", "date_heure": "LowerLeft"}
+TYPES_TEXTE: dict[CleIncrustation, str] = {"nom": "Plain", "date_heure": "DateAndTime"}
+COINS_PAR_DEFAUT: dict[CleIncrustation, Coin] = {"nom": "UpperLeft", "date_heure": "LowerLeft"}
 
 
 class ErreurOnvif(Exception):
@@ -170,7 +172,7 @@ class ChampModifie(BaseModel):
     # Valeur relue sur la caméra après l'envoi (fuseau : sa chaîne POSIX) ; `None` : sans valeur (Incrustation
     # cachée, caméra sans fuseau).
     relu: str | bool | None
-    statut: Literal["pris", "pas_pris", "refuse"]
+    statut: StatutChamp
 
 
 class ResultatModification(BaseModel):
@@ -383,7 +385,7 @@ class _Camera:
         avant = self.lire(maintenant).incrustations
         fuseau = modification.horloge.fuseau
         fuseau_refuse = fuseau is not None and not self._regler_horloge(fuseau_posix=fuseaux.posix(fuseau))
-        envois: list[tuple[str, dict[str, Any], set[str]]] = []
+        envois: list[tuple[CleIncrustation, dict[str, Any], set[str]]] = []
         for cle in TYPES_TEXTE:
             changement = getattr(modification.incrustations, cle)
             if changement is None:
@@ -395,37 +397,50 @@ class _Camera:
         champs = []
         if fuseau is not None:
             relu = apres.horloge.fuseau_posix
-            statut = "refuse" if fuseau_refuse else "pris" if relu == fuseaux.posix(fuseau) else "pas_pris"
+            statut = _statut(fuseau_refuse, relu, fuseaux.posix(fuseau))
             champs.append(ChampModifie(champ="horloge.fuseau", demande=fuseau, relu=relu, statut=statut))
         for cle, envoyes, refuses in envois:
             relue = getattr(apres.incrustations, cle)
             for champ, demande in envoyes.items():
                 relu = getattr(relue, champ)
-                statut = "refuse" if champ in refuses else "pris" if relu == demande else "pas_pris"
+                statut = _statut(champ in refuses, relu, demande)
                 champs.append(
                     ChampModifie(champ=f"incrustations.{cle}.{champ}", demande=demande, relu=relu, statut=statut)
                 )
         return ResultatModification(champs=champs, reglages=apres)
 
-    def _modifier_incrustation(self, cle: str, envoyes: dict[str, Any], lue: Any) -> set[str]:
+    def _modifier_incrustation(
+        self, cle: CleIncrustation, envoyes: dict[str, Any], lue: IncrustationNom | IncrustationDateHeure
+    ) -> set[str]:
         """Envoie les champs d'une Incrustation ; rend ceux qui ont été refusés."""
-        type_texte = TYPES_TEXTE[cle]
         if envoyes.get("affichee") is False:
-            osd = self._osd(type_texte)
-            return set() if osd is None or self._envoyer(self._media.DeleteOSD, OSDToken=osd.token) else {"affichee"}
+            return self._cacher_incrustation(TYPES_TEXTE[cle])
         if not lue.affichee:
-            # Seule une création la fait revenir, avec son texte et son coin : sans annonce, rien n'est envoyé.
-            if envoyes.get("affichee") is not True or not lue.peut_etre_reaffichee:
-                return set(envoyes)
-            texte = {"PlainText": envoyes.get("texte", "")} if type_texte == "Plain" else {}
-            osd = {
-                "token": "",
-                "VideoSourceConfigurationToken": self._source,
-                "Type": "Text",
-                "Position": {"Type": envoyes.get("position", COINS_PAR_DEFAUT[cle])},
-                "TextString": {"Type": type_texte, **texte},
-            }
-            return set() if self._envoyer(self._media.CreateOSD, OSD=osd) else set(envoyes)
+            return self._reafficher_incrustation(cle, envoyes, lue.peut_etre_reaffichee)
+        return self._changer_incrustation(TYPES_TEXTE[cle], envoyes)
+
+    def _cacher_incrustation(self, type_texte: str) -> set[str]:
+        osd = self._osd(type_texte)
+        return set() if osd is None or self._envoyer(self._media.DeleteOSD, OSDToken=osd.token) else {"affichee"}
+
+    def _reafficher_incrustation(
+        self, cle: CleIncrustation, envoyes: dict[str, Any], peut_etre_reaffichee: bool
+    ) -> set[str]:
+        # Seule une création la fait revenir, avec son texte et son coin : sans annonce, rien n'est envoyé.
+        if envoyes.get("affichee") is not True or not peut_etre_reaffichee:
+            return set(envoyes)
+        type_texte = TYPES_TEXTE[cle]
+        texte = {"PlainText": envoyes.get("texte", "")} if type_texte == "Plain" else {}
+        osd = {
+            "token": "",
+            "VideoSourceConfigurationToken": self._source,
+            "Type": "Text",
+            "Position": {"Type": envoyes.get("position", COINS_PAR_DEFAUT[cle])},
+            "TextString": {"Type": type_texte, **texte},
+        }
+        return set() if self._envoyer(self._media.CreateOSD, OSD=osd) else set(envoyes)
+
+    def _changer_incrustation(self, type_texte: str, envoyes: dict[str, Any]) -> set[str]:
         refuses = set()
         # Un `SetOSD` par champ, sur l'Incrustation relue à chaque fois : un refus ne fausse pas le suivant.
         for champ in ("texte", "position"):
@@ -461,6 +476,13 @@ class _Camera:
 
     def _osd(self, type_texte: str) -> Any:
         return _textes(self._osds()).get(type_texte)
+
+
+def _statut(refuse: bool, relu: object, demande: object) -> StatutChamp:
+    """`refuse` si la caméra a refusé l'envoi ; sinon `pris` si la valeur relue est celle demandée."""
+    if refuse:
+        return "refuse"
+    return "pris" if relu == demande else "pas_pris"
 
 
 def _date_heure_utc(heure: Any) -> datetime:

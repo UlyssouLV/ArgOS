@@ -64,7 +64,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ### Réglable par ONVIF
 
-- **OSD** : deux incrustations. Le **nom** (texte libre, `CAM01`, en haut à gauche) et la **date et heure** (`yyyy-MM-dd HH:mm:ss`, en bas à gauche). On peut changer le texte, déplacer l’une ou l’autre (un coin ou une position libre), ou les retirer. Ni police, ni taille, ni couleur, ni autre format de date.
+- **Incrustations** (OSD) : deux. Le **nom** (texte libre, `CAM01`, en haut à gauche) et la **date et heure** (`yyyy-MM-dd HH:mm:ss`, en bas à gauche). On peut changer le texte, déplacer l’une ou l’autre (un coin ou une position libre), ou les retirer. Ni police, ni taille, ni couleur, ni autre format de date.
 - **Horloge** : fuseau, serveur de temps (NTP), ou heure manuelle.
 - **Image** : luminosité, contraste, saturation, netteté, compensation de contre-jour, WDR, exposition, balance des blancs, **filtre infrarouge** (jour, nuit, automatique).
 - **Vidéo** : résolution (720p, 1080p, 2304×1296), jusqu’à 22 images par seconde, débit, qualité, intervalle entre images clés.
@@ -121,15 +121,15 @@ Par l’API : le fuseau passe par `PATCH /api/cameras/{id}/reglages` (`{"horloge
 
 ### Envoyer et vérifier
 
-**Enregistrer** n’envoie que les champs modifiés, **chacun séparément** (un refus n’empêche pas les autres), puis **relit** la caméra et affiche, par champ envoyé :
+**Enregistrer** n’envoie que les champs modifiés, **chacun séparément** (un refus n’empêche pas les autres), puis **relit** la caméra et affiche, par champ envoyé, la valeur demandée, la valeur relue et le statut :
 
 | Statut | Signification |
 |---|---|
 | « pris » | La valeur relue est celle demandée. |
-| « pas pris » | La caméra a accepté sans appliquer : ArgOS montre la valeur qu’elle a gardée. |
+| « pas pris » | La caméra a accepté sans appliquer : la valeur relue est celle qu’elle a gardée. |
 | « refusé » | La caméra a refusé le réglage (texte trop long, par exemple), ou ArgOS ne l’a pas envoyé (Incrustation que la caméra ne sait pas recréer). |
 
-**Annuler** remet le formulaire aux valeurs d’origine, sans rien envoyer.
+**Annuler** remet le formulaire aux valeurs d’origine, sans rien envoyer, et efface les statuts du dernier envoi.
 
 Par l’API : `PATCH /api/cameras/{id}/reglages` avec seulement les champs modifiés (`{"incrustations": {"nom": {"texte": "Entrée"}}}`) ; la réponse donne, pour chaque champ envoyé, la valeur demandée, la valeur relue et le statut (`pris`, `pas_pris`, `refuse`), puis les Réglages relus. Mêmes erreurs que la lecture (`404`, `502`).
 

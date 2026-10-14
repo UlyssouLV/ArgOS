@@ -77,7 +77,7 @@ Avant de lire, l’UI demande au navigateur s’il décode le HEVC. S’il ne le
 Sans navigateur qui décode le HEVC, deux remèdes :
 
 - **Sur la caméra** (son interface web) : passer le flux principal en H.264, quand le modèle le permet. ArgOS suit le changement au passage suivant de la sonde.
-- **Dans ArgOS, plus tard** : réencodage H.265 → H.264 **à la demande**, seulement pendant qu’un tel navigateur regarde ([feuille de route](../dev/feuille-de-route-dev.md)).
+- **Dans ArgOS, plus tard** : réencodage H.265 → H.264 **à la demande**, seulement pendant qu’un tel navigateur regarde ([feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md#réencodage-h265--h264-à-la-demande)).
 
 Un codec **ni H.264 ni H.265** (MJPEG…) n’est toujours pas montré : le panneau le nomme (« Cette caméra émet en MJPEG, que le navigateur ne sait pas lire… ») ; l’ajout reste permis, la Caméra est sondée normalement, mais le Live ne l’affiche pas.
 

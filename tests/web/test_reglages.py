@@ -173,12 +173,20 @@ def test_enregistrer_n_envoie_que_les_champs_modifies_et_montre_leur_statut(
     envoye = enregistrer(administration, reglages)
 
     assert envoye == {"incrustations": {"nom": {"texte": "Entrée"}, "date_heure": {"position": "UpperRight"}}}
-    expect(statut(reglages, "texte du nom")).to_have_text("pris", timeout=DELAI_LECTURE_MS)
-    expect(statut(reglages, "position de la date et heure")).to_have_text("pris")
+    expect(statut(reglages, "texte du nom")).to_have_text(
+        "pris (demandé : Entrée, relu : Entrée)", timeout=DELAI_LECTURE_MS
+    )
+    expect(statut(reglages, "position de la date et heure")).to_have_text(
+        "pris (demandé : en haut à droite, relu : en haut à droite)"
+    )
     expect(statut(reglages, "position du nom")).to_have_count(0)
     # Les valeurs d'origine restent visibles jusqu'à la fermeture.
     expect(reglages).to_contain_text("d'origine : CAM01")
     expect(reglages).to_contain_text("d'origine : en bas à gauche")
+
+    # « Annuler » revient aux valeurs d'origine : les statuts de l'envoi ne s'y appliquent plus.
+    reglages.get_by_role("button", name="Annuler").click()
+    expect(reglages.get_by_role("status")).to_have_count(0)
 
 
 def test_champ_refuse_par_la_camera(administration: Page, api, noms, remise_en_usine):
@@ -189,8 +197,10 @@ def test_champ_refuse_par_la_camera(administration: Page, api, noms, remise_en_u
     reglages.get_by_label("Position du nom", exact=True).select_option("LowerRight")
     enregistrer(administration, reglages)
 
-    expect(statut(reglages, "texte du nom")).to_have_text("refusé", timeout=DELAI_LECTURE_MS)
-    expect(statut(reglages, "position du nom")).to_have_text("pris")
+    expect(statut(reglages, "texte du nom")).to_have_text(
+        f"refusé (demandé : {'X' * 33}, relu : CAM01)", timeout=DELAI_LECTURE_MS
+    )
+    expect(statut(reglages, "position du nom")).to_have_text("pris (demandé : en bas à droite, relu : en bas à droite)")
 
 
 def test_annuler_remet_les_valeurs_d_origine_sans_rien_envoyer(administration: Page, api, noms):
@@ -229,13 +239,17 @@ def test_cacher_apres_confirmation_puis_reafficher(administration: Page, api, no
     expect(reglages.get_by_label("Position de la date et heure", exact=True)).to_be_disabled()
 
     assert enregistrer(administration, reglages) == {"incrustations": {"date_heure": {"affichee": False}}}
-    expect(statut(reglages, "affichage de la date et heure")).to_have_text("pris", timeout=DELAI_LECTURE_MS)
+    expect(statut(reglages, "affichage de la date et heure")).to_have_text(
+        "pris (demandé : cachée, relu : cachée)", timeout=DELAI_LECTURE_MS
+    )
 
     affichage.select_option("affichee")
     envoye = enregistrer(administration, reglages)
 
     assert envoye == {"incrustations": {"date_heure": {"affichee": True, "position": "LowerLeft"}}}
-    expect(statut(reglages, "affichage de la date et heure")).to_have_text("pris", timeout=DELAI_LECTURE_MS)
+    expect(statut(reglages, "affichage de la date et heure")).to_have_text(
+        "pris (demandé : affichée, relu : affichée)", timeout=DELAI_LECTURE_MS
+    )
 
 
 def test_garder_affichee_annule_la_demande(administration: Page, api, noms):
@@ -281,7 +295,10 @@ def test_fuseau_choisi_dans_la_liste_envoye_seul_et_pris(administration: Page, a
     envoye = enregistrer(administration, reglages)
 
     assert envoye == {"horloge": {"fuseau": "Europe/Paris"}, "incrustations": {}}
-    expect(statut(reglages, "fuseau")).to_have_text("pris", timeout=DELAI_LECTURE_MS)
+    # Relu tel que la caméra le garde, en POSIX.
+    expect(statut(reglages, "fuseau")).to_have_text(
+        "pris (demandé : Europe/Paris, relu : CET-1CEST,M3.5.0,M10.5.0/3)", timeout=DELAI_LECTURE_MS
+    )
     expect(reglages).to_contain_text("d'origine : AWST-8")
     expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
 

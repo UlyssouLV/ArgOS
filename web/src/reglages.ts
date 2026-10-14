@@ -37,17 +37,6 @@ export type Reglages = {
   incrustations: { nom: IncrustationNom; date_heure: IncrustationDateHeure };
 };
 
-export type CodeErreurOnvif = "sans_onvif" | "identifiants_refuses" | "injoignable";
-
-const MESSAGES_ONVIF: Record<CodeErreurOnvif, string> = {
-  sans_onvif: "Cette caméra ne répond pas en ONVIF.",
-  identifiants_refuses: "La caméra refuse ces identifiants en ONVIF.",
-  injoignable: "Caméra injoignable.",
-};
-
-/** `502` de l'API : la caméra n'a pas pu être lue par ONVIF. */
-export class ErreurOnvif extends Refus {}
-
 export async function lireReglages(idCamera: number): Promise<Reglages> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages`);
   if (reponse.ok) return reponse.json();
@@ -71,11 +60,9 @@ export async function modifierReglages(idCamera: number, modification: Modificat
   return lever(reponse);
 }
 
+/** `detail` de l'API affiché tel quel, `502` compris (caméra sans ONVIF, identifiants refusés, injoignable). */
 async function lever(reponse: Response): Promise<never> {
-  const corps = (await reponse.json().catch(() => ({}))) as { code?: CodeErreurOnvif; detail?: unknown };
-  if (reponse.status === 502 && corps.code && corps.code in MESSAGES_ONVIF) {
-    throw new ErreurOnvif(MESSAGES_ONVIF[corps.code]);
-  }
+  const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
   throw new Refus(typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`);
 }
 
@@ -109,35 +96,12 @@ export function texteEcart(ecartS: number): string {
   return `${ecartS < 0 ? "en retard" : "en avance"} de ${nombre} ${nombre > 1 ? pluriel : singulier}`;
 }
 
-/**
- * Fuseaux proposés, Europe/Paris en tête : ceux que l'API reconnaît à la lecture (`FUSEAUX_COURANTS`,
- * api/argos_api/fuseaux.py), pour qu'un fuseau choisi ici soit relu sous le même nom.
- */
-export const FUSEAUX = [
-  "Europe/Paris",
-  "UTC",
-  "Europe/London",
-  "Europe/Lisbon",
-  "Europe/Athens",
-  "Europe/Moscow",
-  "Africa/Casablanca",
-  "Africa/Abidjan",
-  "America/Guadeloupe",
-  "America/Cayenne",
-  "America/Miquelon",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "Indian/Reunion",
-  "Indian/Mayotte",
-  "Asia/Dubai",
-  "Asia/Shanghai",
-  "Asia/Tokyo",
-  "Pacific/Noumea",
-  "Pacific/Tahiti",
-  "Pacific/Wallis",
-];
+/** Fuseaux proposés, Europe/Paris en tête : ceux que l'API sait relire sous le même nom. */
+export async function lireFuseaux(): Promise<string[]> {
+  const reponse = await appeler("/api/fuseaux");
+  if (reponse.ok) return reponse.json();
+  return lever(reponse);
+}
 
 /** Fuseau lisible s'il est reconnu, sinon la chaîne POSIX de la caméra telle quelle ; `""` : sans fuseau. */
 export function fuseauLu(horloge: Horloge): string {
