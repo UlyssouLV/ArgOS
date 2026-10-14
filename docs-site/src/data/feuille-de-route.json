@@ -1,13 +1,6 @@
 {
   "versions": [
     {
-      "version": "0.6.1",
-      "titre": "HTTPS",
-      "resume": "Servir l’UI, l’API et le Live en HTTPS (cookie de session Secure), pour que mot de passe et session ne circulent plus en clair sur le réseau local.",
-      "href": "/docs/feuille-de-route/v0.6.1",
-      "slug": "v0.6.1"
-    },
-    {
       "version": "0.6.2",
       "titre": "Authentification des Flux",
       "resume": "Fermer l’accès libre aux Flux côté MediaMTX (WHEP, HLS, RTSP), pour que regarder une Caméra passe par la connexion d’ArgOS.",
