@@ -7,6 +7,23 @@ const sidebars: SidebarsConfig = {
       id: 'features/index',
       label: 'Sommaire',
     },
+    {
+      type: 'category',
+      label: 'Réseau et HTTPS',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'features/reseau/schema-flux',
+          label: 'Schéma du réseau et des Flux',
+        },
+        {
+          type: 'doc',
+          id: 'features/reseau/installer-l-autorite-du-site',
+          label: 'Installer l’Autorité du Site',
+        },
+      ],
+    },
   ],
   changelogSidebar: [
     {

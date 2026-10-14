@@ -29,7 +29,7 @@ Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). Media
 
 Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrateur s’y connecte, gère les Caméras du Site, et l’API sonde leur état (`unknown` / `online` / `offline`).
 
-Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
+Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080` (`https://localhost` depuis la 0.6.1), gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
 
 Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Réseau et Détection](docs/cameras/reseau-et-detection.md)).
 
@@ -40,6 +40,8 @@ Version **0.4.2** : ArgOS reconnaît l’**Appareil** de chaque Caméra par son 
 Version **0.5.0** : les Caméras **H.265** (HEVC) se voient dans le Live et l’Aperçu, **sans réencodage**. ArgOS retient le **codec** de chaque Caméra (relevé à l’ajout, suivi par la sonde, affiché dans l’Administration) et choisit le transport d’après lui : WebRTC pour le H.264, **LL-HLS** pour le H.265, décodé par le navigateur (voir la documentation). Une quatrième Caméra simulée, `camera-simulee-4`, diffuse en H.265.
 
 Version **0.6.0** : chaque Caméra active a des **Réglages** dans l’Administration. ArgOS lit la caméra par **ONVIF**, sans son interface web ni le cloud du fabricant, et règle ses **Incrustations** (texte, coin et affichage du nom et de la date et heure) et son **Horloge** (fuseau, mise à l’heure du Site), puis relit la caméra et dit, champ par champ, si le réglage est **pris**, **pas pris** ou **refusé**. Rien de ces réglages n’est gardé en base ; seul le port ONVIF trouvé est retenu. Les Caméras simulées 2 et 4 répondent en ONVIF (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos)).
+
+Version **0.6.1** : le Site n’est plus servi qu’en **HTTPS**, sous une seule adresse, **`https://<IP du Site>`** : UI, API et Live passent par le nginx de `web`, et les anciens ports HTTP (`8000`, `8888`, `8889`) sont fermés ; `http://…:8080` redirige vers HTTPS. Le certificat est signé par l’**Autorité du Site**, créée par ArgOS au premier lancement et installée une fois par poste ; un Administrateur qui a son propre certificat peut le déposer à la place (voir [Installer l’Autorité du Site](docs/features/reseau/installer-l-autorite-du-site.md) et le [schéma du réseau](docs/features/reseau/schema-flux.md)).
 
 ## Prérequis
 
@@ -71,3 +73,15 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 5. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `https://localhost`.
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
+
+## Ouvrir le Site depuis un autre poste
+
+Le Site est à l’adresse **`https://<IP du Site>`** : déclarer cette IP dans `.env` (`MTX_WEBRTCADDITIONALHOSTS`), sans quoi le certificat ne la nomme pas et seule la machine hôte reconnaît le Site.
+
+Sur chaque poste (Mac, iPhone, PC, Android), une fois :
+
+1. télécharger l’Autorité du Site sur **`http://<IP du Site>/argos-ca.crt`** ;
+2. comparer son empreinte SHA-256 avec celle affichée au lancement (`docker compose logs certificats | grep Empreinte`, ou la fenêtre du lanceur) ;
+3. l’installer et l’approuver, pas à pas : [Installer l’Autorité du Site](docs/features/reseau/installer-l-autorite-du-site.md).
+
+Ne jamais passer outre un avertissement du navigateur. Perdre le volume Docker `autorite` (`docker compose down -v`) crée une nouvelle Autorité, à réinstaller sur tous les postes.
