@@ -93,7 +93,7 @@ def creer(api, noms):
 def requetes_flux(page: Page) -> list[str]:
     """URL des requêtes du lecteur de Flux : négociations WHEP et HLS."""
     urls: list[str] = []
-    page.on("request", lambda requete: urls.append(requete.url) if ":8889/" in requete.url or ":8888/" in requete.url else None)
+    page.on("request", lambda requete: urls.append(requete.url) if "/flux/" in requete.url else None)
     return urls
 
 
@@ -102,7 +102,7 @@ def whep(urls: list[str]) -> list[str]:
 
 
 def hls(urls: list[str]) -> list[str]:
-    return [url for url in urls if ":8888/" in url and ".m3u8" in url]
+    return [url for url in urls if "/flux/hls/" in url and ".m3u8" in url]
 
 
 def attendre_codec(api, nom: str, codec: str) -> None:

@@ -11,7 +11,7 @@ import httpx
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from stack_compose import URL_API, url_camera_simulee
+from stack_compose import client_du_site, url_camera_simulee
 from test_connexion import se_connecter
 
 # Intervalle (10 s) + délai (5 s) de sonde, plus le rafraîchissement de la liste (10 s), avec de la marge.
@@ -32,7 +32,7 @@ def url_injoignable() -> str:
 
 @pytest.fixture
 def api(administrateur):
-    with httpx.Client(base_url=URL_API, timeout=10) as client:
+    with client_du_site() as client:
         assert client.post(
             "/api/session",
             json={"identifiant": administrateur["identifiant"], "mot_de_passe": administrateur["mot_de_passe"]},

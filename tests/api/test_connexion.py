@@ -2,7 +2,7 @@
 
 import httpx
 
-from conftest import URL_API, attendre_api, compose
+from conftest import attendre_api, client_du_site, compose
 
 COOKIE_SESSION = "argos_session"
 
@@ -58,7 +58,7 @@ def test_deconnexion_revoque_la_session_cote_serveur(client, administrateur):
 
     assert client.delete("/api/session").status_code == 204
 
-    with httpx.Client(base_url=URL_API, timeout=10) as autre:
+    with client_du_site() as autre:
         autre.cookies.set(COOKIE_SESSION, jeton)
         assert autre.get("/api/moi").status_code == 401
 

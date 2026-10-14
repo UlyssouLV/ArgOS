@@ -44,13 +44,36 @@ services:
       timeout: 5s
       retries: 30
 
+  # Ponctuel, avant web : Autorité du Site et certificat serveur (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md).
+  certificats:
+    build: ./certificats
+    restart: "no"
+    environment:
+      # Noms du certificat serveur, en plus de localhost et 127.0.0.1 : IP du Site sur le réseau local.
+      MTX_WEBRTCADDITIONALHOSTS: ${MTX_WEBRTCADDITIONALHOSTS:-}
+    volumes:
+      # Clé de l'Autorité : montée ici seulement, jamais dans web.
+      - autorite:/autorite
+      - certificats-serveur:/certificats-serveur
+
   web:
     build: ./web
     restart: unless-stopped
+    depends_on:
+      certificats:
+        condition: service_completed_successfully
     ports:
-      - "8080:8080"  # UI (fichiers statiques ; appelle l'API sur le même hôte, port 8000)
+      - "${ARGOS_PORT_HTTPS:-443}:443"  # Le Site : UI, API (/api) et Live (/flux) sous une seule origine HTTPS
+      - "${ARGOS_PORT_HTTP:-80}:8080"  # Redirection vers HTTPS ; partie publique de l'Autorité (/argos-ca.crt)
+      - "${ARGOS_PORT_HTTP_ANCIEN:-8080}:8080"  # Ancienne adresse de l'UI : même rôle que le port 80
+    environment:
+      # Port HTTPS publié, repris dans les redirections.
+      ARGOS_PORT_HTTPS: ${ARGOS_PORT_HTTPS:-443}
+    volumes:
+      # Certificat serveur, sa clé et partie publique de l'Autorité ; lecture seule.
+      - certificats-serveur:/etc/nginx/certificats:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "443"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -74,3 +97,5 @@ services:
 
 volumes:
   donnees-db:
+  autorite:
+  certificats-serveur:

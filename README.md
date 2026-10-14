@@ -1,10 +1,27 @@
-# ArgOS
+<p align="center">
+  <img src="docs/img/readme-banniere.jpg" alt="ArgOS" width="480" />
+</p>
 
-Plateforme de **vidéosurveillance IP auto-hébergée**, conçue pour rester générique et multi-marques : caméras RTSP/ONVIF, enregistrement, live, événements, puis détection et PTZ au fil des versions.
+<!-- sync:stats-commits -->
+<p align="center">
+  <img src="https://img.shields.io/badge/commits_main-12-c8102e?style=for-the-badge" alt="12 commits sur main" />
+  <img src="https://img.shields.io/badge/commits_PR_(historique)-70-1e3a5f?style=for-the-badge" alt="70 commits dans les PR mergées" />
+</p>
+<!-- /sync:stats-commits -->
 
-Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance à plusieurs yeux). Le projet est né d’un besoin de surveillance locale sur une grande propriété ; l’objectif logiciel est un produit self-hosted, sans dépendance cloud propriétaire.
+# Plateforme de vidéosurveillance IP auto-hébergée
 
-Documentation en ligne (guides Caméras, feuille de route, changelog, bugs connus) : **https://ulyssoulv.github.io/ArgOS/**, publiée par GitHub Pages à chaque merge sur `main` qui touche `docs/` ou `docs-site/`, et à chaque release.
+**ArgOS** est conçue pour rester générique et multi-marques : caméras RTSP/ONVIF, enregistrement, live, événements, puis détection et PTZ au fil des versions. Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance à plusieurs yeux). Le projet est né d’un besoin de surveillance locale sur une grande propriété ; l’objectif logiciel est un produit self-hosted, sans dépendance cloud propriétaire.
+
+## Documentation fonctionnelle et technique
+
+<p align="center">
+  <a href="https://ulyssoulv.github.io/ArgOS/">
+    <img src="https://img.shields.io/badge/Ouvrir_la_documentation-GitHub_Pages-c8102e?style=for-the-badge" alt="Ouvrir la documentation" />
+  </a>
+</p>
+
+Publiée par GitHub Pages à chaque merge sur `main` qui touche `docs/` ou `docs-site/`, et à chaque release.
 
 ## Quoi
 
@@ -14,20 +31,20 @@ Version **0.2.0** : l’**API du Site** (FastAPI + PostgreSQL). L’Administrate
 
 Version **0.3.0** : l’**UI** (React, conteneur `web`). L’Administrateur se connecte sur `http://localhost:8080`, gère les Caméras dans l’onglet **Administration** et regarde leur Flux en WebRTC dans l’onglet **Live**, une Caméra active à la fois. MediaMTX sert de **pont** : l’API lui fait relayer toute Caméra active sur un chemin `camera-<id>`.
 
-Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Détection des Caméras](#détection-des-caméras)).
+Version **0.4.0** : les Caméras simulées deviennent trois hôtes distincts (`camera-simulee-1` à `-3`, RTSP sur le port 554, l’une protégée par un identifiant), déclarés par un fichier Compose de simulation, `compose.simulation.yaml`, absent de la prod. Depuis l’Administration, une **Détection** cherche sur le réseau du Site les hôtes qui répondent en RTSP et les liste comme **Candidats** (voir [Réseau et Détection](docs/cameras/reseau-et-detection.md)).
 
 Version **0.4.1** : **Ajouter** sur un Candidat, ou **Ajouter par adresse IP**, fait chercher son Flux par ArgOS sur les chemins courants des caméras, demande un mot de passe ou un chemin seulement s’il le faut, et montre l’**Aperçu** avant d’ajouter la Caméra : plus d’URL RTSP à écrire (voir [Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)). Voir la [feuille de route de dev](docs/dev/feuille-de-route/feuille-de-route-dev.md).
 
-Version **0.4.2** : ArgOS reconnaît l’**Appareil** de chaque Caméra par son **adresse MAC** (affichée au format `aa:bb:cc:dd:ee:ff` sur les Candidats, les Caméras et l’Aperçu). Une Détection qui retrouve un Appareil connu à une autre IP met à jour seule l’URL RTSP de ses Caméras (**adresse mise à jour**) ; une Caméra dont l’IP répond avec une autre MAC passe `offline` (**autre appareil à cette adresse**) et n’est plus relayée. **Filtrer par MAC** retrouve parmi les Candidats la caméra de l’étiquette. En prod Linux, l’API rejoint pour cela le réseau des caméras (macvlan, `compose.reseau-cameras.yaml`) : voir [Adresse MAC et suivi d’adresse](#adresse-mac-et-suivi-dadresse).
+Version **0.4.2** : ArgOS reconnaît l’**Appareil** de chaque Caméra par son **adresse MAC** (affichée au format `aa:bb:cc:dd:ee:ff` sur les Candidats, les Caméras et l’Aperçu). Une Détection qui retrouve un Appareil connu à une autre IP met à jour seule l’URL RTSP de ses Caméras (**adresse mise à jour**) ; une Caméra dont l’IP répond avec une autre MAC passe `offline` (**autre appareil à cette adresse**) et n’est plus relayée. **Filtrer par MAC** retrouve parmi les Candidats la caméra de l’étiquette. En prod Linux, l’API rejoint pour cela le réseau des caméras (macvlan, `compose.reseau-cameras.yaml`)  (voir [Réseau et Détection](docs/cameras/reseau-et-detection.md)).
 
-Version **0.5.0** : les Caméras **H.265** (HEVC) se voient dans le Live et l’Aperçu, **sans réencodage**. ArgOS retient le **codec** de chaque Caméra (relevé à l’ajout, suivi par la sonde, affiché dans l’Administration) et choisit le transport d’après lui : WebRTC pour le H.264, **LL-HLS** pour le H.265, décodé par le navigateur (voir [Live](#live)). Une quatrième Caméra simulée, `camera-simulee-4`, diffuse en H.265.
+Version **0.5.0** : les Caméras **H.265** (HEVC) se voient dans le Live et l’Aperçu, **sans réencodage**. ArgOS retient le **codec** de chaque Caméra (relevé à l’ajout, suivi par la sonde, affiché dans l’Administration) et choisit le transport d’après lui : WebRTC pour le H.264, **LL-HLS** pour le H.265, décodé par le navigateur (voir la documentation). Une quatrième Caméra simulée, `camera-simulee-4`, diffuse en H.265.
 
 Version **0.6.0** : chaque Caméra active a des **Réglages** dans l’Administration. ArgOS lit la caméra par **ONVIF**, sans son interface web ni le cloud du fabricant, et règle ses **Incrustations** (texte, coin et affichage du nom et de la date et heure) et son **Horloge** (fuseau, mise à l’heure du Site), puis relit la caméra et dit, champ par champ, si le réglage est **pris**, **pas pris** ou **refusé**. Rien de ces réglages n’est gardé en base ; seul le port ONVIF trouvé est retenu. Les Caméras simulées 2 et 4 répondent en ONVIF (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos)).
 
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose
-- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright (voir [Tests](#tests))
+- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright
 - Pour lancer le front en dev seulement : Node 24 (npm)
 
 Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
@@ -41,397 +58,15 @@ cp .env.example .env
 # dans .env : ARGOS_IDENTIFIANT=… et ARGOS_MOT_DE_PASSE=… (mot de passe long recommandé)
 ```
 
-`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En dev local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le protocole de lancement ci-dessous, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
+`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En dev local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
 ## Lanceur macOS
 
 Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
-1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ; puis lance `scripts/cameras/configurer-detection.sh` (sous-réseaux de la [Détection](#détection-des-caméras), prise demandée au premier lancement s’il y en a plusieurs) ;
+1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ; puis lance `scripts/cameras/configurer-detection.sh` (sous-réseaux de la Détection, prise demandée au premier lancement s’il y en a plusieurs) ;
 2. démarre Docker Desktop s’il ne tourne pas, et attend que le moteur réponde ;
 3. lance la stack **avec la simulation** : `docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait` ;
 4. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `http://localhost:8080`.
 
-Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down` (voir l’étape 6 ci-dessous). Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
-
-## Protocole de lancement
-
-Tout se lance depuis la racine du dépôt. Les commandes curl lisent l’identifiant et le mot de passe dans `.env` (voir ci-dessus) : rien à recopier à la main.
-
-En dev, la stack porte la **simulation** : `compose.yaml` (la stack de prod : `mediamtx`, `api`, `db`, `web`) plus `compose.simulation.yaml` (les quatre Caméras simulées et leur réseau). Toutes les commandes `docker compose` de ce README visent cette stack : une fois par terminal,
-
-```bash
-export COMPOSE_FILE=compose.yaml:compose.simulation.yaml   # équivaut à -f compose.yaml -f compose.simulation.yaml
-```
-
-Sans cette variable, `docker compose` ne voit que la prod : ni Caméras simulées à lancer, ni à arrêter.
-
-**1. Démarrer la stack**
-
-```bash
-docker compose up -d --build --wait   # pont (mediamtx), API (api), base (db), UI (web) et Caméras simulées
-docker compose ps                      # attendu : api, db, mediamtx, web et camera-simulee-1 à -4 « healthy »
-```
-
-Au premier lancement, Docker construit les images de l’API et de l’UI. Le schéma de la base est appliqué au démarrage de `api` (migrations Alembic), sans étape manuelle. Si `api` ne démarre pas : `docker compose logs api` (identifiants absents ou réglage de sonde invalide dans `.env`).
-
-**2. Se connecter en tant qu’Administrateur**
-
-```bash
-set -a; . ./.env; set +a   # charge ARGOS_IDENTIFIANT et ARGOS_MOT_DE_PASSE dans le shell
-curl -s -o /dev/null -w '%{http_code}\n' -c cookies.txt -X POST http://localhost:8000/api/session \
-  -H 'Content-Type: application/json' \
-  -d "{\"identifiant\": \"$ARGOS_IDENTIFIANT\", \"mot_de_passe\": \"$ARGOS_MOT_DE_PASSE\"}"
-curl -s -b cookies.txt http://localhost:8000/api/moi   # attendu : {"identifiant":"…"}
-```
-
-Attendu : `204`. Un `401` veut dire que l’identifiant ou le mot de passe ne correspond pas à celui de l’API : `.env` a changé depuis le démarrage (refaire l’étape 1, qui recrée `api`), ou `. ./.env` n’a pas été lancé depuis la racine du dépôt. Un `429` : trop d’échecs, attendre 15 min ou `docker compose restart api`. Une connexion ratée vide `cookies.txt`.
-
-`cookies.txt` garde la session (24 h) pour les commandes suivantes ; il est ignoré par git. Sans terminal : ouvrir **http://localhost:8000/api/docs**, appeler `POST /api/session` (« Try it out »), le navigateur garde le cookie pour les autres routes.
-
-**3. Déclarer les quatre Caméras simulées** (une seule fois : la base les garde ; relancer renvoie `409`)
-
-```bash
-n=1
-for url in 'rtsp://camera-simulee-1/Streaming/Channels/101' \
-           'rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0' \
-           'rtsp://camera-simulee-3/flux' \
-           'rtsp://camera-simulee-4/Streaming/Channels/101'; do
-  curl -b cookies.txt -X POST http://localhost:8000/api/cameras \
-    -H 'Content-Type: application/json' \
-    -d "{\"nom\": \"Caméra simulée $n\", \"url_rtsp\": \"$url\"}"
-  n=$((n + 1))
-done
-```
-
-`camera-simulee-2` exige un identifiant et un mot de passe de dev ([media/simulated/README.md](media/simulated/README.md)) : sans eux, elle reste `offline`.
-
-**4. Suivre l’état des Caméras** (dans un second terminal, **depuis la racine du dépôt** : c’est là qu’est `cookies.txt` ; Ctrl+C pour arrêter)
-
-```bash
-while true; do
-  clear
-  curl -s -b cookies.txt http://localhost:8000/api/cameras | python3 -c '
-import json, sys
-from datetime import datetime
-try:
-    cameras = json.load(sys.stdin)
-except ValueError:
-    sys.exit("API injoignable : la stack tourne-t-elle ? (étape 1)")
-if not isinstance(cameras, list):
-    sys.exit("Pas de session : lancer depuis la racine du dépôt, ou refaire l’étape 2")
-ligne = "{:>4}  {:<22}{:<9}{:<11}{}"
-print(ligne.format("id", "nom", "état", "vérifié à", "active"))
-for c in cameras:
-    verifie = c["etat_verifie_le"] and datetime.fromisoformat(c["etat_verifie_le"]).astimezone().strftime("%H:%M:%S")
-    print(ligne.format(c["id"], c["nom"], c["etat"], verifie or "-", "oui" if c["active"] else "non"))'
-  sleep 2
-done
-```
-
-Attendu : les quatre Caméras passent de `unknown` à `online` en 15 s au plus. `camera-simulee-4` diffuse en H.265 : son `codec` vaut `H265` après le premier passage de la sonde.
-
-**5. Essais** (`<id>` = id affiché à l’étape 4)
-
-| Essai | Commande | Attendu |
-|---|---|---|
-| Couper une Caméra simulée | `docker compose stop camera-simulee-1` | elle seule passe `offline` en 15 s au plus |
-| La rallumer | `docker compose start camera-simulee-1` | retour à `online` |
-| Changer l’URL | `curl -b cookies.txt -X PATCH http://localhost:8000/api/cameras/<id> -H 'Content-Type: application/json' -d '{"url_rtsp": "rtsp://camera-simulee-1/inconnu"}'` | `unknown` tout de suite, puis `offline` |
-| Désactiver | même `PATCH` avec `-d '{"active": false}'` | `unknown`, plus sondée |
-| Réactiver | même `PATCH` avec `-d '{"active": true}'` | de nouveau `online` |
-| Supprimer (désactivée d’abord) | `curl -b cookies.txt -X DELETE http://localhost:8000/api/cameras/<id>` | `204` ; `409` si la Caméra est encore active |
-
-Les Flux eux-mêmes se regardent dans l’onglet [Live](#live) de l’UI (voir [Caméras simulées](#caméras-simulées)).
-
-**6. Arrêter**
-
-```bash
-curl -b cookies.txt -X DELETE http://localhost:8000/api/session   # déconnexion (facultatif)
-docker compose down      # arrête ; Caméras et sessions restent dans le volume donnees-db
-docker compose down -v   # arrête et efface la base (repartir de zéro : refaire l’étape 3)
-```
-
-## UI
-
-Ouvrir **http://localhost:8080** et se connecter avec `ARGOS_IDENTIFIANT` / `ARGOS_MOT_DE_PASSE` de `.env`. L’en-tête montre les onglets **Administration** et **Live**, l’identifiant connecté et le bouton **Déconnexion**. Une session absente ou expirée renvoie sur `/connexion`, puis à la page demandée après connexion.
-
-### Administration
-
-L’onglet **Administration** couvre toute la gestion des Caméras :
-
-- la liste de toutes les Caméras (nom, emplacement, hôte:port, MAC de l’Appareil ou « — », URL avec le mot de passe RTSP masqué, active ou désactivée, codec (« H.264 », « H.265 », « inconnu »), état `unknown` / `online` / `offline` avec sa raison s’il y en a une, dernière vérification), rafraîchie toute seule toutes les 10 s ;
-- **Modifier** : nom, URL, emplacement. L’URL s’affiche masquée (`rtsp://user:***@…`) : la laisser telle quelle conserve le mot de passe RTSP enregistré ;
-- un refus de l’API s’affiche dans le formulaire de modification : nom ou URL déjà pris (`409`, Caméras désactivées comprises), URL qui n’est pas `rtsp://…` (`422`) ;
-- **Désactiver** / **Réactiver** ;
-- **Supprimer** : offert seulement sur une Caméra désactivée, après **Confirmer la suppression** ;
-- **Réglages** : offert seulement sur une Caméra active. Lit la caméra par ONVIF à chaque ouverture (port trouvé seul parmi `80`, `8899`, `2000`, `8000`, `8080`, identifiants de l’URL RTSP), puis règle ses Incrustations (texte du nom, **Reprendre le nom ArgOS**, coin, cacher après confirmation ou réafficher) et son Horloge (fuseau dans une liste, **Mettre à l’heure du Site**, NTP en lecture seule). **Enregistrer** n’envoie que les champs modifiés et affiche pour chacun la valeur demandée, la valeur relue et le statut ; **Annuler** revient aux valeurs lues. Messages : **Cette caméra ne répond pas en ONVIF**, **La caméra refuse ces identifiants en ONVIF**, **Caméra injoignable**. Détail : **[Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos)** ;
-- **Détecter des Caméras**, puis **Ajouter** sur un Candidat, ou **Ajouter par adresse IP** (IP, port `554` modifiable) pour un appareil que la Détection n’a pas trouvé, même si elle n’est pas configurée : voir [Détection des Caméras](#détection-des-caméras). Une IP déjà configurée affiche **Déjà configurée : <nom>**. L’Administration n’offre plus d’ajout par URL RTSP (`POST /api/cameras` reste dans l’API). Déroulé, mot de passe, chemin en repli, codec non lisible : **[Ajouter une Caméra](docs/cameras/ajouter-une-camera.md)**.
-
-**Déclarer les Caméras simulées depuis l’UI** (une seule fois : la base les garde). **Détecter des Caméras**, puis **Ajouter** sur chacune :
-
-| Caméra simulée | Parcours |
-|---|---|
-| 1 | Flux trouvé seul (chemin Hikvision) |
-| 2 | **Cette caméra demande un mot de passe** : identifiant `admin`, mot de passe `argos-simulee` |
-| 3 | **Flux introuvable** : chemin RTSP `/flux` |
-| 4 | Flux trouvé seul (chemin Hikvision), en H.265 |
-
-Elles passent `online` en 15 s au plus, sans recharger la page. Pourquoi `camera-simulee-N` et pas `localhost` : voir [Ajouter les Caméras simulées](#ajouter-les-caméras-simulées).
-
-Le conteneur `web` ne sert que les fichiers statiques. Le front appelle l’API sur **le même hôte que la page**, port 8000, avec le cookie de session (CORS avec credentials, voir [docs/securite.md](docs/securite.md#ui-et-api--deux-origines-cors-avec-credentials)) : le même build marche via `localhost` ou l’IP du réseau local. Pour ouvrir l’UI depuis un autre appareil (`http://<IP>:8080`), ajouter cette origine dans `.env`, puis `docker compose up -d --wait` :
-
-```bash
-ARGOS_ORIGINES_AUTORISEES=http://localhost:8080,http://localhost:5173,http://192.168.1.20:8080
-```
-
-### Live
-
-L’onglet **Live** montre en grand le Flux d’**une** Caméra active à la fois. Le transport suit le **codec** de la Caméra, sans rien régler : WebRTC pour le H.264 (moins d’une seconde de retard), **LL-HLS** pour le H.265 (1 à 3 s ; voir [Caméras H.265](docs/cameras/ajouter-une-camera.md#caméras-h265)) :
-
-- les Caméras actives sont prises dans l’ordre des noms ; le Live s’ouvre sur la première ;
-- **Suivant** (ou la flèche droite) passe à la suivante, puis revient à la première après la dernière ;
-- au-dessus de la vidéo : nom, emplacement et état de la Caméra (rafraîchi toutes les 10 s) ;
-- aucune Caméra active : un message renvoie vers **Administration** ;
-- la vidéo ne vient pas ou se coupe : **Flux indisponible**, puis nouvelle tentative toutes les 5 s. Une Caméra tout juste créée ou réactivée peut mettre jusqu’à 10 s à être relayée : le Live la rattrape seul ;
-- Caméra H.265 dans un navigateur qui ne décode pas le HEVC : **Ce navigateur ne lit pas le H.265**, sans nouvelle tentative. Safari le lit ; Chrome et Edge avec un décodage matériel (Mac M1 et suivants, PC récents) ; Firefox le plus souvent non. Le réencodage à la demande est dans la [feuille de route](docs/dev/feuille-de-route/feuille-de-route-dev.md).
-
-Le front lit un Flux H.264 (ou au codec inconnu) par un client **WHEP** : `POST http://<hôte>:8889/<chemin_flux>/whep` (offre SDP), puis la vidéo arrive dans un `<video>`. Un Flux H.265 se lit en HLS : `http://<hôte>:8888/<chemin_flux>/index.m3u8`, par hls.js (HLS natif sur iPhone), après avoir demandé au navigateur s’il décode le HEVC. Pas d’iframe. Changer de Caméra ferme la connexion précédente : une seule est ouverte à la fois. `<chemin_flux>` (`camera-<id>`) vient de l’API ([ADR 0004](docs/adr/0004-hls-pour-les-flux-h265.md)).
-
-WebRTC fait passer la vidéo en **UDP 8189** : ce port doit être joignable depuis le navigateur, comme le **TCP 8888** pour les Caméras H.265. Pour regarder le Live depuis un autre appareil du réseau local, `MTX_WEBRTCADDITIONALHOSTS` doit contenir l’IP de la machine (voir [WebRTC sur le réseau local](#webrtc-sur-le-réseau-local)), en plus de l’origine dans `ARGOS_ORIGINES_AUTORISEES`.
-
-### Front en dev
-
-Contre la stack lancée (étape 1), sans reconstruire l’image :
-
-```bash
-cd web
-npm install
-npm run dev     # http://localhost:5173, rechargement à chaud
-```
-
-`http://localhost:5173` est autorisée par défaut. Port de l’API différent : `VITE_ARGOS_PORT_API=8001 npm run dev` (vaut aussi pour `npm run build`).
-
-## API du Site
-
-Écoute sur `http://localhost:8000` (HTTP simple : voir [docs/securite.md](docs/securite.md)). Documentation OpenAPI interactive : **`http://localhost:8000/api/docs`**.
-
-| Route | Effet |
-|-------|-------|
-| `POST /api/session` `{"identifiant", "mot_de_passe"}` | Connexion : `204` + cookie de session `argos_session` (`HttpOnly`, `SameSite=Lax`) ; `401` si l’identifiant ou le mot de passe est faux |
-| `GET /api/moi` | `{"identifiant"}` de l’Administrateur connecté ; `401` sans session valide |
-| `DELETE /api/session` | Déconnexion : `204`, la session est supprimée côté serveur |
-| `GET` / `POST /api/cameras` | Liste / création d’une Caméra `{"nom", "url_rtsp", "emplacement"?}` (mot de passe RTSP masqué en `***` dans toutes les réponses) ; chaque Caméra porte `mac`, `raison_etat` (`autre_appareil` ou `null`) et `codec` (`H264`, `H265`… ou `null`, relevé à l’ajout puis par la sonde), non modifiables |
-| `GET` / `PATCH` / `DELETE /api/cameras/{id}` | Lecture, modification partielle (`"active": false` désactive), suppression d’une Caméra désactivée |
-| `GET /api/detection` | État de la Détection : `configuree`, `sous_reseaux`, `ports`, `raison` si indisponible |
-| `POST /api/detection` | Lance une Détection (synchrone, une dizaine de secondes) : `sous_reseaux`, `ports`, `duree_s`, `candidats` (`ip`, `port`, `mac`, `statut_rtsp`, `serveur`, `camera` `{id, nom}` ou `null`, `adresse_mise_a_jour` `{ancienne, nouvelle}` ou `null`, `conflit` `{id, nom}` ou `null`) triés par IP puis port ; `409` si non configurée, invalide ou déjà en cours |
-| `POST /api/essai` `{"ip", "port"?, "identifiant"?, "mot_de_passe"?, "chemin"?}` | Cherche le Flux d’un Candidat (port `554` par défaut) : `issue` (`flux_trouve`, `identifiants_requis`, `identifiants_refuses`, `flux_introuvable`, `injoignable`), `chemin`, `codec`, `mac`, `appareil_deja_connu` (`{id, nom}` : même MAC, autre chemin), `apercu` (chemin MediaMTX à lire en WebRTC, si `flux_trouve`), `expiration_s`. Remplace l’essai précédent. `422` hors réseau local ou adresse d’ArgOS ; `409` IP déjà configurée, ou même MAC et même chemin qu’une Caméra (`camera` `{id, nom}`), ou essai déjà en cours |
-| `POST /api/essai/renouveler` / `DELETE /api/essai` | Renouvelle l’Aperçu (`404` s’il a expiré) / retire l’essai et son Aperçu |
-| `POST /api/essai/camera` `{"nom", "emplacement"?}` | Crée la Caméra, active, depuis l’URL de l’essai côté serveur (identifiants compris), et retire l’Aperçu : `201` ; `404` sans Flux trouvé en cours ; `409` doublon, l’essai reste ouvert |
-| `GET /api/cameras/{id}/reglages` | Lit la caméra par ONVIF : Horloge (date et heure UTC, écart avec le Site, fuseau POSIX et nom IANA s’il est reconnu, mode manuel ou NTP, serveur NTP) et Incrustations (nom, date et heure : texte ou format, position, affichée, peut être réaffichée). `404` Caméra inconnue ou désactivée ; `502` avec `code` `sans_onvif`, `identifiants_refuses` ou `injoignable` |
-| `PATCH /api/cameras/{id}/reglages` | Envoie seulement les champs reçus (fuseau, texte du nom, position et affichage de chaque Incrustation), chacun séparément, puis relit : pour chaque champ, valeur demandée, valeur relue, statut `pris` / `pas_pris` / `refuse` ; `422` fuseau inconnu ou champ non réglable ; mêmes `404` / `502` |
-| `POST /api/cameras/{id}/reglages/mise-a-l-heure` | Envoie une fois l’heure UTC du serveur (mode manuel, fuseau gardé), puis relit l’Horloge ; mêmes `404` / `502` |
-| `GET /api/fuseaux` | Fuseaux IANA proposés dans les Réglages, Europe/Paris en tête |
-| `GET /api/instance` | Sans session : jeton tiré à chaque démarrage, pour que la Détection reconnaisse ArgOS lui-même |
-
-Les sessions sont stockées en base : elles survivent à un redémarrage de `api`.
-
-```bash
-curl -c cookies.txt -X POST http://localhost:8000/api/session \
-  -H 'Content-Type: application/json' \
-  -d '{"identifiant": "…", "mot_de_passe": "…"}'
-curl -b cookies.txt http://localhost:8000/api/moi
-curl -b cookies.txt -X DELETE http://localhost:8000/api/session
-```
-
-PostgreSQL n’a aucun port publié : seul `api` le joint. Pour l’inspecter : `docker compose exec db psql -U argos`.
-
-### Ajouter les Caméras simulées
-
-La base démarre vide : déclarer les Caméras simulées depuis l’onglet [Administration](#administration) de l’UI, ou avec l’étape 3 du [protocole de lancement](#protocole-de-lancement).
-
-L’URL est `rtsp://camera-simulee-N/<chemin>` (port RTSP par défaut, 554), pas `localhost` : c’est le conteneur `api` qui sonde la Caméra, et le conteneur `mediamtx` qui la relaie ; dans ces conteneurs, `localhost` les désigne eux-mêmes. `camera-simulee-N` est le nom de la Caméra simulée sur le réseau Compose `cameras-simulees`, que `api` et `mediamtx` rejoignent. Une vraie caméra se déclare de la même façon, avec son adresse sur le réseau local (`rtsp://user:motdepasse@192.168.1.50/...`).
-
-### État des Caméras
-
-L’API sonde chaque Caméra **active**, en parallèle, toutes les 10 s : session RTSP (identifiants de l’URL pris en charge), puis attente d’**au moins un paquet vidéo** pendant 5 s au plus. Reçu → `etat` passe à `online`, sinon à `offline` ; `etat_verifie_le` dit quand. Une Caméra nouvelle, dont l’URL vient de changer, ou désactivée (plus sondée) est `unknown`. Intervalle et délai se règlent dans `.env` (`ARGOS_SONDE_INTERVALLE_S`, `ARGOS_SONDE_DELAI_S`, voir `.env.example`).
-
-`online` prouve que quelque chose diffuse de la vidéo à cette URL, pas que c’est la vraie caméra : voir [docs/securite.md](docs/securite.md#1-ce-que-prouve-létat-dune-caméra).
-
-## Détection des Caméras
-
-Dans l’**Administration**, **Détecter des Caméras** cherche pendant une dizaine de secondes, sur les sous-réseaux autorisés, les hôtes qui acceptent une connexion sur un port caméra (`554`, `8554`) et répondent à une requête RTSP `OPTIONS`, sans identifiants. Ce sont les **Candidats** : IP et port, triés par adresse. Ceux qui correspondent déjà à une Caméra du Site (même IP résolue, même port) sont rangés dans **Déjà configurées (n)**, repliée. La Détection n’ajoute ni ne stocke rien : **Ajouter** sur un nouveau Candidat ouvre le parcours d’ajout (Aperçu, nom, emplacement) : voir [Ajouter une Caméra](docs/cameras/ajouter-une-camera.md). ArgOS lui-même n’apparaît jamais.
-
-Les sous-réseaux viennent de la machine hôte : l’API, dans Docker, ne voit pas ses prises réseau ([ADR 0002](docs/adr/0002-detection-depuis-le-reseau-bridge.md)). Le script **`scripts/cameras/configurer-detection.sh`** (Linux et macOS), lancé depuis la racine du dépôt avant la stack, demande une fois la ou les prises qui relient les caméras, puis recalcule à chaque lancement leur(s) sous-réseau(x) dans `.env` :
-
-```bash
-scripts/cameras/configurer-detection.sh   # écrit ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX dans .env
-docker compose up -d --wait               # recrée api avec ce réglage
-```
-
-`lancer-argos.command` l’appelle tout seul. En repli, écrire `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=192.168.1.0/24` à la main dans `.env` (1024 adresses au plus, voir `.env.example`). Réglage vide ou invalide : l’Administration affiche la raison, le reste d’ArgOS marche. En dev, `compose.simulation.yaml` ajoute `172.30.0.0/24` : la Détection trouve les quatre Caméras simulées, et aussi tout appareil RTSP du réseau de la box. Chaque Détection écrit ses Candidats et son bilan dans `docker compose logs api`.
-
-### Adresse MAC et suivi d’adresse
-
-Chaque Candidat, chaque Caméra et l’Aperçu montrent la **MAC** de l’Appareil (« — » si illisible), lue dans la table de voisinage de `api` juste après chaque sonde. Elle sert à :
-
-- **suivre une caméra qui change d’IP** (DHCP) : la Détection qui la retrouve met à jour l’hôte de l’URL de toutes les Caméras de cet Appareil (port, chemin et identifiants gardés), et l’affiche **adresse mise à jour (ancienne → nouvelle)** dans « Déjà configurées » ;
-- **ne jamais montrer une autre caméra** sous le nom d’une Caméra : une autre MAC à son adresse la met `offline`, **autre appareil à cette adresse**, et le pont cesse de la relayer ;
-- **éviter les doublons** à l’ajout : même MAC et même chemin → **Déjà configurée : <nom>** ; même MAC, autre chemin → **Cet appareil porte déjà la Caméra <nom>**, ajout permis ;
-- **retrouver une caméra** : **Filtrer par MAC**, au-dessus des Candidats, accepte la MAC telle qu’écrite sur l’étiquette (`AA-BB-…`, `aabb.ccdd.eeff`, partielle).
-
-Une MAC ne se lit que sur le réseau local direct. En prod Linux, le script ci-dessus propose une IP libre pour ArgOS sur la prise des caméras, la retient dans `.env` (`ARGOS_RESEAU_CAMERAS_IP`) et ajoute **`compose.reseau-cameras.yaml`** à `COMPOSE_FILE` : `api` y rejoint le réseau des caméras par macvlan, sans y être joignable ([ADR 0003](docs/adr/0003-macvlan-sur-la-prise-des-cameras.md), [sécurité](docs/securite.md#réseau-des-caméras--une-sortie-seulement)). Jamais sous macOS : Docker Desktop ne gère pas macvlan, et les vraies caméras vues d’un Mac restent sans MAC. Les Caméras simulées ont des MAC fixes, lues sans macvlan. Une Caméra sans MAC garde le comportement de la 0.4.1.
-
-Adresse IP, sous-réseau, trouver le sien sur la machine Linux, DHCP et adresses d’usine des caméras, démarrage automatique (service systemd), MAC, ARP, macvlan, caméra qui change d’IP, Appareil à plusieurs Caméras : **[Réseau du Site et Détection des Caméras](docs/cameras/reseau-et-detection.md)**. Ce que la Détection envoie sur le réseau : [docs/securite.md](docs/securite.md#détection--argos-agit-sur-le-réseau).
-
-## Caméras simulées
-
-Déclarées par `compose.simulation.yaml`, jamais par `compose.yaml` : la stack de prod n’en garde aucune trace. Chacune est un conteneur à part, comme une vraie caméra IP : il diffuse sa vidéo de dev en boucle, sans réencodage, en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra : style Hikvision (1), style Dahua (2), chemin exotique `flux` (3), style Hikvision en H.265 (4).
-
-| Caméra simulée | URL RTSP (vue de `api` et du pont) | Vidéo |
-|----------------|------------------------------------|-------|
-| `camera-simulee-1` | `rtsp://camera-simulee-1/Streaming/Channels/101` | `media/simulated/cam1.mp4` |
-| `camera-simulee-2` | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` (identifiants exigés) | `media/simulated/cam2.mp4` |
-| `camera-simulee-3` | `rtsp://camera-simulee-3/flux` | `media/simulated/cam3.mp4` |
-| `camera-simulee-4` | `rtsp://camera-simulee-4/Streaming/Channels/101` (H.265) | `media/simulated/cam4.mp4` |
-
-Chacune a une IP et une MAC fixes sur `cameras-simulees` : `172.30.0.11` à `.14`, `02:a6:05:00:00:01` à `:04`.
-
-Les Caméras simulées **2** et **4** répondent aussi en **ONVIF**, par un petit service SOAP lancé à côté d’elles (`camera-simulee-2-onvif`, `camera-simulee-4-onvif`) qui partage leur IP et leur MAC : la 2 sur le port `8899` avec ses identifiants de dev (comme une caméra XiongMai), la 4 sur le port `80` sans identifiants. Les 1 et 3 ne répondent pas en ONVIF. Chaque démarrage les remet « sortie d’usine » (horloge au 31/12/1999, fuseau `AWST-8`, nom `CAM01` en haut à gauche, date et heure en bas à gauche) ; les Incrustations ne sont pas dessinées dans la vidéo simulée. Détail : [simulation/onvif/README.md](simulation/onvif/README.md).
-
-Elles vivent sur leur propre réseau Compose, `cameras-simulees` (sous-réseau fixe `172.30.0.0/24`), rejoint par `api` (sonde, Détection) et `mediamtx` (pont). Le fichier de simulation ajoute ce sous-réseau à `ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX` de `api`. Elles ne sont **pas publiées** sur la machine hôte : on les regarde par le [Live](#live), une fois déclarées comme Caméras. Format et conversion des vidéos : [media/simulated/README.md](media/simulated/README.md).
-
-### WebRTC sur le réseau local
-
-WebRTC doit annoncer l’IP de la machine aux navigateurs (Docker Desktop masque l’IP réelle) :
-
-```bash
-cp .env.example .env                       # si .env n’existe pas encore (il est ignoré par git)
-ipconfig getifaddr en0                     # IP de la machine sur Mac (Linux : hostname -I)
-# dans .env : MTX_WEBRTCADDITIONALHOSTS=192.168.1.20   (plusieurs IP : séparées par des virgules)
-docker compose up -d --wait                # recrée le conteneur avec la nouvelle valeur
-```
-
-Le [Live](#live) de l’UI depuis un téléphone ou une tablette du même réseau en a besoin, avec l’UDP 8189 joignable.
-
-## Comment circulent les Flux
-
-Chaque Caméra simulée est un petit MediaMTX à elle : un ffmpeg y lit `camN.mp4` au rythme réel, en boucle, **sans réencodage** (`-c copy`), et le publie sur son chemin de vraie caméra (voir [Caméras simulées](#caméras-simulées)), servi en RTSP sur le port 554. Elle joue alors le rôle d’une caméra IP. Le pont (`mediamtx`) tire le Flux de toute Caméra active, réelle ou simulée, et ressert les **mêmes images** (H.264, ou H.265 pour `camera-simulee-4`), sans réencodage, sur `camera-<id>` sous trois emballages :
-
-| Protocole | Chemin | Retard | Pour qui |
-|-----------|--------|--------|----------|
-| RTSP (8554/tcp) | une connexion TCP ; paquets RTP en continu | direct | VLC, ffprobe (debug) |
-| HLS (8888/tcp) | page + lecteur JS ; playlist `index.m3u8` relue en boucle ; morceaux MP4 (LL-HLS fMP4) téléchargés en HTTP | 1 à 3 s | navigateur (Live et Aperçu des Caméras H.265) |
-| WebRTC (8889/tcp + 8189/udp) | page + lecteur JS ; négociation HTTP (`/camera-<id>/whep`), où MediaMTX annonce les adresses où le joindre (candidats ICE) ; puis RTP chiffré en UDP | < 1 s | navigateur (Live et Aperçu des Caméras H.264) |
-
-Les navigateurs ne lisent pas le RTSP : HLS et WebRTC servent de pont. WebRTC a besoin de l’IP de la machine dans `.env`, parce que sous Docker Desktop, MediaMTX ne voit que son IP interne de conteneur et ne peut pas annoncer celle du réseau local.
-
-### Rôle de chaque protocole dans ArgOS
-
-```
-Caméras (réelles ou simulées) ──RTSP──▶ backend (état online/offline, plus tard enregistrement, IA)
-                               └─RTSP──▶ MediaMTX ──WebRTC (H.264) ou HLS (H.265)──▶ navigateur (Live, Aperçu)
-```
-
-- **RTSP, en entrée** : protocole des caméras IP. Une Caméra est identifiée par son URL RTSP (voir le [glossaire](docs/glossaire.md)). Ajouter une Caméra au Site (0.2.0), c’est d’abord enregistrer cette URL.
-- **WebRTC, en sortie** : protocole du Live (0.3.0), grâce à son faible retard. MediaMTX relaie chaque Caméra active sur `camera-<id>` ([ADR 0001](docs/adr/0001-mediamtx-en-pont.md)).
-- **HLS, en sortie, pour le H.265** (0.5.0) : les navigateurs ne lisent de façon fiable que le H.264 en WebRTC ; les Caméras H.265 passent en LL-HLS, sans réencodage ([ADR 0004](docs/adr/0004-hls-pour-les-flux-h265.md)).
-- **Contrat des Caméras simulées** : 4 hôtes RTSP sur le port 554, en 1280×720, l’un avec identifiants ; H.264, sauf `camera-simulee-4` en H.265. L’API et l’UI se développent contre ce contrat sans matériel ; les vraies caméras le respectent aussi.
-
-Décidé en 0.3.0 : le Live lit en WebRTC uniquement, et l’API ajoute elle-même chaque Caméra active comme chemin MediaMTX (API de contrôle, source = URL RTSP de la Caméra). Depuis la 0.4.0, ce MediaMTX ne fait plus que le pont. Depuis la 0.5.0, les Flux H.265 se lisent en HLS ([ADR 0004](docs/adr/0004-hls-pour-les-flux-h265.md)).
-
-## Vérifier un Flux en CLI
-
-Une Caméra simulée, depuis son réseau Compose (elle n’est pas publiée) :
-
-```bash
-docker run --rm --network argos_cameras-simulees \
-  --entrypoint ffprobe linuxserver/ffmpeg:version-7.1-cli \
-  -v error -rtsp_transport tcp -select_streams v:0 \
-  -show_entries stream=codec_name,width,height -of default=nw=1 \
-  rtsp://camera-simulee-1/Streaming/Channels/101
-```
-
-Une Caméra déclarée, par le pont : même commande avec `--add-host host.docker.internal:host-gateway` à la place de `--network …`, sur `rtsp://host.docker.internal:8554/camera-<id>`.
-
-Attendu : `codec_name=h264` (`hevc` pour `camera-simulee-4`), `width=1280`, `height=720`. (`argos` est le nom du projet Compose, celui du dossier du dépôt : `docker network ls` le confirme.)
-
-## Tests
-
-`/t` (skill `lancer-tests`) lance pytest dans chaque racine de tests (`tests/flux/`, `tests/api/`, `tests/regles-sessions/`, `tests/web/`, `tests/scripts/`, `simulation/onvif/`) ; à la main :
-
-```bash
-cd tests/flux && uv run pytest
-cd tests/api && uv run pytest
-cd tests/regles-sessions && uv run pytest
-cd tests/web && uv run pytest
-cd tests/scripts && uv run pytest
-cd simulation/onvif && uv run pytest
-```
-
-`tests/web/` a besoin de Chromium pour Playwright, à installer une fois :
-
-```bash
-cd tests/web && uv sync && uv run playwright install chromium
-```
-
-Les racines qui tournent contre la stack la lancent **avec la simulation** (`-f compose.yaml -f compose.simulation.yaml`).
-
-- `tests/flux/` lance la stack (`up -d --wait` : les Caméras simulées sont `healthy` quand leur vidéo est diffusée), puis vérifie chaque Caméra simulée depuis son réseau Compose : RTSP 1280×720 décodable, en H.264 (HEVC pour `camera-simulee-4`), `camera-simulee-2` refusée sans identifiants ou avec un mauvais mot de passe, un seul chemin par Caméra (son chemin de vraie caméra, plus `flux` pour `camera-simulee-1`) ; et la séparation dev / prod : aucun port publié pour les Caméras simulées, réseau `cameras-simulees` en `172.30.0.0/24` rejoint par `api` et `mediamtx`, sous-réseau ajouté à la Détection, aucune trace de simulation dans `compose.yaml` seul ni dans `media/mediamtx.yml`. WebRTC n’est pas testé ici.
-- `tests/api/` lance `docker compose up -d --build --wait`, puis teste l’API en HTTP sur `localhost:8000` : connexion, `GET /api/moi`, déconnexion, mauvais identifiants, session conservée après `docker compose restart api`, `429` après 5 échecs (le test redémarre `api` avant et après pour remettre le compteur à zéro), `/api/docs`, gestion des Caméras, et leur état sondé (`online` sur `camera-simulee-1`, et sur `camera-simulee-2` avec ses identifiants, `offline` sans, sur une URL injoignable ou un chemin inconnu, `unknown` après changement d’URL ou désactivation ; chaque attente d’état dure jusqu’à 40 s). Les identifiants sont lus dans `.env` ; s’ils manquent, les tests échouent tout de suite en disant quoi ajouter.
-- `tests/web/` lance la stack comme `tests/api/`, puis pilote l’UI sur `http://localhost:8080` dans Chromium headless (pytest-playwright) : connexion réussie (identifiant dans l’en-tête), mauvais mot de passe (message, reste sur `/connexion` ; le test redémarre `api` ensuite pour remettre le frein à zéro), page connectée sans session renvoyée à `/connexion` puis retour à la page demandée, Déconnexion ; Administration : plus de formulaire d’ajout par URL, Caméra créée sur `camera-simulee-1` (par l’API) qui apparaît puis passe `online` sans recharger, doublon de nom (`409`) et URL non `rtsp://` affichés dans le formulaire de modification, URL modifiable, emplacement modifié sans perdre le mot de passe RTSP, désactivation / réactivation, suppression d’une désactivée après confirmation (aucune suppression offerte sur une active) ; Live : première Caméra active par nom dont la `<video>` joue vraiment (`currentTime` qui avance), Suivant puis flèche droite qui font le tour en gardant une seule connexion WebRTC ouverte, message avec lien vers Administration sans Caméra active, « Flux indisponible » sur une URL injoignable. Les tests Live désactivent les Caméras actives existantes le temps du test, puis les réactivent. Les identifiants sont lus dans `.env` ; la base n’est jamais effacée : chaque test crée des Caméras aux noms uniques, puis les désactive et les supprime.
-- `tests/api/` couvre aussi le pont (Caméra simulée, avec ou sans identifiants, relue en H.264 sur `camera-<id>`) et le CORS : origine autorisée → en-têtes avec credentials, autre origine → rien.
-- `tests/api/` et `tests/web/` couvrent la Détection : les quatre Caméras simulées trouvées (dont celle à identifiants), ni la base ni le pont parmi les Candidats, Caméra correspondante sur un Candidat déjà déclaré, `409` pour une seconde Détection simultanée, `401` sans session ; dans l’UI, chargement, liste des Candidats, « Déjà configurées » repliée puis dépliée.
-- `tests/api/` et `tests/web/` couvrent l’ajout d’une Caméra depuis un Candidat : `camera-simulee-1` trouvée seule (chemin Hikvision, H.264, Aperçu présent dans le pont), `camera-simulee-2` mot de passe requis puis refusé puis accepté, `camera-simulee-3` Flux introuvable puis trouvé par le chemin saisi, `camera-simulee-4` trouvée seule en `H265` ; Caméra ajoutée active qui passe `online`, identifiants conservés mais jamais renvoyés ; doublon `409` avec l’essai toujours ouvert ; Aperçu retiré par `DELETE`, par un nouvel essai, par l’ajout, sans renouvellement, et orphelins retirés au démarrage ; IP injoignable, hors du réseau local ou d’ArgOS, déjà configurée ; essai simultané `409`, `401` sans session, aucun identifiant dans les journaux. Dans l’UI : les trois parcours avec Aperçu qui joue, Annuler, codec non lisible nommé, Ajouter par adresse IP.
-- `tests/api/` et `tests/web/` couvrent l’identité par MAC : MAC fixe des Caméras simulées sur les Candidats, l’essai et la Caméra ajoutée ; Caméra simulée déplacée (même MAC, autre IP) suivie par la Détection (« adresse mise à jour »), échange d’IP, Caméra désactivée suivie, conflit avec une Caméra sans MAC ; IP prêtée à une autre Caméra simulée (« autre appareil à cette adresse », plus relayée) ; doublons à l’ajout par MAC ; filtre par MAC. `tests/regles-sessions/` vérifie le refus des requêtes arrivées par le réseau des caméras.
-- `tests/api/` et `tests/web/` couvrent les Réglages de la Caméra : lecture « usine » des Caméras simulées 2 (port `8899` trouvé et retenu) et 4 (port `80`, sans identifiants), écart avec l’heure du Site, nouvelle recherche quand le port retenu ne répond plus ou que l’URL change ; `sans_onvif` (1 et 3), `identifiants_refuses`, `injoignable`, `404` pour une Caméra désactivée ; texte, coin, cacher puis réafficher, position personnalisée remise dans un coin, champ refusé qui n’empêche pas les autres, fuseau pris (Europe/Paris ↔ POSIX, fuseau inconnu rendu tel quel), mise à l’heure du Site qui garde le fuseau, lecture qui ne remet jamais à l’heure. Dans l’UI : bouton Réglages absent sur une désactivée, messages d’erreur, statuts par champ, Annuler, Reprendre le nom ArgOS, confirmations (cacher, mise à l’heure d’une caméra en NTP).
-- `simulation/onvif/` teste le simulateur ONVIF seul, sans la stack : état « usine », opérations utilisées, `Set…` relu, refus sans les bons identifiants.
-- `tests/scripts/` lance `scripts/cameras/configurer-detection.sh` avec de fausses sorties `ip` / `ifconfig` et un `.env` temporaire : une seule prise sans question, sous-réseau recalculé, Docker, boucle locale et `169.254` écartés, prise sans adresse, plage de plus de 1024 adresses refusée ; réseau des caméras (Linux) : IP libre proposée depuis le haut du sous-réseau, remplaçable, retenue sans terminal, avertissements (hors sous-réseau, répond en ARP), `COMPOSE_FILE` complété sur Linux et jamais sur macOS, `compose.reseau-cameras.yaml` valide.
-- `tests/regles-sessions/` monte l’application en processus, horloge et configuration injectées, contre un PostgreSQL de test jetable (même image que `db`, lancé par testcontainers ; Docker requis). Réservé aux règles impossibles à tester vite en HTTP : expiration à 24 h, fin du `429` après 15 min, sessions refusées après un changement de mot de passe, refus de démarrer sans identifiants.
-
-## Structure
-
-```
-compose.yaml              Stack Docker Compose de prod (mediamtx, api, db, web)
-compose.simulation.yaml   Simulation de dev, superposée : Caméras simulées, réseau cameras-simulees
-compose.reseau-cameras.yaml  Prod Linux, superposé par le script : réseau des caméras (macvlan) pour lire les MAC
-lancer-argos.command      Lanceur macOS (double-clic) : .env, Détection, Docker Desktop, stack, UI
-scripts/cameras/          Script hôte : sous-réseaux de la Détection depuis la prise des caméras
-.env.example              Clés de .env (Administrateur, origines de l’UI, WebRTC réseau local, Sonar)
-api/                      API du Site (FastAPI, uv) : argos_api/, migrations Alembic, Dockerfile
-web/                      UI (React, Vite, TypeScript) : src/, Dockerfile (Node → nginx), nginx.conf
-media/mediamtx.yml        Config MediaMTX du pont : API de contrôle, ports
-media/simulated/          Caméras simulées : vidéos, config camera-simulee.yml (+ README : identifiants, format, conversion)
-simulation/onvif/         Interface ONVIF des Caméras simulées 2 et 4 (SOAP en Python, indépendante de l’API), ses tests
-tests/flux/               Tests de bout en bout des Flux (pytest, uv)
-tests/api/                Tests HTTP de l’API contre la stack lancée (pytest, httpx, uv)
-tests/regles-sessions/    Tests en processus des règles de session (horloge et configuration injectées)
-tests/web/                Tests de bout en bout de l’UI (pytest-playwright, Chromium headless)
-tests/scripts/            Tests du script de configuration de la Détection (fausses sorties ip / ifconfig)
-docs/cameras/             Réseau du Site et Détection des Caméras, Ajouter une Caméra, Paramétrer une Caméra (ONVIF) (docs pédagogiques)
-docs/dev/                 Feuille de route de dev (feuille-de-route/), schéma des Flux (Mermaid), recherches
-docs/specs/               Specs de version et contexte initial
-docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge, macvlan, HLS pour le H.265)
-docs/securite.md          Sécurité : limites connues, exposition réseau, Détection, dettes
-docs/glossaire.md         Glossaire (Site, Administrateur, Appareil, Caméra, Flux, Incrustation, Horloge…)
-docs-site/                Site de documentation (Docusaurus), publié sur https://ulyssoulv.github.io/ArgOS/
-AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
-```
-
-## Principes
-
-- Standards ouverts (RTSP, ONVIF, H.264/H.265, Docker)
-- Caméras abstraites (réelles ou simulées) — pas de lock-in fabricant
-- Modularité : chaque brique testable ; IA, ONVIF, PTZ optionnels
-- PostgreSQL pour les données ; UI web React (navigateur / kiosque)
-- Intent open source pendant le développement (licence formelle à la première release)
-
-Hypothèses et notes de conception du moment (non figées) : [docs/specs/contexte-initial.md](docs/specs/contexte-initial.md).
-
-## Développement avec les agents
-
-Voir [AGENTS.md](AGENTS.md) pour le cycle **Ouvre la version → implement → Finalise la version**, les tests (`/t`) et le quality gate (`/qg`).
-
-## Licence
-
-À définir à la première release. Développement mené dans un esprit open source.
+Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.

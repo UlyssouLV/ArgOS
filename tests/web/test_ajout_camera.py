@@ -279,6 +279,6 @@ def test_apercu_d_un_candidat_h265_est_demande_en_hls_sur_son_chemin_apercu(admi
     panneau = administration.get_by_role("form", name=f"Ajouter {ip}:554")
     expect(panneau.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_APERCU_MS)
     assert hls(requetes_flux)
-    assert all(re.search(r":8888/apercu-[^/]+/", url) for url in hls(requetes_flux)), hls(requetes_flux)
+    assert all(re.search(r"/flux/hls/apercu-[^/]+/", url) for url in hls(requetes_flux)), hls(requetes_flux)
     assert whep(requetes_flux) == []
     expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)

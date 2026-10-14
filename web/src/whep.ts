@@ -1,15 +1,16 @@
 // Client WHEP minimal, en lecture seule : le Live lit le Flux d'une Caméra en WebRTC depuis MediaMTX.
 // Pas d'iframe : la négociation est un POST de l'offre SDP, la réponse SDP revient en 201.
 
-const PORT_WEBRTC = "8889";
+/** WHEP relayé par l'origine du Site vers MediaMTX (docs/adr/0005-…). */
+const PREFIXE_WEBRTC = "/flux/webrtc";
 /** Délai pour que la connexion s'établisse après la négociation, sinon c'est une coupure. */
 const DELAI_CONNEXION_MS = 10_000;
 /** Attente maximale des candidats ICE locaux avant d'envoyer l'offre (pas de trickle ICE). */
 const DELAI_CANDIDATS_MS = 2_000;
 
-/** MediaMTX est sur le même hôte que la page, comme l'API. */
+/** Sous la même origine que la page, comme l'API. */
 export function urlWhep(cheminFlux: string): string {
-  return `${window.location.protocol}//${window.location.hostname}:${PORT_WEBRTC}/${cheminFlux}/whep`;
+  return `${PREFIXE_WEBRTC}/${cheminFlux}/whep`;
 }
 
 function candidatsRassembles(pc: RTCPeerConnection): Promise<void> {
@@ -68,7 +69,7 @@ export async function lireWhep(
     });
     if (reponse.status !== 201) throw new Error(`Négociation WHEP refusée (${reponse.status})`);
     const location = reponse.headers.get("Location");
-    if (location) ressource = new URL(location, url).href;
+    if (location) ressource = new URL(location, new URL(url, window.location.href)).href;
     await pc.setRemoteDescription({ type: "answer", sdp: await reponse.text() });
     signal.throwIfAborted();
   } catch (erreur) {

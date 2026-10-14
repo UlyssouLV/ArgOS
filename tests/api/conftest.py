@@ -3,20 +3,20 @@
 import sys
 from pathlib import Path
 
-import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from stack_compose import (  # noqa: E402
-    URL_API,
+    URL_SITE,
     attendre_api,
+    client_du_site,
     compose,
     identifiants_administrateur,
     lancer_stack,
 )
 
-__all__ = ["URL_API", "attendre_api", "compose"]
+__all__ = ["URL_SITE", "attendre_api", "client_du_site", "compose"]
 
 
 @pytest.fixture(scope="session")
@@ -31,5 +31,5 @@ def stack(administrateur):
 
 @pytest.fixture
 def client():
-    with httpx.Client(base_url=URL_API, timeout=10) as c:
+    with client_du_site() as c:
         yield c

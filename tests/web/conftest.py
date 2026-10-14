@@ -1,17 +1,19 @@
-"""Fixtures de session : la stack Docker Compose tourne, l'UI et l'API du Site répondent."""
+"""Fixtures de session : la stack Docker Compose tourne, l'UI et l'API du Site répondent en HTTPS."""
 
+import base64
+import hashlib
 import sys
 from pathlib import Path
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from stack_compose import attendre, identifiants_administrateur, lancer_stack, redemarrer_api  # noqa: E402
+from stack_compose import URL_SITE, attendre, certificat_presente, identifiants_administrateur, lancer_stack, redemarrer_api  # noqa: E402
 
 __all__ = ["redemarrer_api"]
-
-URL_UI = "http://localhost:8080"
 
 
 @pytest.fixture(scope="session")
@@ -22,4 +24,19 @@ def administrateur() -> dict[str, str]:
 @pytest.fixture(scope="session", autouse=True)
 def stack(administrateur):
     lancer_stack()
-    attendre(URL_UI)
+    attendre(URL_SITE)
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args, stack):
+    """Chromium fait confiance au certificat serveur que l'Autorité du Site vient de valider, et à lui seul.
+
+    Comme un poste qui a installé l'Autorité, sans toucher au trousseau de la machine de test.
+    """
+    cle = x509.load_der_x509_certificate(certificat_presente()).public_key()
+    spki = cle.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    empreinte = base64.b64encode(hashlib.sha256(spki).digest()).decode()
+    return {
+        **browser_type_launch_args,
+        "args": [*browser_type_launch_args.get("args", []), f"--ignore-certificate-errors-spki-list={empreinte}"],
+    }

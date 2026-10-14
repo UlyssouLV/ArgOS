@@ -7,9 +7,9 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-# Étape 2 : fichiers statiques seulement, pas de proxy /api (le front appelle l'API sur son port).
-# Image non privilégiée : nginx tourne en utilisateur nginx (pas root), d'où le port 8080 dans le conteneur.
+# Étape 2 : l'origine HTTPS du Site (nginx.conf.template) : fichiers statiques, relais de l'API et du Live.
+# Image non privilégiée : nginx tourne en utilisateur nginx (pas root) ; Docker lui ouvre les ports < 1024.
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 8080
+EXPOSE 443 8080
