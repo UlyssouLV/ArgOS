@@ -398,3 +398,117 @@ def test_modifier_camera_sans_onvif_502(connecte, camera_simulee):
 
     assert reponse.status_code == 502
     assert reponse.json()["code"] == "sans_onvif"
+
+
+# --- Régler l'Horloge --------------------------------------------------------------------------------------------
+
+PARIS_POSIX = "CET-1CEST,M3.5.0,M10.5.0/3"
+# Mise à l'heure du Site : l'écart relu tient dans quelques secondes (requêtes, secondes tronquées).
+ECART_A_L_HEURE_S = 5
+SERVEUR_NTP_EN_MODE_NTP = (
+    "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
+    "<tds:DaylightSavings>false</tds:DaylightSavings></tds:SetSystemDateAndTime>"
+)
+
+
+def modifier_horloge(client, id_camera: int, horloge: dict):
+    return client.patch(f"/api/cameras/{id_camera}/reglages", json={"horloge": horloge}, timeout=DELAI_LECTURE_S)
+
+
+def mettre_a_l_heure(client, id_camera: int):
+    return client.post(f"/api/cameras/{id_camera}/reglages/mise-a-l-heure", timeout=DELAI_LECTURE_S)
+
+
+@pytest.fixture
+def camera_4_en_ntp():
+    """camera-simulee-4 se règle sur son serveur de temps ; « sortie d'usine » ensuite."""
+    regler_camera_simulee_4_en_onvif("device", SERVEUR_NTP_EN_MODE_NTP)
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_fuseau_europe_paris_pris_sans_toucher_a_l_heure(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(2)
+
+    reponse = modifier_horloge(connecte, id_camera, {"fuseau": "Europe/Paris"})
+
+    assert champs(reponse) == {"horloge.fuseau": {"demande": "Europe/Paris", "relu": PARIS_POSIX, "statut": "pris"}}
+    horloge = lire(connecte, id_camera).json()["horloge"]
+    assert (horloge["fuseau_posix"], horloge["fuseau"], horloge["mode"]) == (PARIS_POSIX, "Europe/Paris", "manuel")
+    # Le mode manuel est gardé avec l'heure de la caméra : pas de mise à l'heure.
+    assert horloge["date_heure_utc"].startswith("1999-12-31T")
+
+
+def test_fuseau_et_incrustation_envoyes_ensemble(connecte, camera_simulee, remise_en_usine):
+    reponse = connecte.patch(
+        f"/api/cameras/{camera_simulee(4)}/reglages",
+        json={"horloge": {"fuseau": "Indian/Reunion"}, "incrustations": {"nom": {"texte": "Portail"}}},
+        timeout=DELAI_LECTURE_S,
+    )
+
+    assert {champ: c["statut"] for champ, c in champs(reponse).items()} == {
+        "horloge.fuseau": "pris",
+        "incrustations.nom.texte": "pris",
+    }
+    assert reponse.json()["reglages"]["horloge"]["fuseau"] == "Indian/Reunion"
+
+
+def test_fuseau_garde_le_mode_ntp(connecte, camera_simulee, camera_4_en_ntp):
+    id_camera = camera_simulee(4)
+
+    reponse = modifier_horloge(connecte, id_camera, {"fuseau": "Europe/Paris"})
+
+    assert champs(reponse)["horloge.fuseau"]["statut"] == "pris"
+    assert reponse.json()["reglages"]["horloge"]["mode"] == "ntp"
+
+
+@pytest.mark.parametrize("fuseau", ["Mars/Olympus", "../../etc/passwd", "", "Europe"])
+def test_fuseau_inconnu_422(connecte, camera_simulee, fuseau):
+    assert modifier_horloge(connecte, camera_simulee(4), {"fuseau": fuseau}).status_code == 422
+
+
+def test_mise_a_l_heure_du_site_garde_le_fuseau(connecte, camera_simulee, remise_en_usine):
+    id_camera = camera_simulee(2)
+    assert lire(connecte, id_camera).json()["horloge"]["ecart_s"] < -VINGT_CINQ_ANS_S
+
+    reponse = mettre_a_l_heure(connecte, id_camera)
+
+    assert reponse.status_code == 200, reponse.text
+    horloge = reponse.json()
+    assert abs(horloge["ecart_s"]) < ECART_A_L_HEURE_S
+    assert (horloge["fuseau_posix"], horloge["mode"]) == ("AWST-8", "manuel")
+    relue = lire(connecte, id_camera).json()["horloge"]
+    assert abs(relue["ecart_s"]) < ECART_A_L_HEURE_S
+    assert relue["fuseau_posix"] == "AWST-8"
+
+
+def test_mise_a_l_heure_coupe_le_ntp(connecte, camera_simulee, camera_4_en_ntp):
+    horloge = mettre_a_l_heure(connecte, camera_simulee(4)).json()
+
+    assert horloge["mode"] == "manuel"
+    assert abs(horloge["ecart_s"]) < ECART_A_L_HEURE_S
+
+
+def test_lire_ne_remet_jamais_a_l_heure(connecte, camera_simulee):
+    id_camera = camera_simulee(4)
+
+    for _ in range(2):
+        assert lire(connecte, id_camera).json()["horloge"]["ecart_s"] < -VINGT_CINQ_ANS_S
+
+
+def test_mise_a_l_heure_sans_session_401(client):
+    assert client.post("/api/cameras/1/reglages/mise-a-l-heure").status_code == 401
+
+
+def test_mise_a_l_heure_camera_sans_onvif_502(connecte, camera_simulee):
+    reponse = mettre_a_l_heure(connecte, camera_simulee(1))
+
+    assert reponse.status_code == 502
+    assert reponse.json() == {"code": "sans_onvif", "detail": "Cette caméra ne répond pas en ONVIF."}
+
+
+def test_mise_a_l_heure_camera_desactivee_404(connecte, camera_simulee):
+    id_camera = camera_simulee(4)
+    assert connecte.patch(f"/api/cameras/{id_camera}", json={"active": False}).status_code == 200
+
+    assert mettre_a_l_heure(connecte, id_camera).status_code == 404

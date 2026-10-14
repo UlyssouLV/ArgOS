@@ -6,6 +6,7 @@ actuelles, celles qu'une caméra applique.
 
 from functools import cache
 from importlib.resources import files
+from zoneinfo import available_timezones
 
 # Zones courantes, Europe/Paris en tête. Plusieurs zones partagent une même chaîne POSIX : la lecture rend la
 # première de cette liste. Hors liste (ex. `AWST-8`, Australie), un fuseau est montré tel quel.
@@ -34,6 +35,16 @@ FUSEAUX_COURANTS = (
     "Pacific/Tahiti",
     "Pacific/Wallis",
 )
+
+
+def connu(nom: str) -> bool:
+    """`nom` est un fuseau IANA du paquet `tzdata` (seul cas où `posix` peut le lire)."""
+    return nom in _noms_iana()
+
+
+@cache
+def _noms_iana() -> frozenset[str]:
+    return frozenset(available_timezones())
 
 
 @cache

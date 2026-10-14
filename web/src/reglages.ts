@@ -54,6 +54,13 @@ export async function lireReglages(idCamera: number): Promise<Reglages> {
   return lever(reponse);
 }
 
+/** Envoie une fois l'heure du Site à la caméra (mode manuel, fuseau gardé) ; rend son Horloge relue. */
+export async function mettreALHeure(idCamera: number): Promise<Horloge> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages/mise-a-l-heure`, { method: "POST" });
+  if (reponse.ok) return reponse.json();
+  return lever(reponse);
+}
+
 /** Envoie seulement les champs modifiés ; l'API relit la caméra et dit, pour chacun, s'il a été pris. */
 export async function modifierReglages(idCamera: number, modification: Modification): Promise<ResultatModification> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages`, {
@@ -102,9 +109,39 @@ export function texteEcart(ecartS: number): string {
   return `${ecartS < 0 ? "en retard" : "en avance"} de ${nombre} ${nombre > 1 ? pluriel : singulier}`;
 }
 
-/** Fuseau lisible s'il est reconnu, sinon la chaîne POSIX de la caméra telle quelle. */
-export function texteFuseau(horloge: Horloge): string {
-  return horloge.fuseau ?? horloge.fuseau_posix ?? "—";
+/**
+ * Fuseaux proposés, Europe/Paris en tête : ceux que l'API reconnaît à la lecture (`FUSEAUX_COURANTS`,
+ * api/argos_api/fuseaux.py), pour qu'un fuseau choisi ici soit relu sous le même nom.
+ */
+export const FUSEAUX = [
+  "Europe/Paris",
+  "UTC",
+  "Europe/London",
+  "Europe/Lisbon",
+  "Europe/Athens",
+  "Europe/Moscow",
+  "Africa/Casablanca",
+  "Africa/Abidjan",
+  "America/Guadeloupe",
+  "America/Cayenne",
+  "America/Miquelon",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Indian/Reunion",
+  "Indian/Mayotte",
+  "Asia/Dubai",
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Pacific/Noumea",
+  "Pacific/Tahiti",
+  "Pacific/Wallis",
+];
+
+/** Fuseau lisible s'il est reconnu, sinon la chaîne POSIX de la caméra telle quelle ; `""` : sans fuseau. */
+export function fuseauLu(horloge: Horloge): string {
+  return horloge.fuseau ?? horloge.fuseau_posix ?? "";
 }
 
 /** Date et heure UTC de la caméra, au format français. */
@@ -117,11 +154,15 @@ export type CleIncrustation = "nom" | "date_heure";
 /** Champs modifiés d'une Incrustation : seuls ceux présents sont envoyés à la caméra. */
 export type ModificationIncrustation = { affichee?: boolean; texte?: string; position?: Coin };
 
-export type Modification = { incrustations: Partial<Record<CleIncrustation, ModificationIncrustation>> };
+/** `horloge` absent : fuseau inchangé. */
+export type Modification = {
+  horloge?: { fuseau: string };
+  incrustations: Partial<Record<CleIncrustation, ModificationIncrustation>>;
+};
 
 export type StatutChamp = "pris" | "pas_pris" | "refuse";
 
-/** Résultat d'un champ envoyé : `champ` vaut `incrustations.nom.texte`, `incrustations.date_heure.position`… */
+/** Résultat d'un champ envoyé : `champ` vaut `horloge.fuseau`, `incrustations.nom.texte`… ; fuseau relu en POSIX. */
 export type ChampModifie = {
   champ: string;
   demande: string | boolean;
@@ -134,7 +175,8 @@ export type ResultatModification = { champs: ChampModifie[]; reglages: Reglages 
 /** Valeurs du formulaire d'une Incrustation ; `texte` ne sert qu'au nom. */
 export type IncrustationSaisie = { affichee: boolean; texte: string; position: Position };
 
-export type Saisie = Record<CleIncrustation, IncrustationSaisie>;
+/** `fuseau` : nom IANA, ou fuseau inconnu de la caméra tel quel tant qu'il n'est pas changé. */
+export type Saisie = { fuseau: string; incrustations: Record<CleIncrustation, IncrustationSaisie> };
 
 // Coin proposé pour une Incrustation cachée qu'on réaffiche : celui de la caméra « sortie d'usine ».
 const COINS_PAR_DEFAUT: Record<CleIncrustation, Coin> = { nom: "UpperLeft", date_heure: "LowerLeft" };
@@ -142,21 +184,27 @@ const COINS_PAR_DEFAUT: Record<CleIncrustation, Coin> = { nom: "UpperLeft", date
 export function saisieDepuis(reglages: Reglages): Saisie {
   const { nom, date_heure } = reglages.incrustations;
   return {
-    nom: { affichee: nom.affichee, texte: nom.texte ?? "", position: nom.position ?? COINS_PAR_DEFAUT.nom },
-    date_heure: {
-      affichee: date_heure.affichee,
-      texte: "",
-      position: date_heure.position ?? COINS_PAR_DEFAUT.date_heure,
+    fuseau: fuseauLu(reglages.horloge),
+    incrustations: {
+      nom: { affichee: nom.affichee, texte: nom.texte ?? "", position: nom.position ?? COINS_PAR_DEFAUT.nom },
+      date_heure: {
+        affichee: date_heure.affichee,
+        texte: "",
+        position: date_heure.position ?? COINS_PAR_DEFAUT.date_heure,
+      },
     },
   };
 }
 
-/** Champs de `saisie` qui diffèrent de la caméra (`actuels`) ; une Incrustation réaffichée part avec texte et coin. */
+/**
+ * Champs de `saisie` qui diffèrent de la caméra (`actuels`) ; une Incrustation réaffichée part avec texte et coin.
+ * Le fuseau n'est envoyé que changé pour un fuseau de la liste.
+ */
 export function modificationsEntre(actuels: Reglages, saisie: Saisie): Modification {
   const incrustations: Modification["incrustations"] = {};
   for (const cle of ["nom", "date_heure"] as const) {
     const lue = actuels.incrustations[cle];
-    const saisi = saisie[cle];
+    const saisi = saisie.incrustations[cle];
     const champs: ModificationIncrustation = {};
     if (!saisi.affichee) {
       if (lue.affichee) champs.affichee = false;
@@ -170,9 +218,10 @@ export function modificationsEntre(actuels: Reglages, saisie: Saisie): Modificat
     }
     if (Object.keys(champs).length > 0) incrustations[cle] = champs;
   }
-  return { incrustations };
+  if (saisie.fuseau === fuseauLu(actuels.horloge)) return { incrustations };
+  return { horloge: { fuseau: saisie.fuseau }, incrustations };
 }
 
 export function estVide(modification: Modification): boolean {
-  return Object.keys(modification.incrustations).length === 0;
+  return !modification.horloge && Object.keys(modification.incrustations).length === 0;
 }

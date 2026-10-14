@@ -4,13 +4,15 @@ import { messageEchec, type Camera } from "../cameras";
 import {
   COINS,
   estVide,
+  FUSEAUX,
+  fuseauLu,
   lireReglages,
+  mettreALHeure,
   modificationsEntre,
   modifierReglages,
   saisieDepuis,
   texteDateHeure,
   texteEcart,
-  texteFuseau,
   textePosition,
   type ChampModifie,
   type CleIncrustation,
@@ -23,7 +25,7 @@ import {
 
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
-/** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; les Incrustations se règlent. */
+/** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent. */
 export function ReglagesCamera({ camera, onFermer }: Props) {
   const [origine, setOrigine] = useState<Reglages | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -53,33 +55,7 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
           {erreur}
         </p>
       )}
-      {origine && (
-        <div className="reglages-valeurs">
-          <HorlogeLue horloge={origine.horloge} />
-          <FormulaireIncrustations camera={camera} origine={origine} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-function HorlogeLue({ horloge }: Readonly<{ horloge: Horloge }>) {
-  return (
-    <section aria-label="Horloge">
-      <h4>Horloge</h4>
-      <dl>
-        <dt>Date et heure de la caméra (UTC)</dt>
-        <dd>{texteDateHeure(horloge.date_heure_utc)}</dd>
-        <dt>Écart avec le Site</dt>
-        <dd>{texteEcart(horloge.ecart_s)}</dd>
-        <dt>Fuseau</dt>
-        <dd>{texteFuseau(horloge)}</dd>
-        <dt>Serveur de temps (NTP)</dt>
-        <dd>
-          {horloge.mode === "ntp" ? "utilisé" : "non utilisé"}
-          {horloge.serveur_ntp && ` (serveur : ${horloge.serveur_ntp})`}
-        </dd>
-      </dl>
+      {origine && <FormulaireReglages camera={camera} origine={origine} />}
     </section>
   );
 }
@@ -100,10 +76,11 @@ const LIBELLES: Record<
 type PropsFormulaire = Readonly<{ camera: Camera; origine: Reglages }>;
 
 /**
- * Formulaire des Incrustations : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis montre le statut
- * de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture et toujours affichées.
+ * Formulaire des Réglages (fuseau, Incrustations) : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis
+ * montre le statut de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture et
+ * toujours affichées. La mise à l'heure du Site part seule, à la demande.
  */
-function FormulaireIncrustations({ camera, origine }: PropsFormulaire) {
+function FormulaireReglages({ camera, origine }: PropsFormulaire) {
   // Dernières valeurs lues sur la caméra : à l'ouverture, puis relues après chaque envoi.
   const [actuels, setActuels] = useState(origine);
   const [saisie, setSaisie] = useState<Saisie>(() => saisieDepuis(origine));
@@ -114,7 +91,10 @@ function FormulaireIncrustations({ camera, origine }: PropsFormulaire) {
   const modification = modificationsEntre(actuels, saisie);
 
   function changer(cle: CleIncrustation, champs: Partial<IncrustationSaisie>) {
-    setSaisie((avant) => ({ ...avant, [cle]: { ...avant[cle], ...champs } }));
+    setSaisie((avant) => ({
+      ...avant,
+      incrustations: { ...avant.incrustations, [cle]: { ...avant.incrustations[cle], ...champs } },
+    }));
   }
 
   function changerAffichage(cle: CleIncrustation, affichee: boolean) {
@@ -142,54 +122,168 @@ function FormulaireIncrustations({ camera, origine }: PropsFormulaire) {
   }
 
   return (
-    <section aria-label="Incrustations">
-      <h4>Incrustations</h4>
-      <form
-        className="reglages-formulaire"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void enregistrer();
-        }}
-      >
-        {(["nom", "date_heure"] as const).map((cle) => (
-          <ChampsIncrustation
-            key={cle}
-            cle={cle}
-            origine={origine}
-            actuels={actuels}
-            saisie={saisie[cle]}
+    <form
+      className="reglages-formulaire"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void enregistrer();
+      }}
+    >
+      <div className="reglages-valeurs">
+        <ChampsHorloge
+          camera={camera}
+          origine={origine}
+          actuels={actuels}
+          fuseau={saisie.fuseau}
+          statuts={statuts}
+          onFuseau={(fuseau) => setSaisie((avant) => ({ ...avant, fuseau }))}
+          onHorloge={(horloge) => setActuels((avant) => ({ ...avant, horloge }))}
+        />
+        <section aria-label="Incrustations">
+          <h4>Incrustations</h4>
+          {(["nom", "date_heure"] as const).map((cle) => (
+            <ChampsIncrustation
+              key={cle}
+              cle={cle}
+              origine={origine}
+              actuels={actuels}
+              saisie={saisie.incrustations[cle]}
             statuts={statuts}
             confirmation={aCacher === cle}
-            nomArgos={camera.nom}
-            onChanger={(champs) => changer(cle, champs)}
-            onAffichage={(affichee) => changerAffichage(cle, affichee)}
-            onConfirmerCacher={(confirme) => {
-              if (confirme) changer(cle, { affichee: false });
-              setACacher(null);
-            }}
-          />
-        ))}
+              nomArgos={camera.nom}
+              onChanger={(champs) => changer(cle, champs)}
+              onAffichage={(affichee) => changerAffichage(cle, affichee)}
+              onConfirmerCacher={(confirme) => {
+                if (confirme) changer(cle, { affichee: false });
+                setACacher(null);
+              }}
+            />
+          ))}
+        </section>
+      </div>
+      {erreur && (
+        <p className="erreur" role="alert">
+          {erreur}
+        </p>
+      )}
+      <div className="reglages-actions">
+        <button type="submit" disabled={envoi || estVide(modification)}>
+          {envoi ? "Envoi à la caméra…" : "Enregistrer"}
+        </button>
+        <button
+          type="button"
+          disabled={envoi}
+          onClick={() => {
+            setSaisie(saisieDepuis(origine));
+            setACacher(null);
+          }}
+        >
+          Annuler
+        </button>
+      </div>
+    </form>
+  );
+}
+
+type PropsHorloge = Readonly<{
+  camera: Camera;
+  origine: Reglages;
+  actuels: Reglages;
+  fuseau: string;
+  statuts: Record<string, ChampModifie>;
+  onFuseau: (fuseau: string) => void;
+  onHorloge: (horloge: Horloge) => void;
+}>;
+
+/**
+ * Horloge relue sur la caméra (après un envoi ou une mise à l'heure), fuseau à choisir, et mise à l'heure du Site :
+ * confirmée quand la caméra se règle sur un serveur de temps, car elle coupe cette synchronisation.
+ */
+function ChampsHorloge({ camera, origine, actuels, fuseau, statuts, onFuseau, onHorloge }: PropsHorloge) {
+  const id = useId();
+  const horloge = actuels.horloge;
+  const [confirmation, setConfirmation] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
+  const [faite, setFaite] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const fuseauOrigine = fuseauLu(origine.horloge);
+
+  async function mettre() {
+    setConfirmation(false);
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      onHorloge(await mettreALHeure(camera.id));
+      setFaite(true);
+    } catch (e) {
+      setErreur(messageEchec(e));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <section aria-label="Horloge">
+      <h4>Horloge</h4>
+      <dl>
+        <dt>Date et heure de la caméra (UTC)</dt>
+        <dd>{texteDateHeure(horloge.date_heure_utc)}</dd>
+        <dt>Écart avec le Site</dt>
+        <dd>{texteEcart(horloge.ecart_s)}</dd>
+        <dt>Serveur de temps (NTP)</dt>
+        <dd>
+          {horloge.mode === "ntp" ? "utilisé" : "non utilisé"}
+          {horloge.serveur_ntp && ` (serveur : ${horloge.serveur_ntp})`}
+        </dd>
+      </dl>
+      <fieldset>
+        <legend>Fuseau et heure</legend>
+        <label htmlFor={`${id}-fuseau`}>Fuseau</label>
+        <select id={`${id}-fuseau`} value={fuseau} onChange={(e) => onFuseau(e.target.value)}>
+          {/* Fuseau que la caméra a et qu'ArgOS ne reconnaît pas : montré tel quel tant qu'il n'est pas changé. */}
+          {!FUSEAUX.includes(fuseau) && <option value={fuseau}>{fuseau || "—"}</option>}
+          {FUSEAUX.map((nom) => (
+            <option key={nom} value={nom}>
+              {nom}
+            </option>
+          ))}
+        </select>
+        <Origine valeur={fuseauOrigine || "—"} />
+        <StatutChamp resultat={statuts["horloge.fuseau"]} libelle="fuseau" />
+        <button
+          type="button"
+          disabled={envoi}
+          onClick={() => (horloge.mode === "ntp" ? setConfirmation(true) : void mettre())}
+        >
+          {envoi ? "Mise à l'heure…" : "Mettre à l'heure du Site"}
+        </button>
+        {confirmation && (
+          <p className="confirmation">
+            <span>
+              {horloge.serveur_ntp
+                ? `La caméra se règle sur le serveur de temps ${horloge.serveur_ntp}.`
+                : "La caméra se règle sur un serveur de temps."}{" "}
+              La mettre à l'heure du Site coupe cette synchronisation.
+            </span>
+            <button type="button" className="danger" onClick={() => void mettre()}>
+              Mettre à l'heure quand même
+            </button>
+            <button type="button" onClick={() => setConfirmation(false)}>
+              Garder le serveur de temps
+            </button>
+          </p>
+        )}
+        {faite && !envoi && (
+          <span role="status" aria-label="Statut : mise à l'heure" className="statut">
+            écart relu : {texteEcart(horloge.ecart_s)}
+          </span>
+        )}
         {erreur && (
           <p className="erreur" role="alert">
             {erreur}
           </p>
         )}
-        <div className="reglages-actions">
-          <button type="submit" disabled={envoi || estVide(modification)}>
-            {envoi ? "Envoi à la caméra…" : "Enregistrer"}
-          </button>
-          <button
-            type="button"
-            disabled={envoi}
-            onClick={() => {
-              setSaisie(saisieDepuis(origine));
-              setACacher(null);
-            }}
-          >
-            Annuler
-          </button>
-        </div>
-      </form>
+      </fieldset>
     </section>
   );
 }

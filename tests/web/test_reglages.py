@@ -54,7 +54,10 @@ def test_reglages_d_une_camera_active_valeurs_usine_et_ecart(administration: Pag
     annees = int((datetime.now(UTC) - USINE).days // 365.25)
     expect(valeur(horloge, "Écart avec le Site")).to_have_text(f"en retard de {annees} ans")
     expect(valeur(horloge, "Date et heure de la caméra (UTC)")).to_contain_text("31/12/1999")
-    expect(valeur(horloge, "Fuseau")).to_have_text("AWST-8")
+    # Fuseau qu'ArgOS ne reconnaît pas : montré tel quel.
+    fuseau = horloge.get_by_label("Fuseau", exact=True)
+    expect(fuseau).to_have_value("AWST-8")
+    expect(fuseau.locator("option:checked")).to_have_text("AWST-8")
     expect(valeur(horloge, "Serveur de temps (NTP)")).to_have_text("non utilisé (serveur : NTP)")
     incrustations = reglages.get_by_role("region", name="Incrustations")
     expect(incrustations.get_by_label("Affichage du nom", exact=True)).to_have_value("affichee")
@@ -63,9 +66,9 @@ def test_reglages_d_une_camera_active_valeurs_usine_et_ecart(administration: Pag
     expect(incrustations.get_by_label("Affichage de la date et heure", exact=True)).to_have_value("affichee")
     expect(incrustations).to_contain_text("yyyy-MM-dd HH:mm:ss")
     expect(incrustations.get_by_label("Position de la date et heure", exact=True)).to_have_value("LowerLeft")
-    # L'Horloge reste en lecture seule ; le format de la date ne se règle pas.
+    # De l'Horloge, seul le fuseau se choisit ; le format de la date ne se règle pas.
     expect(horloge.get_by_role("textbox")).to_have_count(0)
-    expect(horloge.get_by_role("combobox")).to_have_count(0)
+    expect(horloge.get_by_role("combobox")).to_have_count(1)
     expect(incrustations.get_by_role("textbox")).to_have_count(1)
 
     reglages.get_by_role("button", name="Fermer").click()
@@ -264,3 +267,83 @@ def test_afficher_propose_seulement_si_la_camera_sait_recreer(
     expect(affichage.locator("option")).to_have_text(["cachée"])
     # Le nom, lui, peut être recréé.
     expect(reglages.get_by_label("Affichage du nom", exact=True).locator("option")).to_have_text(["affichée", "cachée"])
+
+
+# --- Régler l'Horloge --------------------------------------------------------------------------------------------
+
+
+def test_fuseau_choisi_dans_la_liste_envoye_seul_et_pris(administration: Page, api, noms, remise_en_usine):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    fuseau = reglages.get_by_label("Fuseau", exact=True)
+    expect(fuseau.locator("option").nth(1)).to_have_text("Europe/Paris")
+
+    fuseau.select_option("Europe/Paris")
+    envoye = enregistrer(administration, reglages)
+
+    assert envoye == {"horloge": {"fuseau": "Europe/Paris"}, "incrustations": {}}
+    expect(statut(reglages, "fuseau")).to_have_text("pris", timeout=DELAI_LECTURE_MS)
+    expect(reglages).to_contain_text("d'origine : AWST-8")
+    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+
+
+def test_fuseau_inconnu_montre_tant_qu_il_n_est_pas_change(administration: Page, api, noms):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
+    fuseau = reglages.get_by_label("Fuseau", exact=True)
+
+    fuseau.select_option("UTC")
+
+    expect(fuseau.locator("option", has_text="AWST-8")).to_have_count(0)
+    reglages.get_by_role("button", name="Annuler").click()
+    expect(fuseau).to_have_value("AWST-8")
+
+
+def test_mettre_a_l_heure_du_site_rafraichit_l_ecart(administration: Page, api, noms, remise_en_usine):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    horloge = reglages.get_by_role("region", name="Horloge")
+    expect(valeur(horloge, "Écart avec le Site")).to_contain_text("ans")
+
+    with administration.expect_request(lambda r: r.method == "POST" and r.url.endswith("/mise-a-l-heure")):
+        horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
+
+    # Quelques secondes au plus : requêtes, secondes tronquées.
+    ecart = re.compile(r"^(à l'heure|en (retard|avance) de \d s)$")
+    expect(valeur(horloge, "Écart avec le Site")).to_have_text(ecart, timeout=DELAI_LECTURE_MS)
+    expect(horloge.get_by_role("status", name="Statut : mise à l'heure")).to_contain_text("écart relu")
+    expect(horloge.get_by_label("Fuseau", exact=True)).to_have_value("AWST-8")
+    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+
+
+@pytest.fixture
+def camera_4_en_ntp():
+    regler_camera_simulee_4_en_onvif(
+        "device",
+        "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
+        "<tds:DaylightSavings>false</tds:DaylightSavings></tds:SetSystemDateAndTime>",
+    )
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_mise_a_l_heure_confirmee_quand_la_camera_est_en_ntp(administration: Page, api, noms, camera_4_en_ntp):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
+    horloge = reglages.get_by_role("region", name="Horloge")
+    envois: list[str] = []
+    administration.on("request", lambda r: envois.append(r.url) if r.method == "POST" else None)
+    avertissement = (
+        "La caméra se règle sur le serveur de temps NTP. La mettre à l'heure du Site coupe cette synchronisation."
+    )
+
+    horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
+    expect(horloge).to_contain_text(avertissement)
+    horloge.get_by_role("button", name="Garder le serveur de temps").click()
+
+    expect(horloge).not_to_contain_text(avertissement)
+    assert envois == []
+
+    horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
+    horloge.get_by_role("button", name="Mettre à l'heure quand même").click()
+
+    expect(valeur(horloge, "Serveur de temps (NTP)")).to_have_text(
+        "non utilisé (serveur : NTP)", timeout=DELAI_LECTURE_MS
+    )
+    expect(valeur(horloge, "Écart avec le Site")).not_to_contain_text("ans")

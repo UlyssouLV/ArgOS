@@ -1,12 +1,16 @@
 """Client ONVIF du Site : lit et modifie les Réglages de la Caméra (Horloge de son Appareil, Incrustations).
 
 L'appelant donne l'URL RTSP de la Caméra et le port ONVIF retenu ; il reçoit les Réglages lus (ou, après une
-modification, le résultat de chaque champ envoyé) et le port qui a répondu, ou une `ErreurOnvif` avec son code.
+modification, le résultat de chaque champ envoyé ; après une mise à l'heure, l'Horloge relue) et le port qui a
+répondu, ou une `ErreurOnvif` avec son code.
 SOAP, recherche du port, profils et tokens restent ici.
 
 - Port : celui retenu s'il répond encore en SOAP, sinon recherche sur les ports courants, dans leur ordre.
 - Identifiants : ceux de l'URL RTSP, en WS-Security (empreinte) ; aucun si l'URL n'en a pas.
 - Incrustations : celles de la première source vidéo (premier profil média).
+- Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
+  caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Jamais de NTP réglé, jamais d'écriture
+  sans une demande de l'Administrateur.
 - Modification : chaque `Set…` part seul (un refus n'empêche pas les autres), puis la caméra est relue : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
   elle n'annonce pas savoir recréer une Incrustation) l'a refusé.
@@ -29,7 +33,7 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 import zeep
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from zeep.exceptions import Error as ErreurZeep
 from zeep.exceptions import Fault, TransportError
 from zeep.transports import Transport
@@ -136,19 +140,35 @@ class ModificationIncrustations(BaseModel):
     date_heure: ModificationDateHeure | None = None
 
 
+class ModificationHorloge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Nom IANA (`Europe/Paris`) : ArgOS l'envoie en POSIX.
+    fuseau: str | None = None
+
+    @field_validator("fuseau")
+    @classmethod
+    def _fuseau_connu(cls, fuseau: str | None) -> str | None:
+        if fuseau is not None and not fuseaux.connu(fuseau):
+            raise ValueError("Fuseau IANA inconnu")
+        return fuseau
+
+
 class ModificationReglages(BaseModel):
     """Seulement les champs que l'Administrateur a modifiés."""
 
     model_config = ConfigDict(extra="forbid")
 
+    horloge: ModificationHorloge = ModificationHorloge()
     incrustations: ModificationIncrustations = ModificationIncrustations()
 
 
 class ChampModifie(BaseModel):
-    # Chemin du champ envoyé : `incrustations.nom.texte`…
+    # Chemin du champ envoyé : `horloge.fuseau`, `incrustations.nom.texte`…
     champ: str
     demande: str | bool
-    # Valeur relue sur la caméra après l'envoi ; `None` : sans valeur (Incrustation cachée).
+    # Valeur relue sur la caméra après l'envoi (fuseau : sa chaîne POSIX) ; `None` : sans valeur (Incrustation
+    # cachée, caméra sans fuseau).
     relu: str | bool | None
     statut: Literal["pris", "pas_pris", "refuse"]
 
@@ -176,6 +196,15 @@ def modifier_reglages(
     camera, port = _joindre(url_rtsp, port_retenu)
     with _erreurs_onvif():
         return camera.modifier(modification, maintenant), port
+
+
+def mettre_a_l_heure(
+    url_rtsp: str, port_retenu: int | None, maintenant: Callable[[], datetime]
+) -> tuple[Horloge, int]:
+    """Met la caméra à l'heure du Site (mode manuel, fuseau gardé), puis relit son Horloge. Lève `ErreurOnvif`."""
+    camera, port = _joindre(url_rtsp, port_retenu)
+    with _erreurs_onvif():
+        return camera.mettre_a_l_heure(maintenant), port
 
 
 def _joindre(url_rtsp: str, port_retenu: int | None) -> tuple["_Camera", int]:
@@ -304,25 +333,56 @@ class _Camera:
 
     def lire(self, maintenant: Callable[[], datetime]) -> Reglages:
         self._connecter()
+        options = self._media.GetOSDOptions(ConfigurationToken=self._source).OSDOptions
+        return Reglages(horloge=self._horloge(maintenant), incrustations=_incrustations(self._osds(), options))
+
+    def _horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
         heure = self._appareil.GetSystemDateAndTime()
         date_heure_utc = _date_heure_utc(heure)
         ntp = self._appareil.GetNTP()
-        options = self._media.GetOSDOptions(ConfigurationToken=self._source).OSDOptions
         fuseau_posix = heure.TimeZone.TZ if heure.TimeZone is not None else None
-        return Reglages(
-            horloge=Horloge(
-                date_heure_utc=date_heure_utc,
-                ecart_s=(date_heure_utc - maintenant()).total_seconds(),
-                fuseau_posix=fuseau_posix,
-                fuseau=fuseaux.nom_lisible(fuseau_posix) if fuseau_posix else None,
-                mode="ntp" if heure.DateTimeType == "NTP" else "manuel",
-                serveur_ntp=_serveur_ntp(ntp),
-            ),
-            incrustations=_incrustations(self._osds(), options),
+        return Horloge(
+            date_heure_utc=date_heure_utc,
+            ecart_s=(date_heure_utc - maintenant()).total_seconds(),
+            fuseau_posix=fuseau_posix,
+            fuseau=fuseaux.nom_lisible(fuseau_posix) if fuseau_posix else None,
+            mode="ntp" if heure.DateTimeType == "NTP" else "manuel",
+            serveur_ntp=_serveur_ntp(ntp),
         )
+
+    def mettre_a_l_heure(self, maintenant: Callable[[], datetime]) -> Horloge:
+        self._connecter()
+        # Un refus se voit à l'écart relu, inchangé.
+        self._regler_horloge(heure_du_site=maintenant())
+        return self._horloge(maintenant)
+
+    def _regler_horloge(self, *, fuseau_posix: str | None = None, heure_du_site: datetime | None = None) -> bool:
+        """`SetSystemDateAndTime` ; ce qui n'est pas demandé reste celui de la caméra. `False` : refusé.
+
+        Sans `heure_du_site`, le mode est gardé et, en manuel, l'heure renvoyée est celle que la caméra vient de
+        donner : ONVIF l'exige en mode manuel.
+        """
+        heure = self._appareil.GetSystemDateAndTime()
+        manuel = heure_du_site is not None or heure.DateTimeType != "NTP"
+        arguments: dict[str, Any] = {
+            "DateTimeType": "Manual" if manuel else "NTP",
+            "DaylightSavings": bool(heure.DaylightSavings),
+        }
+        fuseau = fuseau_posix or (heure.TimeZone.TZ if heure.TimeZone is not None else None)
+        if fuseau:
+            arguments["TimeZone"] = {"TZ": fuseau}
+        if manuel:
+            utc = (heure_du_site or _date_heure_utc(heure)).astimezone(UTC)
+            arguments["UTCDateTime"] = {
+                "Date": {"Year": utc.year, "Month": utc.month, "Day": utc.day},
+                "Time": {"Hour": utc.hour, "Minute": utc.minute, "Second": utc.second},
+            }
+        return self._envoyer(self._appareil.SetSystemDateAndTime, **arguments)
 
     def modifier(self, modification: ModificationReglages, maintenant: Callable[[], datetime]) -> ResultatModification:
         avant = self.lire(maintenant).incrustations
+        fuseau = modification.horloge.fuseau
+        fuseau_refuse = fuseau is not None and not self._regler_horloge(fuseau_posix=fuseaux.posix(fuseau))
         envois: list[tuple[str, dict[str, Any], set[str]]] = []
         for cle in TYPES_TEXTE:
             changement = getattr(modification.incrustations, cle)
@@ -333,6 +393,10 @@ class _Camera:
                 envois.append((cle, envoyes, self._modifier_incrustation(cle, envoyes, getattr(avant, cle))))
         apres = self.lire(maintenant)
         champs = []
+        if fuseau is not None:
+            relu = apres.horloge.fuseau_posix
+            statut = "refuse" if fuseau_refuse else "pris" if relu == fuseaux.posix(fuseau) else "pas_pris"
+            champs.append(ChampModifie(champ="horloge.fuseau", demande=fuseau, relu=relu, statut=statut))
         for cle, envoyes, refuses in envois:
             relue = getattr(apres.incrustations, cle)
             for champ, demande in envoyes.items():

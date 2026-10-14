@@ -327,6 +327,16 @@ def _routes_cameras(
         with _erreurs_cameras():
             return _ou_502_onvif(lambda: cameras.modifier_reglages(base, id_camera, modification, horloge))
 
+    @routes.post(
+        "/{id_camera}/reglages/mise-a-l-heure",
+        response_model=onvif.Horloge,
+        responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
+    )
+    def mettre_a_l_heure(id_camera: int, base: Base) -> onvif.Horloge | JSONResponse:
+        """Envoie une fois l'heure UTC du serveur à la caméra (mode manuel, fuseau gardé), puis relit son Horloge."""
+        with _erreurs_cameras():
+            return _ou_502_onvif(lambda: cameras.mettre_a_l_heure(base, id_camera, horloge))
+
     return routes
 
 

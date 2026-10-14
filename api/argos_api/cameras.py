@@ -379,6 +379,14 @@ def modifier_reglages(
     return _par_onvif(base, id_camera, lambda url, port: onvif.modifier_reglages(url, port, modification, maintenant))
 
 
+def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
+    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le port.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.mettre_a_l_heure(url, port, maintenant))
+
+
 def _par_onvif[T](base: Session, id_camera: int, echange: Callable[[str, int | None], tuple[T, int]]) -> T:
     """Échange ONVIF avec la caméra d'une Caméra active ; retient le port qui a répondu."""
     camera = _trouver(base, id_camera)

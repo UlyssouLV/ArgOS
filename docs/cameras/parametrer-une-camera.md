@@ -1,6 +1,6 @@
 # Paramétrer une Caméra : ONVIF
 
-Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit** par ONVIF les Réglages de la Caméra (Incrustations et Horloge) et **règle** les Incrustations : voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos). Le réglage de l’Horloge arrive dans la même version (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
+Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit et règle** par ONVIF les Réglages de la Caméra : Incrustations, fuseau de l’Horloge et mise à l’heure du Site. Voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos).
 
 Pour aller plus loin : [Ajouter une Caméra](ajouter-une-camera.md), [Réseau du Site et Détection des Caméras](reseau-et-detection.md), [sécurité](../securite.md).
 
@@ -72,7 +72,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ### Ce qui cloche, réglé d’usine
 
-- **Horloge au 31/12/1999** : le serveur de temps s’appelle simplement `NTP`, un nom qui ne mène nulle part, et le fuseau est celui de l’Australie (`AWST-8`). L’heure incrustée est fausse, et le serait dans tout enregistrement. Remède : fuseau de Paris (`CET-1CEST,M3.5.0,M10.5.0/3`) et un vrai serveur de temps (la box, ou `pool.ntp.org`).
+- **Horloge au 31/12/1999** : le serveur de temps s’appelle simplement `NTP`, un nom qui ne mène nulle part, et le fuseau est celui de l’Australie (`AWST-8`). L’heure incrustée est fausse, et le serait dans tout enregistrement. Remède : fuseau de Paris (`CET-1CEST,M3.5.0,M10.5.0/3`) et heure du Site, depuis ArgOS ([§ 6](#régler-lhorloge)) ; pas de serveur de temps public, la caméra n’ayant pas accès à internet.
 - **DNS chinois** (`114.114.114.114`) : la caméra cherche à joindre internet, comme beaucoup de caméras génériques. Bloquer son accès à internet dans la box ([sécurité](../securite.md), § 1).
 - **H.264 annoncé, H.265 servi** : le service média ONVIF 1.0 ne sait pas décrire le H.265 et déclare le flux principal en H.264, alors qu’ArgOS le reçoit en H.265. Le service média 2 décrit le vrai codec. ArgOS continue de lire le codec dans le Flux lui-même ([Caméras H.265](ajouter-une-camera.md#caméras-h265)).
 
@@ -85,7 +85,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ## 6. Les Réglages de la Caméra dans ArgOS
 
-Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations se règlent ([plus bas](#régler-les-incrustations)) ; l’Horloge est pour l’instant en lecture seule.
+Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)) et l’Horloge ([fuseau et mise à l’heure](#régler-lhorloge)) se règlent.
 
 ### Ce qu’ArgOS lit
 
@@ -106,6 +106,20 @@ Le panneau est un formulaire. Sous chaque champ reste affichée sa **valeur d’
   - **cacher** une Incrustation la retire de la caméra (`DeleteOSD`), après une confirmation : « Certaines caméras ne permettent pas de la réafficher ensuite. » ;
   - **afficher** une Incrustation cachée la recrée (`CreateOSD`, même type, avec son texte et son coin). C’est proposé **seulement si la caméra annonce savoir la recréer** (`GetOSDOptions`) : sinon ArgOS refuse sans rien envoyer.
 - Le **format de la date** ne s’envoie jamais : les caméras ne le règlent pas de façon fiable.
+
+### Régler l’Horloge
+
+L’Horloge est celle de l’Appareil : la régler depuis une Caméra la règle pour toutes les Caméras de la même MAC.
+
+- **Fuseau** : choisi dans une liste de noms lisibles (`Europe/Paris` en tête, puis les fuseaux courants), dans le même formulaire que les Incrustations. ArgOS le convertit au format POSIX qu’attend ONVIF (`Europe/Paris` → `CET-1CEST,M3.5.0,M10.5.0/3`), à partir de la dernière ligne du fichier du fuseau dans la base IANA (paquet `tzdata`), et l’envoie seul (`SetSystemDateAndTime`) en **gardant le mode** de la caméra (manuel ou serveur de temps) et, en manuel, son heure. Un fuseau qu’ArgOS ne reconnaît pas (`AWST-8`) reste affiché tel quel tant qu’on n’en choisit pas un autre. Après l’envoi, le fuseau relu (en POSIX) donne le statut, comme pour les Incrustations.
+- **Mettre à l’heure du Site** : un bouton qui envoie **une fois** l’heure UTC du serveur ArgOS à la caméra, en mode manuel, sans toucher à son fuseau, puis relit l’Horloge : date, heure et écart avec le Site se mettent à jour (« en retard de 26 ans » devient « à l’heure » ou quelques secondes). Si la caméra se règle sur un serveur de temps, une confirmation le dit d’abord : « La caméra se règle sur le serveur de temps `<x>`. La mettre à l’heure du Site coupe cette synchronisation. »
+- ArgOS n’écrit **jamais** sur l’Horloge sans une action de l’Administrateur : ouvrir les Réglages ne fait que lire, et rien ne remet une caméra à l’heure tout seul. Une caméra laissée en mode manuel dérive : la remettre à l’heure de temps en temps.
+
+**Pourquoi pas de NTP ?** Les Caméras n’ont pas accès à internet (bloqué dans la box, [sécurité](../securite.md), § 1) : un serveur de temps public comme `pool.ntp.org` ne leur répondrait pas, et le leur ouvrir irait contre la page sécurité. ArgOS ne règle donc pas le NTP de la caméra : il le montre seulement (en lecture). Plus tard, le Site deviendra lui-même serveur de temps des Caméras, sur le réseau local (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
+
+Par l’API : le fuseau passe par `PATCH /api/cameras/{id}/reglages` (`{"horloge": {"fuseau": "Europe/Paris"}}`, champ `horloge.fuseau` dans la réponse, valeur relue en POSIX ; un nom IANA inconnu → `422`). La mise à l’heure : `POST /api/cameras/{id}/reglages/mise-a-l-heure`, sans corps, qui renvoie l’Horloge relue (écart avec le Site compris). Mêmes erreurs que la lecture (`404`, `502`).
+
+### Envoyer et vérifier
 
 **Enregistrer** n’envoie que les champs modifiés, **chacun séparément** (un refus n’empêche pas les autres), puis **relit** la caméra et affiche, par champ envoyé :
 
