@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,15 @@ from cryptography.hazmat.primitives import serialization
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from stack_compose import URL_SITE, attendre, certificat_presente, identifiants_administrateur, lancer_stack, redemarrer_api  # noqa: E402
+from stack_compose import (  # noqa: E402
+    URL_SITE,
+    attendre,
+    autorite_du_site,
+    certificat_presente,
+    identifiants_administrateur,
+    lancer_stack,
+    redemarrer_api,
+)
 
 __all__ = ["redemarrer_api"]
 
@@ -22,9 +31,14 @@ def administrateur() -> dict[str, str]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def stack(administrateur):
+def stack(administrateur, tmp_path_factory):
     lancer_stack()
     attendre(URL_SITE)
+    # Les requêtes que Playwright fait lui-même (route.fetch) partent de son pilote Node, lancé après :
+    # il fait confiance à l'Autorité du Site.
+    autorite = tmp_path_factory.mktemp("autorite") / "argos-ca.crt"
+    autorite.write_text(autorite_du_site())
+    os.environ["NODE_EXTRA_CA_CERTS"] = str(autorite)
 
 
 @pytest.fixture(scope="session")
