@@ -2,11 +2,11 @@
 # Lance ArgOS sur macOS : double-clic dans le Finder.
 # Démarre Docker Desktop au besoin, puis la stack de dev (mediamtx, api, db, web
 # et les Caméras simulées de compose.simulation.yaml), ouvre une fenêtre Terminal
-# de logs et l'UI dans le navigateur.
+# de logs et l'UI (https://localhost) dans le navigateur, après avoir proposé d'ajouter l'Autorité du Site
+# au trousseau de session.
 set -u
 cd "$(dirname "$0")"
 
-URL_UI="http://localhost:8080"
 # Stack de prod + simulation de dev (Caméras simulées).
 export COMPOSE_FILE="compose.yaml:compose.simulation.yaml"
 
@@ -60,6 +60,12 @@ if [ -z "$(valeur_env ARGOS_IDENTIFIANT)" ] || [ -z "$(valeur_env ARGOS_MOT_DE_P
     ecrire_env ARGOS_IDENTIFIANT "$identifiant"
     ecrire_env ARGOS_MOT_DE_PASSE "$mot_de_passe"
 fi
+# Le Site, sous une seule origine HTTPS ; port par défaut omis.
+port_https="$(valeur_env ARGOS_PORT_HTTPS)"
+case "${port_https:-443}" in
+    443) URL_UI="https://localhost" ;;
+    *) URL_UI="https://localhost:$port_https" ;;
+esac
 # Sous-réseaux de la Détection des Caméras, recalculés à chaque lancement (prise demandée une fois).
 if ! scripts/cameras/configurer-detection.sh; then
     echo "      Détection des Caméras non configurée : ArgOS démarre quand même."
@@ -99,7 +105,8 @@ if ! docker compose up -d --build --wait; then
     pause_et_quitter 1
 fi
 
-echo "[4/4] Fenêtre de logs et ouverture de l'UI..."
+echo "[4/4] Autorité du Site, fenêtre de logs et ouverture de l'UI..."
+scripts/autorite/ajouter-au-trousseau.sh
 osascript - "$(pwd)" <<'APPLESCRIPT' >/dev/null
 on run argv
     tell application "Terminal"

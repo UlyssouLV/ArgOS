@@ -67,6 +67,7 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 1. crée `.env` à partir de `.env.example` s’il manque, et demande le compte de l’Administrateur s’il n’est pas défini (mot de passe vide = un mot de passe généré, affiché une fois et écrit dans `.env`) ; puis lance `scripts/cameras/configurer-detection.sh` (sous-réseaux de la Détection, prise demandée au premier lancement s’il y en a plusieurs) ;
 2. démarre Docker Desktop s’il ne tourne pas, et attend que le moteur réponde ;
 3. lance la stack **avec la simulation** : `docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait` ;
-4. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `http://localhost:8080`.
+4. affiche l’empreinte SHA-256 de l’Autorité du Site (`/argos-ca.crt`) et, si elle n’est pas dans le trousseau de session, demande (o/n) avant de l’y ajouter (`scripts/autorite/ajouter-au-trousseau.sh` ; macOS demande le mot de passe) ; rien à installer avec un certificat fourni ;
+5. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `https://localhost`.
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
