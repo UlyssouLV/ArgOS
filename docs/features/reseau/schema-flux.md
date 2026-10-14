@@ -1,10 +1,10 @@
 # Schéma du réseau et des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.6.1, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.6.1, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md) (Flux authentifiés par nginx). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
 
 ## En bref
 
-- Le navigateur ne parle au Site que par **une seule origine HTTPS** : `https://<IP du Site>` (port `443`). Le nginx du conteneur `web` y sert l’UI et relaie l’API (`/api/`) et le Live (`/flux/webrtc/`, `/flux/hls/`).
+- Le navigateur ne parle au Site que par **une seule origine HTTPS** : `https://<IP du Site>` (port `443`). Le nginx du conteneur `web` y sert l’UI et relaie l’API (`/api/`) et le Live (`/flux/webrtc/`, `/flux/hls/`). Le Live n’est relayé que pour une **session ArgOS** valide : `401` sinon.
 - Les ports HTTP `80` et `8080` ne font que **rediriger** vers HTTPS, et servir la partie publique de l’Autorité du Site (`/argos-ca.crt`).
 - Hors de l’origine HTTPS, la machine hôte ne publie plus que la vidéo WebRTC (`8189/udp`, chiffrée) et **RTSP `8554`** (en clair, sans authentification jusqu’à la 0.6.2).
 - Le service ponctuel `certificats` crée l’Autorité du Site et le certificat serveur avant `web`, puis s’arrête.
@@ -51,7 +51,8 @@ flowchart LR
     NAV <-- "HTTPS :443 · chiffré<br/>page, JS, /api/, /flux/" --> WEB
     NAV <-- "HTTP :80 / :8080 · en clair<br/>301 vers HTTPS · /argos-ca.crt" --> WEB
     WEB <-- "HTTP /api/ → :8000 · en clair, interne" --> API
-    WEB <-- "HTTP /flux/webrtc/ → :8889 · WHEP<br/>/flux/hls/ → :8888 · en clair, interne" --> PONT
+    WEB <-- "HTTP /api/session · avant chaque /flux/<br/>session valide ? sinon 401" --> API
+    WEB <-- "HTTP /flux/webrtc/ → :8889 · WHEP<br/>/flux/hls/ → :8888 · en clair, interne<br/>après session vérifiée" --> PONT
     PONT == "WebRTC UDP :8189 · chiffré (DTLS-SRTP)<br/>H.264, < 1 s" ==> NAV
     PONT -- "RTSP :8554 · en clair, sans auth" --> VLC
 
@@ -80,7 +81,11 @@ Le nginx de `web` est la seule porte du Site pour un navigateur. Il termine le T
 | `/flux/hls/<chemin>/index.m3u8`, variantes, segments | `mediamtx:8888` | LL-HLS fMP4 H.265, sans mise en tampon |
 | `/argos-ca.crt` | volume `certificats-serveur` | partie publique de l’Autorité du Site (`404` avec un certificat fourni) |
 
-`<chemin>` est `camera-<id>` (une Caméra active) ou `apercu-<jeton>` (l’Aperçu pendant un ajout). L’UI n’utilise que des URL relatives : un seul nom d’hôte, un seul certificat, plus de CORS.
+`<chemin>` est `camera-<id>` (une Caméra active) ou `apercu-<jeton>` (l’Aperçu pendant un ajout).
+
+**`/flux/` derrière la session** (depuis la 0.6.2) : avant de relayer **chaque** requête `/flux/webrtc/…` ou `/flux/hls/…`, nginx fait une sous-requête interne vers `api:8000/api/session` avec le cookie du navigateur (`auth_request`). `204` → la requête part vers MediaMTX ; `401` → nginx répond `401` au navigateur, rien n’est relayé. Toute session valide lit tout chemin. Un Live WebRTC déjà établi continue ensuite sans nginx (vidéo sur `8189/udp`) ; un Live HLS est revérifié à chaque playlist et segment.
+
+L’UI n’utilise que des URL relatives : un seul nom d’hôte, un seul certificat, plus de CORS.
 
 Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), nginx ne sert que `/argos-ca.crt` ; tout le reste reçoit un `301` vers `https://<même hôte><même chemin>`. Les ports se règlent dans `.env` : `ARGOS_PORT_HTTPS` (`443`), `ARGOS_PORT_HTTP` (`80`), `ARGOS_PORT_HTTP_ANCIEN` (`8080`).
 
@@ -91,7 +96,8 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 | navigateur → `web` | HTTPS · `:443` | **chiffré** (TLS) | à chaque page, appel d’API, Live, Aperçu | l’UI, `/api/…`, `/flux/…` (tableau ci-dessus) : mot de passe de l’Administrateur, cookie de session, identifiants de caméra saisis à l’ajout, jeton de l’Aperçu |
 | navigateur → `web` | HTTP · `:80`, `:8080` | en clair | ancienne adresse, adresse tapée en `http://`, téléchargement de l’Autorité | `301` vers HTTPS ; `/argos-ca.crt` (public, à vérifier par son empreinte). Le cookie de session n’y est jamais envoyé (`Secure`) |
 | `web` → `api` | HTTP · `api:8000` | en clair, réseau Compose | à chaque requête `/api/…` | relais de l’API ; ne sort pas de la machine hôte |
-| `web` → `mediamtx` | HTTP · `mediamtx:8889` (WHEP), `mediamtx:8888` (HLS) | en clair, réseau Compose | à chaque Caméra affichée dans le Live, et à l’Aperçu | relais de la signalisation WHEP et du LL-HLS ; ne sort pas de la machine hôte |
+| `web` → `api` | HTTP · `api:8000/api/session` | en clair, réseau Compose | avant chaque requête `/flux/…` | cookie de session du navigateur → `204` (session valide) ou `401` |
+| `web` → `mediamtx` | HTTP · `mediamtx:8889` (WHEP), `mediamtx:8888` (HLS) | en clair, réseau Compose | à chaque Caméra affichée dans le Live, et à l’Aperçu, après la session vérifiée | relais de la signalisation WHEP et du LL-HLS ; ne sort pas de la machine hôte |
 | `mediamtx` → navigateur | WebRTC · UDP `:8189` | **chiffré** (DTLS-SRTP) | pendant le Live ou l’Aperçu d’une Caméra H.264 (ou au codec inconnu), une connexion par vue | vidéo H.264, hors de l’origine HTTPS |
 | VLC / ffprobe → `mediamtx` | RTSP · `:8554` | **en clair, sans authentification** (jusqu’à la 0.6.2) | à la demande | lecture directe des `camera-<id>`, et de l’`apercu-<jeton>` pendant un ajout (debug) |
 | `certificats` → volumes | fichiers | — | à chaque `docker compose up`, avant `web` et `api` | crée l’Autorité si elle manque ; crée ou garde le certificat serveur ; copie `argos-ca.crt` |
@@ -112,7 +118,7 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 
   | Port | Service | Rôle | Chiffré ? |
   |---|---|---|---|
-  | `443/tcp` | `web` | le Site : UI, API, signalisation WHEP, HLS | **oui** (TLS) |
+  | `443/tcp` | `web` | le Site : UI, API, signalisation WHEP, HLS (Flux : session ArgOS exigée) | **oui** (TLS) |
   | `80/tcp`, `8080/tcp` | `web` | redirection vers HTTPS, `/argos-ca.crt` | non (rien de secret) |
   | `8189/udp` | `mediamtx` | média WebRTC | **oui** (DTLS-SRTP) |
   | `8554/tcp` | `mediamtx` | RTSP, lecture directe des Flux | **non**, sans authentification (0.6.2) |

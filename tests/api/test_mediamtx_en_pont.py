@@ -16,6 +16,7 @@ import pytest
 
 from stack_compose import client_du_site
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
+from test_connexion import se_connecter
 from test_etat_cameras import url_simulee
 
 IMAGE_FFPROBE = "linuxserver/ffmpeg:version-7.1-cli"
@@ -145,9 +146,10 @@ def test_le_relais_suit_le_changement_d_url(connecte, creer_camera):
 
 
 @pytest.fixture
-def lecteur():
-    """Lecteur HLS sous l'origine HTTPS du Site, sans session ArgOS."""
+def lecteur(administrateur):
+    """Lecteur HLS sous l'origine HTTPS du Site, connecté comme l'Administrateur : les Flux exigent une session (ADR 0006)."""
     with client_du_site() as c:
+        assert se_connecter(c, **administrateur).status_code == 204
         yield c
 
 

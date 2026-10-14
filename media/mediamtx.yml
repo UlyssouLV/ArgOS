@@ -19,7 +19,8 @@ api: yes
 apiAddress: :9997
 
 authInternalUsers:
-  # Lecture des Flux sans authentification (dette connue, docs/securite.md).
+  # Lecture sans authentification propre : WHEP et HLS ne sont joignables que par le réseau Compose, et nginx ne les
+  # relaie qu'à une session ArgOS valide (docs/adr/0006-flux-authentifies-par-nginx.md, docs/securite.md).
   - user: any
     pass:
     ips: []

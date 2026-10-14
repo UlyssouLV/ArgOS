@@ -140,11 +140,11 @@ def test_aucune_reponse_de_l_api_ne_porte_d_en_tete_cors(client, origine):
     assert "access-control-allow-origin" not in preflight.headers
 
 
-def test_whep_accepte_une_offre_sdp_par_l_origine_https_puis_ferme_la_session(client, creer_camera):
+def test_whep_accepte_une_offre_sdp_par_l_origine_https_puis_ferme_la_session(connecte, creer_camera):
     camera = creer_camera(url_rtsp=url_simulee(1)).json()
     echeance = time.monotonic() + DELAI_RELAIS_S
     while True:
-        reponse = client.post(
+        reponse = connecte.post(
             f"/flux/webrtc/{camera['chemin_flux']}/whep",
             content=OFFRE_SDP,
             headers={"Content-Type": "application/sdp"},
@@ -159,7 +159,7 @@ def test_whep_accepte_une_offre_sdp_par_l_origine_https_puis_ferme_la_session(cl
     session = httpx.URL(URL_SITE).join(reponse.headers["location"])
     assert session.host == "localhost" and session.scheme == "https", session
     assert session.path.startswith(f"/flux/webrtc/{camera['chemin_flux']}/whep/"), session
-    assert client.delete(session).status_code == 200
+    assert connecte.delete(session).status_code == 200
 
 
 # Le certificat serveur remplacé par le service certificats, stack jamais arrêtée (#68) : web le sert ensuite.
