@@ -8,7 +8,7 @@ Contraintes transverses :
 - README type repos Ulysse : sections claires (**quoi**, **prérequis**, **comment lancer**, structure) — enrichi dès qu’une version devient lançable ; avant ça, pas de fausse « souche » runnable.
 - Preuve 0.1.0 : flux RTSP simulés **joignables**, y compris un accès **navigateur** (ex. page HLS/WebRTC MediaMTX), plus tests auto (`ffprobe` / équivalent) via `/t`.
 - Auth 1.0.0 : compte **local** suffit. États caméra minimaux : `unknown` / `online` / `offline`.
-- **Pas d’installation sur de vraies caméras avant HTTPS et authentification des Flux.** Limites et dettes : [sécurité](../../securite.md).
+- **Pas d’installation sur de vraies caméras avant HTTPS, authentification des Flux et sécurisation d’ONVIF.** Limites et dettes : [sécurité](../../securite.md).
 
 ## Déjà livré
 
@@ -24,21 +24,27 @@ Contraintes transverses :
 
 **Objectif.** Régler depuis l’Administration ce que la caméra incruste dans l’image et son horloge, sans passer par son interface web ni par le cloud du fabricant : texte, position et affichage du nom incrusté et de la date et heure, fuseau, et mise à l’heure sur celle du Site, lus et vérifiés après envoi. Une Caméra simulée répond en ONVIF. Doc : [Paramétrer une Caméra](../../cameras/parametrer-une-camera.md).
 
-**Hors périmètre :** réglage du NTP des caméras (pas d’accès à internet ; le Site deviendra leur serveur de temps, Plus tard) ; image et vidéo (0.6.3) ; événements ONVIF ; PTZ ; HTTPS et authentification des Flux (0.6.1, 0.6.2).
+**Hors périmètre :** réglage du NTP des caméras (pas d’accès à internet ; le Site deviendra leur serveur de temps, Plus tard) ; image et vidéo (0.6.4) ; événements ONVIF ; PTZ ; HTTPS et authentification des Flux (0.6.1, 0.6.2) ; HTTPS vers la caméra (0.6.3).
 
 ## Ensuite : 0.6.1 — HTTPS
 
 **Objectif.** Servir l’UI, l’API et le Live en HTTPS (cookie de session `Secure`), pour que mot de passe et session ne circulent plus en clair sur le réseau local.
 
-**Hors périmètre :** authentification des Flux MediaMTX (0.6.2). Préalable, avec 0.6.2, à toute installation sur de vraies caméras.
+**Hors périmètre :** authentification des Flux MediaMTX (0.6.2) ; HTTPS d’ArgOS vers les caméras (0.6.3). Préalable, avec 0.6.2 et 0.6.3, à toute installation sur de vraies caméras.
 
 ## Ensuite : 0.6.2 — Authentification des Flux
 
 **Objectif.** Fermer l’accès libre aux Flux côté MediaMTX (WHEP, HLS, RTSP), pour que regarder une Caméra passe par la connexion d’ArgOS.
 
-**Hors périmètre :** images versionnées et compose de prod (0.7.0). Préalable, avec 0.6.1, à toute installation sur de vraies caméras.
+**Hors périmètre :** images versionnées et compose de prod (0.7.0). Préalable, avec 0.6.1 et 0.6.3, à toute installation sur de vraies caméras.
 
-## Ensuite : 0.6.3 — Réglages image et vidéo par ONVIF
+## Ensuite : 0.6.3 — Sécurisation d’ONVIF
+
+**Objectif.** Que régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras : ArgOS parle ONVIF en HTTPS quand la caméra le propose, en mémorisant son certificat au premier contact (un certificat qui change ensuite est refusé et signalé), et ne retombe en HTTP que pour une caméra qui ne le propose pas, signalée dans ses Réglages. Un mot de passe de caméra trop court est signalé à l’ajout, puisque l’empreinte WS-Security (SHA-1, imposé par la norme) se casse hors ligne s’il est faible. Règle les vulnérabilités Sonar laissées en 0.6.0 (`# NOSONAR` qui renvoient à cette version, à retirer).
+
+**Hors périmètre :** isolement du réseau des caméras (VLAN, sans internet), dans la procédure d’installation (0.7.2) ; identifiants ONVIF distincts (Plus tard). Préalable, avec 0.6.1 et 0.6.2, à toute installation sur de vraies caméras.
+
+## Ensuite : 0.6.4 — Réglages image et vidéo par ONVIF
 
 **Objectif.** Régler depuis les Réglages de la Caméra son image (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, contre-jour…) et sa vidéo (résolution, images par seconde, débit), lus et vérifiés après envoi, comme les Incrustations en 0.6.0.
 
@@ -58,7 +64,7 @@ Contraintes transverses :
 
 ## Ensuite : 0.7.2 — Livraison continue
 
-**Objectif.** Publier les images du serveur à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un serveur Linux : on peut installer ArgOS sur un vrai Site.
+**Objectif.** Publier les images du serveur à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un serveur Linux, réseau des caméras isolé compris (VLAN, sans internet) : on peut installer ArgOS sur un vrai Site.
 
 **Hors périmètre :** enregistrement des Flux (0.8.0).
 

@@ -240,7 +240,7 @@ def _sonder(hote: str, port: int) -> _Sonde:
     """`GetSystemDateAndTime` sans identifiants : seule une enveloppe SOAP prouve ONVIF, pas un `200` HTML."""
     try:
         reponse = requests.post(
-            f"http://{hote}:{port}{CHEMIN_APPAREIL}",
+            f"http://{hote}:{port}{CHEMIN_APPAREIL}",  # NOSONAR : HTTPS vers la caméra en 0.6.3
             data=DEMANDE_HEURE,
             headers={"Content-Type": "application/soap+xml; charset=utf-8"},
             timeout=(DELAI_CONNEXION_S, DELAI_REPONSE_S),
@@ -309,7 +309,7 @@ def _service(wsdl: str, liaison: str, adresse: str, jeton: UsernameToken | None)
 
 class _Camera:
     def __init__(self, hote: str, port: int, identifiants: tuple[str, str] | None) -> None:
-        self.adresse = f"http://{hote}:{port}{CHEMIN_APPAREIL}"
+        self.adresse = f"http://{hote}:{port}{CHEMIN_APPAREIL}"  # NOSONAR : HTTPS vers la caméra en 0.6.3
         self.identifiants = identifiants
         self._appareil: Any = None
         self._media: Any = None

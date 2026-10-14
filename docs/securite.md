@@ -112,7 +112,8 @@ Passer par un **VPN** (WireGuard, Tailscale…) plutôt que par une redirection 
 | Identifiants RTSP stockés **en clair** en base (masqués dans les réponses de l'API) | 0.2.0 | Lecture de la base → accès à toutes les caméras | Chiffrement des identifiants RTSP |
 | Pas de HTTPS (API, Live) | 0.2.0 | Mot de passe et session lisibles sur le Wi-Fi | HTTPS |
 | Flux MediaMTX sans authentification (`camN`, `camera-<id>` pour toute Caméra active depuis la 0.3.0, `apercu-*` pendant un ajout depuis la 0.4.1 ; en WHEP comme en HLS, lu par le Live pour les Flux H.265 depuis la 0.5.0) | 0.1.0 | Accès aux Flux sans passer par ArgOS | Authentification des Flux |
+| ONVIF en HTTP vers la caméra ; mot de passe envoyé en empreinte WS-Security (SHA-1, imposé par la norme) | 0.6.0 | Sur le réseau des caméras : empreinte capturée puis mot de passe faible cassé hors ligne, requête rejouée, réglage modifié au passage (heure incrustée) | Sécurisation d'ONVIF (0.6.3) |
 | Mot de passe de l'Administrateur en clair dans `.env` | 0.2.0 | Lecture du serveur → accès à ArgOS | À revoir avec les comptes multiples |
 | Frein à la force brute en mémoire | 0.2.0 | Remis à zéro à chaque redémarrage de l'API | À revoir avec HTTPS / comptes multiples |
 
-Contrainte : **pas d'installation sur de vraies caméras avant HTTPS et authentification des Flux** (voir la [feuille de route de dev](dev/feuille-de-route-dev.md)).
+Contrainte : **pas d'installation sur de vraies caméras avant HTTPS, authentification des Flux et sécurisation d'ONVIF** (voir la [feuille de route de dev](dev/feuille-de-route-dev.md)).

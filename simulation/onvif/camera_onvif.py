@@ -25,10 +25,11 @@ from xml.sax.saxutils import escape, quoteattr
 CHEMIN_APPAREIL = "/onvif/device_service"
 CHEMIN_MEDIA = "/onvif/media_service"
 
-ENV = "http://www.w3.org/2003/05/soap-envelope"
-TDS = "http://www.onvif.org/ver10/device/wsdl"
-TRT = "http://www.onvif.org/ver10/media/wsdl"
-TT = "http://www.onvif.org/ver10/schema"
+# Espaces de noms XML : des noms imposés par SOAP et ONVIF, jamais appelés (NOSONAR définitif).
+ENV = "http://www.w3.org/2003/05/soap-envelope"  # NOSONAR
+TDS = "http://www.onvif.org/ver10/device/wsdl"  # NOSONAR
+TRT = "http://www.onvif.org/ver10/media/wsdl"  # NOSONAR
+TT = "http://www.onvif.org/ver10/schema"  # NOSONAR
 TER = "http://www.onvif.org/ver10/error"
 WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
 WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
@@ -118,7 +119,7 @@ def _verifier_identifiants(entete: ET.Element | None, identifiants: tuple[str, s
     except ValueError:
         raise Faute("ter:NotAuthorized", "Nonce illisible") from None
     attendue = base64.b64encode(
-        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()
+        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()  # NOSONAR : SHA-1 imposé par WS-Security, risque traité en 0.6.3
     ).decode()
     bon_identifiant = hmac.compare_digest(_texte(jeton, "wsse:Username"), identifiant)
     bonne_empreinte = hmac.compare_digest(_texte(jeton, "wsse:Password"), attendue)
