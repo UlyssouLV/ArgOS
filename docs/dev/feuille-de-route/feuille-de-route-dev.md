@@ -134,3 +134,25 @@ Trouver les caméras par l’annonce ONVIF plutôt qu’en essayant les ports co
 ### Identifiants ONVIF distincts
 
 Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui séparent les comptes (Hikvision…).
+
+### Bug — un certificat serveur régénéré n’est pas servi tant que web ne redémarre pas (#68)
+
+**Constat :** Repéré en relisant la configuration pendant la doc de la 0.6.1 (#65), pas encore observé sur une stack : le service `certificats` régénère le certificat serveur au démarrage (nouvelle IP du Site, ou moins de 30 jours de validité), mais nginx (`web`) ne lit son certificat qu'à son propre démarrage. Si `web` tourne déjà, `docker compose up -d` (et donc `lancer-argos.command`) relance `certificats` sans redémarrer `web` : le Site continue de présenter l'ancien certificat.
+
+**Reproductibilité :** Non reproduit en pratique ; attendu d'après `compose.yaml` et `web/nginx.conf.template` :
+1. Stack lancée avec `MTX_WEBRTCADDITIONALHOSTS=<IP A>`.
+2. Changer `.env` pour `<IP B>`, puis `docker compose up -d` (ou double-clic sur `lancer-argos.command`), sans `docker compose down`.
+3. `docker compose logs certificats` dit « noms changés » et crée un nouveau certificat.
+4. `https://<IP B>` : le navigateur avertit, le certificat présenté nomme encore `<IP A>`.
+
+Même chose pour le renouvellement à moins de 30 jours de l'échéance sur une stack jamais arrêtée.
+
+**Impact :** Après un changement d'IP du Site (nouveau bail DHCP), les postes avertissent sur la nouvelle adresse alors que la doc et l'Administrateur s'attendent à ce que tout marche sans rien refaire ; un Administrateur pressé risque de passer outre l'avertissement. Le Live WebRTC n'est pas en cause. Contournement documenté : `docker compose down`, puis `up`.
+
+**Cause probable :** `web` dépend de `certificats` (`condition: service_completed_successfully`) sans `restart: true` : Compose recrée et relance `certificats` quand son environnement change, mais ne redémarre pas `web`, dont la configuration ne change pas. nginx garde en mémoire le certificat chargé au démarrage.
+
+**À corriger :** Un certificat serveur régénéré par `certificats` est servi par `web` dès la fin du lancement de la stack, sans `docker compose down` ni geste de l'Administrateur ; la doc (`installer-l-autorite-du-site.md` § 5 et § 7) cesse alors de demander d'arrêter la stack.
+
+**Hors périmètre :** Renouvellement d'un certificat fourni par l'Administrateur (hors périmètre de la 0.6.1) ; renouvellement sans aucun redémarrage de la stack.
+
+**Suivi :** [#68](https://github.com/UlyssouLV/ArgOS/issues/68) (`bug`). Trouvé dans : 0.6.1 · Contexte : revue · Date : 2026-10-14 · Priorité : Informations manquantes.
