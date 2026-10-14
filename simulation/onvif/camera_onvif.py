@@ -30,9 +30,9 @@ ENV = "http://www.w3.org/2003/05/soap-envelope"  # NOSONAR
 TDS = "http://www.onvif.org/ver10/device/wsdl"  # NOSONAR
 TRT = "http://www.onvif.org/ver10/media/wsdl"  # NOSONAR
 TT = "http://www.onvif.org/ver10/schema"  # NOSONAR
-TER = "http://www.onvif.org/ver10/error"
-WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
-WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+TER = "http://www.onvif.org/ver10/error"  # NOSONAR
+WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"  # NOSONAR
+WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"  # NOSONAR
 NS = {"env": ENV, "tds": TDS, "trt": TRT, "tt": TT, "wsse": WSSE, "wsu": WSU}
 
 # Seule opération lue sans identifiants, comme sur les vraies caméras : le client y lit l'heure de la caméra.
