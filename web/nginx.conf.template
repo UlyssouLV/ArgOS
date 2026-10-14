@@ -15,11 +15,7 @@ map "${ARGOS_PORT_HTTPS}" $suffixe_port_https {
 server {
     listen 8080;
 
-    location = /argos-ca.crt {
-        types { }
-        default_type application/x-x509-ca-cert;
-        alias /etc/nginx/certificats/argos-ca.crt;
-    }
+    include /etc/nginx/argos-ca.conf;
 
     location / {
         return 301 https://$host$suffixe_port_https$request_uri;
@@ -47,11 +43,7 @@ server {
         try_files $uri /index.html;
     }
 
-    location = /argos-ca.crt {
-        types { }
-        default_type application/x-x509-ca-cert;
-        alias /etc/nginx/certificats/argos-ca.crt;
-    }
+    include /etc/nginx/argos-ca.conf;
 
     location /api/ {
         set $api http://api:8000;

@@ -16,18 +16,32 @@ function lireCertificat(fichier: string): string {
   );
 }
 
+/** Premier certificat d'un fichier PEM : celui du Site, sans la chaîne qui peut le suivre. */
+function premierCertificat(pem: string): string {
+  const fin = "-----END CERTIFICATE-----";
+  return pem.slice(0, pem.indexOf(fin) + fin.length);
+}
+
 // Dev : https://localhost:5173, avec le certificat serveur d'ArgOS, sous une seule origine comme en prod
 // (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) : /api et /flux sont relayés
-// vers l'origine HTTPS de la stack lancée (docker compose up), dont le certificat est vérifié contre l'Autorité.
+// vers l'origine HTTPS de la stack lancée (docker compose up). Le certificat qu'elle présente doit être
+// celui du Site, comparé tel quel comme dans api (soi.py) : juste aussi avec un certificat fourni par
+// l'Administrateur, qui n'a pas d'Autorité du Site (pas d'argos-ca.crt) et ne nomme pas forcément localhost.
 export default defineConfig(({ command, mode }) => {
   if (command !== "serve") {
     return { plugins: [react()] };
   }
   const portHttps = loadEnv(mode, RACINE, "ARGOS_").ARGOS_PORT_HTTPS || "443";
+  const certificat = lireCertificat("serveur.crt");
   const relais: ProxyOptions = {
     target: `https://localhost:${portHttps}`,
     changeOrigin: true,
-    agent: new Agent({ ca: lireCertificat("argos-ca.crt") }),
+    agent: new Agent({
+      // Seul certificat de confiance : celui du Site, donc aucun autre, et son nom ne compte plus.
+      ca: premierCertificat(certificat),
+      allowPartialTrustChain: true,
+      checkServerIdentity: () => undefined,
+    }),
   };
   return {
     plugins: [react()],
@@ -35,7 +49,7 @@ export default defineConfig(({ command, mode }) => {
       port: 5173,
       strictPort: true,
       host: true,
-      https: { cert: lireCertificat("serveur.crt"), key: lireCertificat("serveur.key") },
+      https: { cert: certificat, key: lireCertificat("serveur.key") },
       proxy: { "/api": relais, "/flux": relais },
     },
   };

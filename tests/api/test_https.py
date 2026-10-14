@@ -160,3 +160,53 @@ def test_whep_accepte_une_offre_sdp_par_l_origine_https_puis_ferme_la_session(cl
     assert session.host == "localhost" and session.scheme == "https", session
     assert session.path.startswith(f"/flux/webrtc/{camera['chemin_flux']}/whep/"), session
     assert client.delete(session).status_code == 200
+
+
+# Le certificat serveur remplacé par le service certificats, stack jamais arrêtée (#68) : web le sert ensuite.
+IP_FICTIVE = "10.9.9.9"
+# nginx vérifie son certificat toutes les 2 s, avec de la marge.
+DELAI_RECHARGEMENT_S = 15
+
+
+def _certificat_du_volume() -> bytes:
+    pem = compose(
+        "run", "--rm", "--no-deps", "-T", "--entrypoint", "cat", "certificats", "/certificats-serveur/public/serveur.crt"
+    ).stdout
+    return ssl.PEM_cert_to_DER_cert(pem)
+
+
+def _attendre_certificat_servi(attendu: bytes) -> bytes:
+    limite = time.monotonic() + DELAI_RECHARGEMENT_S
+    while (servi := certificat_presente()) != attendu and time.monotonic() < limite:
+        time.sleep(0.5)
+    return servi
+
+
+def test_une_ip_du_site_changee_est_servie_des_la_fin_du_lancement_sans_arret_de_la_stack():
+    avant = certificat_presente()
+    try:
+        compose("up", "-d", "--wait", env={"MTX_WEBRTCADDITIONALHOSTS": IP_FICTIVE})
+
+        assert certificat_presente() == _certificat_du_volume() != avant
+    finally:
+        compose("up", "-d", "--wait")
+
+
+def _demarrage_de_web() -> str:
+    conteneur = compose("ps", "-q", "web").stdout.strip()
+    return subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.StartedAt}}", conteneur], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def test_un_certificat_serveur_remplace_est_servi_sans_redemarrer_web():
+    demarre = _demarrage_de_web()
+    try:
+        compose("run", "--rm", "--no-deps", "-T", "certificats", env={"MTX_WEBRTCADDITIONALHOSTS": IP_FICTIVE})
+        attendu = _certificat_du_volume()
+
+        assert _attendre_certificat_servi(attendu) == attendu
+        assert _demarrage_de_web() == demarre
+    finally:
+        compose("run", "--rm", "--no-deps", "-T", "certificats")
+        _attendre_certificat_servi(_certificat_du_volume())

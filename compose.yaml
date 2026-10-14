@@ -80,6 +80,9 @@ services:
     depends_on:
       certificats:
         condition: service_completed_successfully
+        # Relancé quand Compose relance certificats (IP du Site changée, échéance proche) : nginx ne lit
+        # son certificat qu'au démarrage.
+        restart: true
     ports:
       - "${ARGOS_PORT_HTTPS:-443}:443"  # Le Site : UI, API (/api) et Live (/flux) sous une seule origine HTTPS
       - "${ARGOS_PORT_HTTP:-80}:8080"  # Redirection vers HTTPS ; partie publique de l'Autorité (/argos-ca.crt)

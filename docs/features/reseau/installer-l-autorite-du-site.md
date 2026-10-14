@@ -101,7 +101,7 @@ Ouvrir **`https://<IP du Site>`** : le cadenas s’affiche, sans avertissement. 
 
 Si le navigateur avertit encore :
 
-- **l’adresse n’est pas nommée** par le certificat (IP oubliée ou changée dans `MTX_WEBRTCADDITIONALHOSTS`, nom d’hôte au lieu de l’IP) : corriger `.env`, puis arrêter et relancer la stack (`docker compose down`, puis `up`) ; le certificat serveur est régénéré au démarrage, rien à refaire sur les postes ;
+- **l’adresse n’est pas nommée** par le certificat (IP oubliée ou changée dans `MTX_WEBRTCADDITIONALHOSTS`, nom d’hôte au lieu de l’IP) : corriger `.env`, puis relancer la stack (`lancer-argos.command`, ou `docker compose up -d`) ; le certificat serveur est régénéré et servi au lancement, rien à refaire sur les postes ;
 - **l’Autorité n’est pas approuvée** sur ce poste (iOS : étape 4 oubliée ; Windows : mauvais magasin) ;
 - **l’Autorité a changé** (§ 7) : l’empreinte du poste ne correspond plus à celle des journaux.
 
@@ -126,4 +126,4 @@ Le volume disparaît avec `docker compose down -v` (qui efface aussi la base), `
 - **tous les postes** avertissent de nouveau : sur chacun, supprimer l’ancienne **Autorité du Site ArgOS** et installer la nouvelle (§ 2 à § 4) ;
 - l’ancienne empreinte ne doit plus être acceptée nulle part.
 
-Le certificat serveur, lui, se renouvelle seul : **397 jours**, régénéré au démarrage s’il lui reste moins de 30 jours, ou si l’IP du Site a changé, toujours avec la même Autorité. Rien à refaire sur les postes. Il n’est régénéré qu’au lancement de la stack, et nginx (`web`) ne le relit qu’à son propre démarrage : après un changement d’IP, ou pour une stack qui tourne depuis près d’un an, l’arrêter puis la relancer (`docker compose down`, puis `up`).
+Le certificat serveur, lui, se renouvelle seul : **397 jours**, régénéré au démarrage s’il lui reste moins de 30 jours, ou si l’IP du Site a changé, toujours avec la même Autorité. Rien à refaire sur les postes. Il n’est régénéré qu’au lancement de la stack (`lancer-argos.command`, ou `docker compose up -d`), et nginx (`web`) sert le nouveau sans arrêt ni redémarrage : pour une stack qui tourne depuis près d’un an, la relancer suffit.

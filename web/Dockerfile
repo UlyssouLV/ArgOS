@@ -11,5 +11,7 @@ RUN npm run build
 # Image non privilégiée : nginx tourne en utilisateur nginx (pas root) ; Docker lui ouvre les ports < 1024.
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY argos-ca.conf /etc/nginx/argos-ca.conf
+COPY recharger-certificat.sh /docker-entrypoint.d/40-recharger-certificat.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 443 8080

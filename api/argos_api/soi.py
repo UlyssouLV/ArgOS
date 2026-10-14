@@ -24,7 +24,7 @@ CHEMIN_INSTANCE = "/api/instance"
 # Certificat présenté par le Site, monté seul par compose.yaml (sans sa clé) ; chaîne éventuelle à la suite.
 CERTIFICAT_DU_SITE = Path("/etc/argos/serveur.crt")
 # Nom demandé (SNI, Host) : le Site n'a qu'une origine HTTPS, il répond quel que soit le nom.
-NOM_DU_SITE = "localhost"
+NOM_DEMANDE = "localhost"
 _FIN_PEM = "-----END CERTIFICATE-----"
 
 
@@ -52,7 +52,7 @@ def publient_cette_api(ips: Iterable[IPv4Address], port_https: int, delai: float
     except (OSError, ValueError):
         return set()
     # Le certificat est comparé à celui du Site, octet pour octet : l'adresse demandée (passerelle Docker,
-    # IP d'un Candidat) n'est pas forcément un de ses noms, ni sa CA connue d'api.
+    # IP d'un Candidat) n'est pas forcément un de ses noms, et api ne connaît pas l'Autorité du Site.
     contexte = ssl.create_default_context()
     contexte.check_hostname = False
     contexte.verify_mode = ssl.CERT_NONE
@@ -73,10 +73,10 @@ def _jeton(
     connexion = http.client.HTTPConnection(str(ip), port_https, timeout=delai)
     try:
         with socket.create_connection((str(ip), port_https), timeout=delai) as brut:
-            connexion.sock = contexte.wrap_socket(brut, server_hostname=NOM_DU_SITE)
+            connexion.sock = contexte.wrap_socket(brut, server_hostname=NOM_DEMANDE)
         if connexion.sock.getpeercert(binary_form=True) != attendu:
             return None
-        connexion.request("GET", CHEMIN_INSTANCE, headers={"Host": NOM_DU_SITE})
+        connexion.request("GET", CHEMIN_INSTANCE, headers={"Host": NOM_DEMANDE})
         return json.load(connexion.getresponse()).get("instance")
     except (OSError, ValueError, AttributeError):
         return None
