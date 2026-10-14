@@ -12,7 +12,7 @@ from ipaddress import ip_address, ip_network
 import httpx
 import pytest
 
-from stack_compose import MACS_SIMULEES, URL_API, adresses_ip, compose, url_camera_simulee
+from stack_compose import MACS_SIMULEES, adresses_ip, client_du_site, compose, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
 
@@ -123,7 +123,7 @@ def test_candidats_portent_la_mac_fixe_de_chaque_camera_simulee(connecte):
 def test_seconde_detection_simultanee_409(administrateur):
     def detecter() -> httpx.Response:
         # Une session par appel : deux Administrateurs, deux onglets.
-        with httpx.Client(base_url=URL_API, timeout=DELAI_DETECTION_S) as client:
+        with client_du_site(DELAI_DETECTION_S) as client:
             assert se_connecter(client, **administrateur).status_code == 204
             return client.post("/api/detection")
 

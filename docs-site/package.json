@@ -6,6 +6,7 @@
     "generer-changelog": "node scripts/generer-changelog.mjs",
     "generer-feuille-de-route": "node scripts/generer-feuille-de-route.mjs",
     "generer-bugs": "node scripts/generer-bugs.mjs",
+    "generer-stats-commits": "node scripts/generer-stats-commits.mjs",
     "generer-accueil": "npm run generer-changelog && npm run generer-feuille-de-route && npm run generer-bugs",
     "prestart": "npm run generer-accueil",
     "prebuild": "npm run generer-accueil",
@@ -22,7 +23,8 @@
     "clsx": "^2.0.0",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.2",

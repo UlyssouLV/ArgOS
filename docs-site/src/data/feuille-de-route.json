@@ -1,1 +1,75 @@
-{"versions":[],"plusTard":[]}
+{
+  "versions": [
+    {
+      "version": "0.6.2",
+      "titre": "Authentification des Flux",
+      "resume": "Fermer l’accès libre aux Flux côté MediaMTX (WHEP, HLS, RTSP), pour que regarder une Caméra passe par la connexion d’ArgOS.",
+      "href": "/docs/feuille-de-route/v0.6.2",
+      "slug": "v0.6.2"
+    },
+    {
+      "version": "0.6.3",
+      "titre": "Sécurisation d’ONVIF",
+      "resume": "Que régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras : ArgOS parle ONVIF en HTTPS quand la caméra le propose, en mémorisant son…",
+      "href": "/docs/feuille-de-route/v0.6.3",
+      "slug": "v0.6.3"
+    },
+    {
+      "version": "0.6.4",
+      "titre": "Réglages image et vidéo par ONVIF",
+      "resume": "Régler depuis les Réglages de la Caméra son image (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, contre-jour…) et sa vidéo (résolution, images par seconde,…",
+      "href": "/docs/feuille-de-route/v0.6.4",
+      "slug": "v0.6.4"
+    },
+    {
+      "version": "0.7.0",
+      "titre": "Serveur installable sans le dépôt",
+      "resume": "Produire des images versionnées du serveur (api, web, pont) et un compose de prod autonome, pour installer et mettre à jour un Site sans les sources, avec ses réglages dans .env.",
+      "href": "/docs/feuille-de-route/v0.7.0",
+      "slug": "v0.7.0"
+    },
+    {
+      "version": "0.7.1",
+      "titre": "Intégration continue",
+      "resume": "Lancer les tests (/t) sur chaque PR dans GitHub Actions, stack Docker comprise, pour qu’une PR rouge ne puisse pas être fusionnée.",
+      "href": "/docs/feuille-de-route/v0.7.1",
+      "slug": "v0.7.1"
+    },
+    {
+      "version": "0.7.2",
+      "titre": "Livraison continue",
+      "resume": "Publier les images du serveur à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un serveur Linux, réseau des caméras isolé compris (VLAN,…",
+      "href": "/docs/feuille-de-route/v0.7.2",
+      "slug": "v0.7.2"
+    },
+    {
+      "version": "0.8.0",
+      "titre": "Enregistrement continu",
+      "resume": "Enregistrer sur disque, sans réencodage, le Flux des Caméras choisies : MediaMTX enregistre en segments, l’API le pilote, un interrupteur par Caméra dans l’Administration l’active…",
+      "href": "/docs/feuille-de-route/v0.8.0",
+      "slug": "v0.8.0"
+    },
+    {
+      "version": "0.8.1",
+      "titre": "Relecture et réglages de l’enregistrement",
+      "resume": "Relire les enregistrements d’une Caméra depuis l’UI (choisir un moment, lire), et régler l’enregistrement : durée de conservation, place disque, plages horaires.",
+      "href": "/docs/feuille-de-route/v0.8.1",
+      "slug": "v0.8.1"
+    },
+    {
+      "version": "1.0.0",
+      "titre": "Fil rouge Site → Live RTSP",
+      "resume": "À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et…",
+      "href": "/docs/feuille-de-route/v1.0.0",
+      "slug": "v1.0.0"
+    }
+  ],
+  "plusTard": [
+    "Réencodage H.265 → H.264 à la demande",
+    "Postes de surveillance",
+    "Configuration initiale du Site",
+    "Chiffrement des identifiants RTSP",
+    "Accès distant par VPN",
+    "Détection de Flux figé ou rejoué"
+  ]
+}

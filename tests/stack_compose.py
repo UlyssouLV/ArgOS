@@ -3,7 +3,10 @@
 Importé par les `conftest.py` de `tests/api/` et `tests/web/` (sans dépendance : stdlib, pytest, httpx).
 """
 
+import functools
 import os
+import socket
+import ssl
 import subprocess
 import time
 from pathlib import Path
@@ -14,7 +17,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # La stack des tests porte la simulation : Caméras simulées superposées à la stack de prod.
 FICHIERS_COMPOSE = ("compose.yaml", "compose.simulation.yaml")
-URL_API = "http://localhost:8000"
+# L'origine unique du Site (docs/adr/0005-…) : UI, API (/api) et Live (/flux), en HTTPS.
+URL_SITE = "https://localhost"
 DELAI_PRET_S = 120
 CLES_ADMINISTRATEUR = ("ARGOS_IDENTIFIANT", "ARGOS_MOT_DE_PASSE")
 # Délai d'expiration d'un Aperçu sans renouvellement, raccourci pour les tests (2 minutes en prod).
@@ -71,9 +75,34 @@ def _lire_env() -> dict[str, str]:
     return valeurs
 
 
+@functools.cache
+def autorite_du_site() -> str:
+    """Partie publique de l'Autorité du Site (PEM), lue dans son volume par le service `certificats`."""
+    return compose(
+        "run", "--rm", "--no-deps", "-T", "--entrypoint", "cat", "certificats", "/autorite/autorite.crt"
+    ).stdout
+
+
+def contexte_tls() -> ssl.SSLContext:
+    """Ne fait confiance qu'à l'Autorité du Site : le certificat présenté par le Site est toujours vérifié."""
+    return ssl.create_default_context(cadata=autorite_du_site())
+
+
+def certificat_presente(hote: str = "localhost") -> bytes:
+    """Certificat serveur (DER) présenté par l'origine du Site, après vérification contre l'Autorité."""
+    with socket.create_connection((hote, 443), timeout=5) as brut:
+        with contexte_tls().wrap_socket(brut, server_hostname=hote) as tls:
+            return tls.getpeercert(binary_form=True)
+
+
+def client_du_site(timeout: float = 10) -> httpx.Client:
+    """Client HTTP de l'origine du Site, comme un navigateur qui a installé l'Autorité."""
+    return httpx.Client(base_url=URL_SITE, timeout=timeout, verify=contexte_tls())
+
+
 def _repond(url: str) -> bool:
     try:
-        return httpx.get(url, timeout=5).status_code == 200
+        return httpx.get(url, timeout=5, verify=contexte_tls()).status_code == 200
     except httpx.TransportError:
         return False
 
@@ -87,12 +116,17 @@ def attendre(url: str) -> None:
 
 
 def attendre_api() -> None:
-    attendre(f"{URL_API}/api/docs")
+    attendre(f"{URL_SITE}/api/docs")
 
 
 def redemarrer_api() -> None:
     compose("restart", "api")
     attendre_api()
+
+
+def hotes_declares() -> list[str]:
+    """IP (ou noms) du Site sur le réseau local, déclarées dans `.env` : nommées par le certificat serveur."""
+    return [hote.strip() for hote in _lire_env().get("MTX_WEBRTCADDITIONALHOSTS", "").split(",") if hote.strip()]
 
 
 def identifiants_administrateur() -> dict[str, str]:

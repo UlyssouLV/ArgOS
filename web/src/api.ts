@@ -1,7 +1,5 @@
-// L'API est sur le même hôte que la page (localhost ou IP du réseau local), sur son propre port :
+// L'API est servie sous /api par la même origine HTTPS que la page (docs/adr/0005-…) : chemins relatifs,
 // le même build marche quelle que soit l'adresse ouverte dans le navigateur.
-const PORT_API = import.meta.env.VITE_ARGOS_PORT_API || "8000";
-export const URL_API = `${window.location.protocol}//${window.location.hostname}:${PORT_API}`;
 
 /** Session absente, expirée ou révoquée : l'API a répondu 401. */
 export class NonConnecte extends Error {}
@@ -14,9 +12,8 @@ export function surNonConnecte(rappel: () => void): void {
 }
 
 export function requete(chemin: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${URL_API}${chemin}`, {
+  return fetch(chemin, {
     ...init,
-    credentials: "include", // le cookie de session passe d'une origine à l'autre (CORS avec credentials)
     headers: init.body === undefined ? init.headers : { "Content-Type": "application/json", ...init.headers },
   });
 }

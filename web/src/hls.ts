@@ -3,7 +3,8 @@
 
 import Hls from "hls.js";
 
-const PORT_HLS = "8888";
+/** HLS relayé par l'origine du Site vers MediaMTX, sans mise en tampon (docs/adr/0005-…). */
+const PREFIXE_HLS = "/flux/hls";
 /** Type MIME d'un Flux H.265 en fMP4 (profil Main), tel que demandé au navigateur avant de lire. */
 const TYPE_HEVC = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
 /** Code d'erreur de la balise vidéo pour un décodage impossible (MediaError.MEDIA_ERR_DECODE). */
@@ -12,9 +13,9 @@ const ERREUR_DECODAGE = 3;
 /** Pourquoi la lecture s'arrête : le navigateur ne décode pas le HEVC, ou le Flux ne vient pas. */
 export type EchecHls = "codec" | "indisponible";
 
-/** MediaMTX est sur le même hôte que la page, comme l'API. */
+/** Sous la même origine que la page, comme l'API. */
 export function urlHls(cheminFlux: string): string {
-  return `${window.location.protocol}//${window.location.hostname}:${PORT_HLS}/${cheminFlux}/index.m3u8`;
+  return `${PREFIXE_HLS}/${cheminFlux}/index.m3u8`;
 }
 
 /** hls.js (Media Source Extensions) d'abord ; HLS natif (Safari sur iPhone) sinon. */

@@ -1,61 +1,93 @@
-# ArgOS
+# Glossaire
 
-Plateforme de vidéosurveillance IP auto-hébergée : un Site connaît des Caméras et en montre les Flux.
+Vocabulaire du projet. Une seule source pour les agents, le code-review et le site de documentation. Les termes soulignés en pointillés dans les fiches renvoient ici.
 
-## Language
+## Site {#site}
 
-**Site** :
 Une installation d'ArgOS : les Caméras qu'elle connaît et l'Administrateur qui la gère.
-_Avoid_ : instance, serveur, déploiement
 
-**Administrateur** :
+À éviter : instance, serveur, déploiement.
+
+## Administrateur {#administrateur}
+
 Personne qui se connecte au Site avec le compte local pour gérer les Caméras.
-_Avoid_ : admin, utilisateur, opérateur
 
-**Appareil** :
+À éviter : admin, utilisateur, opérateur.
+
+## Appareil {#appareil}
+
 Matériel réseau reconnu par son adresse MAC, qui porte une ou plusieurs Caméras.
-_Avoid_ : device, équipement, hôte
 
-**Caméra** :
+À éviter : device, équipement, hôte.
+
+## Caméra {#camera}
+
 Flux d’un Appareil connu du Site, identifié par une URL RTSP.
-_Avoid_ : Device, capteur, stream
 
-**Incrustation** :
+À éviter : Device, capteur, stream.
+
+## Incrustation {#incrustation}
+
 Texte que l’Appareil dessine lui-même dans l’image d’une Caméra avant de l’encoder (le nom, la date et heure).
-_Avoid_ : OSD, overlay, filigrane
 
-**Horloge** :
+À éviter : OSD, overlay, filigrane.
+
+## Horloge {#horloge}
+
 Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes ses Caméras.
-_Avoid_ : heure système
 
-**Réglages de la Caméra** :
+À éviter : heure système.
+
+## Réglages de la Caméra {#reglages-de-la-camera}
+
 Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations et l’Horloge de son Appareil.
-_Avoid_ : configuration, paramètres
 
-**Caméra désactivée** :
+À éviter : configuration, paramètres.
+
+## Caméra désactivée {#camera-desactivee}
+
 Caméra que le Site connaît encore mais ne surveille plus.
-_Avoid_ : Caméra archivée, Caméra supprimée
 
-**Flux** :
+À éviter : Caméra archivée, Caméra supprimée.
+
+## Flux {#flux}
+
 La vidéo RTSP que produit une Caméra.
-_Avoid_ : Stream, feed
 
-**Caméra simulée** :
+À éviter : Stream, feed.
+
+## Caméra simulée {#camera-simulee}
+
 Caméra de dev qui diffuse en boucle une vidéo de dev, en remplacement d’un appareil réel.
-_Avoid_ : Flux simulé, fausse caméra, mock
 
-**Détection** :
+À éviter : Flux simulé, fausse caméra, mock.
+
+## Détection {#detection}
+
 Action, lancée par l’Administrateur, qui cherche sur le réseau du Site les appareils pouvant devenir des Caméras.
-_Avoid_ : scan, découverte
 
-**Candidat** :
+À éviter : scan, découverte.
+
+## Candidat {#candidat}
+
 Hôte trouvé par une Détection, ou saisi par son IP, qui répond en RTSP et n’est pas (encore) une Caméra du Site.
-_Avoid_ : appareil détecté, device
 
-**Aperçu** :
+À éviter : appareil détecté, device.
+
+## Aperçu {#apercu}
+
 Flux d’un Candidat montré dans l’Administration pendant son ajout, avant qu’il soit une Caméra.
-_Avoid_ : preview, prévisualisation
 
-**Live** :
+À éviter : preview, prévisualisation.
+
+## Live {#live}
+
 La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à la suivante.
-_Avoid_ : mur d'images, mosaïque, visionneuse
+
+À éviter : mur d'images, mosaïque, visionneuse.
+
+## Autorité du Site {#autorite-du-site}
+
+Certificat qui permet à un poste de reconnaître le Site en HTTPS ; installée une fois par poste.
+
+À éviter : CA, certificat racine, certificat auto-signé.

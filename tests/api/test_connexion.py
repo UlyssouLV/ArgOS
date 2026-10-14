@@ -2,7 +2,7 @@
 
 import httpx
 
-from conftest import URL_API, attendre_api, compose
+from conftest import attendre_api, client_du_site, compose
 
 COOKIE_SESSION = "argos_session"
 
@@ -14,14 +14,18 @@ def se_connecter(client: httpx.Client, identifiant: str, mot_de_passe: str) -> h
     )
 
 
+def attributs(set_cookie: str) -> set[str]:
+    """Attributs d'un `Set-Cookie` (après le nom et la valeur), en minuscules."""
+    return {attribut.strip().lower() for attribut in set_cookie.split(";")[1:]}
+
+
 def test_bons_identifiants_ouvrent_une_session(client, administrateur):
     reponse = se_connecter(client, **administrateur)
 
     assert reponse.status_code == 204
     set_cookie = reponse.headers["set-cookie"]
     assert set_cookie.startswith(f"{COOKIE_SESSION}=")
-    assert "httponly" in set_cookie.lower()
-    assert "samesite=lax" in set_cookie.lower()
+    assert {"secure", "httponly", "samesite=lax"} <= attributs(set_cookie)
 
     moi = client.get("/api/moi")
     assert moi.status_code == 200
@@ -56,9 +60,12 @@ def test_deconnexion_revoque_la_session_cote_serveur(client, administrateur):
     se_connecter(client, **administrateur)
     jeton = client.cookies[COOKIE_SESSION]
 
-    assert client.delete("/api/session").status_code == 204
+    deconnexion = client.delete("/api/session")
+    assert deconnexion.status_code == 204
+    # Supprimé avec les mêmes attributs qu'à la pose.
+    assert {"secure", "httponly", "samesite=lax"} <= attributs(deconnexion.headers["set-cookie"])
 
-    with httpx.Client(base_url=URL_API, timeout=10) as autre:
+    with client_du_site() as autre:
         autre.cookies.set(COOKIE_SESSION, jeton)
         assert autre.get("/api/moi").status_code == 401
 

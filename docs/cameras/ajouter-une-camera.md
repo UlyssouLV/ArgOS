@@ -2,7 +2,7 @@
 
 Comprendre ce que fait ArgOS quand l’Administrateur clique sur **Ajouter**, et quoi faire quand ça bloque. Depuis la 0.4.1, l’Administrateur n’écrit plus jamais d’URL RTSP pour ajouter une Caméra : ArgOS cherche seul le Flux, demande un mot de passe ou un chemin seulement s’il en a besoin, et montre l’image avant l’ajout.
 
-Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [Reconnaître un Appareil par sa MAC](reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras) (MAC, changement d’IP, Appareil à plusieurs Caméras), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma des Flux](../dev/schema-flux.md), [HLS pour les Flux H.265](../adr/0004-hls-pour-les-flux-h265.md) (pourquoi deux transports), [Paramétrer une Caméra](parametrer-une-camera.md) (nom et heure incrustés, ONVIF).
+Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-detection.md) (d’où viennent les Candidats), [Reconnaître un Appareil par sa MAC](reseau-et-detection.md#9-reconnaître-un-appareil--mac-arp-réseau-des-caméras) (MAC, changement d’IP, Appareil à plusieurs Caméras), [sécurité](../securite.md#ajout-dune-caméra--argos-essaie-un-flux) (garde-fous de l’essai, mots de passe), [schéma du réseau et des Flux](../features/reseau/schema-flux.md), [HLS pour les Flux H.265](../adr/0004-hls-pour-les-flux-h265.md) (pourquoi deux transports), [Paramétrer une Caméra](parametrer-une-camera.md) (nom et heure incrustés, ONVIF).
 
 ## 1. Le déroulé
 
@@ -64,7 +64,7 @@ Beaucoup de caméras récentes émettent par défaut en **H.265** (HEVC). ArgOS 
 | Codec | Transport | Retard |
 |---|---|---|
 | H.264, autre ou inconnu | WebRTC (WHEP) | moins d’une seconde |
-| H.265 | LL-HLS fMP4, port `8888` | **1 à 3 s**, démarrage un peu plus lent |
+| H.265 | LL-HLS fMP4 (`/flux/hls/…`, sous l’origine HTTPS) | **1 à 3 s**, démarrage un peu plus lent |
 
 Le Flux H.265 n’est **pas réencodé** : le pont remballe les images telles quelles, et c’est le **navigateur** (souvent la puce vidéo de l’ordinateur) qui décode le HEVC. Tous ne le savent pas :
 

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from stack_compose import EXPIRATION_APERCU_S, MACS_SIMULEES, URL_API, adresses_ip, compose, redemarrer_api, url_camera_simulee
+from stack_compose import EXPIRATION_APERCU_S, MACS_SIMULEES, adresses_ip, client_du_site, compose, redemarrer_api, url_camera_simulee
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
 from test_detection import ip_de
@@ -272,7 +272,7 @@ def test_ip_privee_sans_camera_injoignable(connecte):
 def test_essai_simultane_409(administrateur):
     def essayer() -> httpx.Response:
         # Une session par appel : deux onglets.
-        with httpx.Client(base_url=URL_API, timeout=DELAI_ESSAI_S) as client:
+        with client_du_site(DELAI_ESSAI_S) as client:
             assert se_connecter(client, **administrateur).status_code == 204
             return client.post("/api/essai", json={"ip": IP_SANS_CAMERA})
 

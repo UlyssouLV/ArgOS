@@ -1,6 +1,10 @@
+import {createRequire} from 'node:module';
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+
+const require = createRequire(import.meta.url);
+const remarkGlossaire = require('./src/remark/glossaire.cjs');
 
 // Placeholders remplacés par scaffold-docs-site.sh : UlyssouLV ArgOS ArgOS Documentation du projet — produit, features et décisions
 const OWNER = 'UlyssouLV';
@@ -38,6 +42,7 @@ const config: Config = {
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
           numberPrefixParser: false,
+          beforeDefaultRemarkPlugins: [remarkGlossaire],
           exclude: [
             'suivi-avancement/**',
             'specs/**',
@@ -95,8 +100,8 @@ const config: Config = {
           label: 'ADR',
         },
         {
-          type: 'doc',
-          docId: 'glossaire',
+          type: 'docSidebar',
+          sidebarId: 'glossaireSidebar',
           position: 'left',
           label: 'Glossaire',
         },
