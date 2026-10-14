@@ -12,7 +12,7 @@ import time
 import httpx
 import pytest
 
-from stack_compose import URL_SITE, autorite_du_site, compose, contexte_tls, hotes_declares
+from stack_compose import URL_SITE, autorite_du_site, certificat_presente, compose, contexte_tls, hotes_declares
 from test_cameras import connecte, creer_camera  # noqa: F401 (fixtures)
 from test_etat_cameras import url_simulee
 
@@ -95,7 +95,7 @@ def test_la_cle_de_l_autorite_n_est_pas_dans_web():
     assert trouve == ""
 
 
-def test_api_ne_recoit_que_la_partie_publique_de_l_autorite():
+def test_api_ne_recoit_que_le_certificat_presente_par_le_site():
     conteneur = compose("ps", "-q", "api").stdout.strip()
     montages = json.loads(
         subprocess.run(
@@ -103,10 +103,12 @@ def test_api_ne_recoit_que_la_partie_publique_de_l_autorite():
         ).stdout
     )
     lisibles = compose("exec", "-T", "api", "sh", "-c", "ls /etc/argos").stdout.split()
+    presente = compose("exec", "-T", "api", "cat", "/etc/argos/serveur.crt").stdout
 
     assert not any(m.get("Name", "").endswith("_autorite") for m in montages), montages
     assert all(not m["RW"] for m in montages), montages
-    assert lisibles == ["argos-ca.crt"]
+    assert lisibles == ["serveur.crt"]
+    assert ssl.PEM_cert_to_DER_cert(presente) == certificat_presente()
 
 
 def test_l_ui_est_servie_par_l_origine_https(client):

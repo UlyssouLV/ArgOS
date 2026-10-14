@@ -23,13 +23,14 @@ services:
       certificats:
         condition: service_completed_successfully
     volumes:
-      # Partie publique de l'Autorité seule : la Détection vérifie l'hôte du Site en HTTPS (argos_api/soi.py).
+      # Certificat présenté par le Site seul, sans clé : la Détection reconnaît l'hôte du Site en HTTPS
+      # (argos_api/soi.py). Un dossier, pas le fichier : un certificat régénéré s'y voit sans redémarrer api.
       - type: volume
         source: certificats-serveur
-        target: /etc/argos/argos-ca.crt
+        target: /etc/argos
         read_only: true
         volume:
-          subpath: argos-ca.crt
+          subpath: public
     # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.
@@ -59,10 +60,19 @@ services:
     environment:
       # Noms du certificat serveur, en plus de localhost et 127.0.0.1 : IP du Site sur le réseau local.
       MTX_WEBRTCADDITIONALHOSTS: ${MTX_WEBRTCADDITIONALHOSTS:-}
+      # Certificat de l'Administrateur à servir tel quel, sans Autorité du Site : voir .env.example.
+      ARGOS_CERTIFICAT_DOSSIER: ${ARGOS_CERTIFICAT_DOSSIER:-}
     volumes:
       # Clé de l'Autorité : montée ici seulement, jamais dans web.
       - autorite:/autorite
       - certificats-serveur:/certificats-serveur
+      # Dossier du certificat fourni ; sans lui, ./certificats, ignoré. Jamais créé s'il n'existe pas.
+      - type: bind
+        source: ${ARGOS_CERTIFICAT_DOSSIER:-./certificats}
+        target: /certificat-fourni
+        read_only: true
+        bind:
+          create_host_path: false
 
   web:
     build: ./web

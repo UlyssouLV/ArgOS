@@ -7,11 +7,16 @@
 #   de MTX_WEBRTCADDITIONALHOSTS (IP du Site sur le réseau local) ; il est régénéré, avec la même Autorité,
 #   s'il manque, si ses noms diffèrent de ceux attendus (nouvelle IP du Site) ou s'il lui reste moins de
 #   30 jours, et gardé sinon ;
-# - web ne reçoit que le certificat serveur, sa clé et la partie publique de l'Autorité (argos-ca.crt).
+# - web ne reçoit que le certificat serveur, sa clé et la partie publique de l'Autorité (argos-ca.crt) ;
+#   api, que le certificat serveur (public/serveur.crt), pour reconnaître l'hôte du Site (argos_api/soi.py).
+# Avec ARGOS_CERTIFICAT_DOSSIER (certificat de l'Administrateur : nom de domaine, VPN), certificat.crt et cle.key
+# de ce dossier sont servis tels quels : ni Autorité du Site, ni génération, ni renouvellement, ni argos-ca.crt.
 set -eu
 
 AUTORITE=/autorite
 SERVEUR=/certificats-serveur
+# Dossier ARGOS_CERTIFICAT_DOSSIER, monté en lecture seule par compose.yaml.
+FOURNI=/certificat-fourni
 # Utilisateur de nginx dans l'image de web (nginx-unprivileged) : seul lecteur de la clé du serveur.
 UTILISATEUR_WEB=101
 # Le certificat serveur est régénéré quand il lui reste moins que ce délai (30 jours).
@@ -61,6 +66,35 @@ raison_de_regenerer() {
   fi
 }
 
+# Installe pour web un certificat serveur et sa clé (`<source> <clé source>`), et le certificat seul pour api.
+installer_serveur() {
+  mkdir -p "$SERVEUR/public"
+  cp "$1" "$SERVEUR/serveur.crt.tmp"
+  cp "$1" "$SERVEUR/public/serveur.crt.tmp"
+  cp "$2" "$SERVEUR/serveur.key.tmp"
+  chown "$UTILISATEUR_WEB:$UTILISATEUR_WEB" "$SERVEUR/serveur.key.tmp"
+  chmod 400 "$SERVEUR/serveur.key.tmp"
+  chmod 644 "$SERVEUR/serveur.crt.tmp" "$SERVEUR/public/serveur.crt.tmp"
+  mv "$SERVEUR/serveur.key.tmp" "$SERVEUR/serveur.key"
+  mv "$SERVEUR/serveur.crt.tmp" "$SERVEUR/serveur.crt"
+  mv "$SERVEUR/public/serveur.crt.tmp" "$SERVEUR/public/serveur.crt"
+}
+
+if [ -n "${ARGOS_CERTIFICAT_DOSSIER:-}" ]; then
+  for fichier in certificat.crt cle.key; do
+    if [ ! -s "$FOURNI/$fichier" ]; then
+      echo "ARGOS_CERTIFICAT_DOSSIER ($ARGOS_CERTIFICAT_DOSSIER) : $fichier manquant ou vide." >&2
+      echo "Y déposer certificat.crt (certificat du Site, chaîne comprise) et cle.key (sa clé), ou vider la variable dans .env." >&2
+      exit 1
+    fi
+  done
+  installer_serveur "$FOURNI/certificat.crt" "$FOURNI/cle.key"
+  # Pas d'Autorité du Site à installer sur les postes : /argos-ca.crt répond 404.
+  rm -f "$SERVEUR/argos-ca.crt"
+  echo "Certificat fourni par l'Administrateur ($ARGOS_CERTIFICAT_DOSSIER) : servi tel quel, sans Autorité du Site ni renouvellement."
+  exit 0
+fi
+
 if [ ! -s "$AUTORITE/autorite.key" ] || [ ! -s "$AUTORITE/autorite.crt" ]; then
   echo "Autorité du Site absente : création (10 ans)."
   umask 077
@@ -82,24 +116,23 @@ if [ -n "$raison" ]; then
   san=$(noms_du_serveur)
   echo "Certificat serveur ($raison) : création (397 jours) pour $san."
   umask 077
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$SERVEUR/serveur.key.tmp"
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$SERVEUR/nouveau.key"
   openssl req -x509 -new -sha256 -days 397 \
-    -key "$SERVEUR/serveur.key.tmp" \
+    -key "$SERVEUR/nouveau.key" \
     -CA "$AUTORITE/autorite.crt" -CAkey "$AUTORITE/autorite.key" \
     -subj "/O=ArgOS/CN=ArgOS" \
     -addext "basicConstraints=critical,CA:FALSE" \
     -addext "keyUsage=critical,digitalSignature" \
     -addext "extendedKeyUsage=serverAuth" \
     -addext "subjectAltName=$san" \
-    -out "$SERVEUR/serveur.crt.tmp"
+    -out "$SERVEUR/nouveau.crt"
   umask 022
-  chown "$UTILISATEUR_WEB:$UTILISATEUR_WEB" "$SERVEUR/serveur.key.tmp"
-  chmod 400 "$SERVEUR/serveur.key.tmp"
-  chmod 644 "$SERVEUR/serveur.crt.tmp"
-  mv "$SERVEUR/serveur.key.tmp" "$SERVEUR/serveur.key"
-  mv "$SERVEUR/serveur.crt.tmp" "$SERVEUR/serveur.crt"
+  installer_serveur "$SERVEUR/nouveau.crt" "$SERVEUR/nouveau.key"
+  rm "$SERVEUR/nouveau.crt" "$SERVEUR/nouveau.key"
 else
   echo "Certificat serveur gardé : mêmes noms, plus de 30 jours de validité."
+  # Gardé, recopié tel quel : le dossier public d'api manque dans un volume créé avant lui.
+  installer_serveur "$SERVEUR/serveur.crt" "$SERVEUR/serveur.key"
 fi
 
 cp "$AUTORITE/autorite.crt" "$SERVEUR/argos-ca.crt.tmp"

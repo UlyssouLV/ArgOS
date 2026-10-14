@@ -1,7 +1,8 @@
 """Service `certificats` (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md).
 
 Lancé comme dans la stack, sur des dossiers temporaires à la place de ses deux volumes : `autorite` (Autorité
-du Site, clé comprise) et `certificats-serveur` (ce que `web` lit).
+du Site, clé comprise) et `certificats-serveur` (ce que `web` lit), et du dossier d'un certificat fourni par
+l'Administrateur (`ARGOS_CERTIFICAT_DOSSIER`).
 """
 
 import subprocess
@@ -22,6 +23,7 @@ DELAI_S = 60
 
 @dataclass
 class Lancement:
+    code: int
     sortie: str
     autorite: Path
     serveur: Path
@@ -40,21 +42,27 @@ def lancer(image, tmp_path: Path):
     autorite.mkdir()
     serveur.mkdir()
 
-    def _lancer(hotes: str = "") -> Lancement:
+    def _lancer(hotes: str = "", fourni: Path | None = None, *, echec: bool = False) -> Lancement:
+        """`fourni` : dossier du certificat de l'Administrateur, monté comme le fait compose.yaml."""
+        options_fourni = (
+            ["-v", f"{fourni}:/certificat-fourni:ro", "-e", f"ARGOS_CERTIFICAT_DOSSIER={fourni}"] if fourni else []
+        )
         proc = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "-v", f"{autorite}:/autorite",
                 "-v", f"{serveur}:/certificats-serveur",
                 "-e", f"MTX_WEBRTCADDITIONALHOSTS={hotes}",
+                *options_fourni,
                 image,
             ],
             capture_output=True,
             text=True,
             timeout=DELAI_S,
         )
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        return Lancement(proc.stdout + proc.stderr, autorite, serveur)
+        lancement = Lancement(proc.returncode, proc.stdout + proc.stderr, autorite, serveur)
+        assert (proc.returncode != 0) == echec, lancement.sortie
+        return lancement
 
     return _lancer
 
@@ -92,9 +100,17 @@ def test_premier_lancement_cree_l_autorite_et_un_certificat_serveur_signe_par_el
 def test_web_ne_recoit_que_la_partie_publique_de_l_autorite(lancer):
     lancement = lancer()
 
-    assert sorted(p.name for p in lancement.serveur.iterdir()) == ["argos-ca.crt", "serveur.crt", "serveur.key"]
+    assert sorted(p.name for p in lancement.serveur.iterdir()) == ["argos-ca.crt", "public", "serveur.crt", "serveur.key"]
     assert (lancement.serveur / "argos-ca.crt").read_bytes() == (lancement.autorite / "autorite.crt").read_bytes()
     assert b"PRIVATE KEY" not in (lancement.serveur / "argos-ca.crt").read_bytes()
+
+
+def test_api_ne_recoit_que_le_certificat_presente_par_le_site(lancer):
+    lancement = lancer()
+
+    public = lancement.serveur / "public"
+    assert [p.name for p in public.iterdir()] == ["serveur.crt"]
+    assert (public / "serveur.crt").read_bytes() == (lancement.serveur / "serveur.crt").read_bytes()
 
 
 def test_sans_ip_declaree_le_certificat_serveur_ne_couvre_que_cette_machine(lancer):
@@ -232,3 +248,106 @@ def test_certificat_serveur_a_qui_il_reste_plus_de_30_jours_est_garde(lancer, do
     lancement = lancer()
 
     assert certificat(lancement.serveur / "serveur.crt").serial_number == ancien.serial_number
+
+
+def autorite_de_test() -> tuple[ec.EllipticCurvePrivateKey, x509.Certificate]:
+    """CA de test, étrangère à ArgOS : celle d'un nom de domaine ou d'un VPN de l'Administrateur."""
+    cle = ec.generate_private_key(ec.SECP256R1())
+    sujet = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "CA de test de l'Administrateur")])
+    maintenant = datetime.now(UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(sujet)
+        .issuer_name(sujet)
+        .public_key(cle.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(maintenant - timedelta(days=1))
+        .not_valid_after(maintenant + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(cle, hashes.SHA256())
+    )
+    return cle, cert
+
+
+def certificat_fourni(dossier: Path) -> tuple[bytes, bytes]:
+    """`certificat.crt` et `cle.key` de l'Administrateur, signés par une CA de test ; renvoie leurs octets."""
+    cle_ca, ca = autorite_de_test()
+    cle = ec.generate_private_key(ec.SECP256R1())
+    maintenant = datetime.now(UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "argos.example.org")]))
+        .issuer_name(ca.subject)
+        .public_key(cle.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(maintenant - timedelta(days=1))
+        # Expire bientôt : un certificat fourni n'est jamais renouvelé par ArgOS.
+        .not_valid_after(maintenant + timedelta(days=10))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName("argos.example.org")]), critical=False)
+        .sign(cle_ca, hashes.SHA256())
+    )
+    pem = serialization.Encoding.PEM
+    # Chaîne complète, comme la livre une CA : le certificat puis la CA.
+    octets_cert = cert.public_bytes(pem) + ca.public_bytes(pem)
+    octets_cle = cle.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    dossier.mkdir(exist_ok=True)
+    (dossier / "certificat.crt").write_bytes(octets_cert)
+    (dossier / "cle.key").write_bytes(octets_cle)
+    return octets_cert, octets_cle
+
+
+def test_certificat_fourni_est_copie_tel_quel_pour_web(lancer, tmp_path: Path):
+    octets_cert, octets_cle = certificat_fourni(tmp_path / "fourni")
+
+    lancement = lancer("192.168.1.20", tmp_path / "fourni")
+
+    assert (lancement.serveur / "serveur.crt").read_bytes() == octets_cert
+    assert (lancement.serveur / "serveur.key").read_bytes() == octets_cle
+    assert (lancement.serveur / "public" / "serveur.crt").read_bytes() == octets_cert
+
+
+def test_certificat_fourni_sans_autorite_du_site(lancer, tmp_path: Path):
+    certificat_fourni(tmp_path / "fourni")
+
+    lancement = lancer(fourni=tmp_path / "fourni")
+
+    assert list(lancement.autorite.iterdir()) == []
+    assert not (lancement.serveur / "argos-ca.crt").exists()
+    assert "Empreinte SHA-256 de l'Autorité" not in lancement.sortie
+
+
+def test_certificat_fourni_remplace_l_autorite_d_un_lancement_precedent(lancer, tmp_path: Path):
+    premier = lancer()
+    autorite = (premier.autorite / "autorite.crt").read_bytes()
+    octets_cert, _ = certificat_fourni(tmp_path / "fourni")
+
+    second = lancer(fourni=tmp_path / "fourni")
+
+    assert (second.serveur / "serveur.crt").read_bytes() == octets_cert
+    assert not (second.serveur / "argos-ca.crt").exists()
+    # L'Autorité reste dans son volume : sans la variable, le Site la sert de nouveau, rien à réinstaller.
+    assert (second.autorite / "autorite.crt").read_bytes() == autorite
+
+
+def test_sans_la_variable_l_autorite_du_site_revient_apres_un_certificat_fourni(lancer, tmp_path: Path):
+    certificat_fourni(tmp_path / "fourni")
+    lancer(fourni=tmp_path / "fourni")
+
+    lancement = lancer()
+
+    autorite = certificat(lancement.autorite / "autorite.crt")
+    certificat(lancement.serveur / "serveur.crt").verify_directly_issued_by(autorite)
+    assert (lancement.serveur / "argos-ca.crt").read_bytes() == (lancement.autorite / "autorite.crt").read_bytes()
+
+
+@pytest.mark.parametrize("manquant", ["certificat.crt", "cle.key"])
+def test_certificat_fourni_incomplet_fait_echouer_avec_un_message_clair(lancer, tmp_path: Path, manquant):
+    certificat_fourni(tmp_path / "fourni")
+    (tmp_path / "fourni" / manquant).unlink()
+
+    lancement = lancer(fourni=tmp_path / "fourni", echec=True)
+
+    assert manquant in lancement.sortie
+    assert "ARGOS_CERTIFICAT_DOSSIER" in lancement.sortie
+    assert str(tmp_path / "fourni") in lancement.sortie
+    assert list(lancement.serveur.iterdir()) == []
