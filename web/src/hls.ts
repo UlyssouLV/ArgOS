@@ -3,7 +3,9 @@
 
 import Hls from "hls.js";
 
-/** HLS relayé par l'origine du Site vers MediaMTX, sans mise en tampon (docs/adr/0005-…). */
+import { signalerNonConnecte } from "./api";
+
+/** HLS relayé par l'origine du Site vers MediaMTX, sans mise en tampon (docs/adr/0005-…), après la session (docs/adr/0006-…). */
 const PREFIXE_HLS = "/flux/hls";
 /** Type MIME d'un Flux H.265 en fMP4 (profil Main), tel que demandé au navigateur avant de lire. */
 const TYPE_HEVC = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
@@ -34,6 +36,7 @@ export function hevcDecodable(video: HTMLVideoElement): boolean {
  *
  * `surEchec` est appelée sur une erreur fatale : `codec` si le décodage échoue,
  * `indisponible` pour une erreur réseau ou de playlist. `signal` ferme le lecteur : plus aucune requête après.
+ * Une playlist ou un segment refusé (401) renvoie à la connexion avec hls.js ; le HLS natif ne donne pas le code HTTP.
  */
 export function lireHls(url: string, video: HTMLVideoElement, surEchec: (echec: EchecHls) => void, signal: AbortSignal): void {
   signal.throwIfAborted();
@@ -56,7 +59,8 @@ export function lireHls(url: string, video: HTMLVideoElement, surEchec: (echec: 
 
   const hls = new Hls({ lowLatencyMode: true });
   hls.on(Hls.Events.ERROR, (_evenement, donnees) => {
-    if (donnees.fatal) surEchec(donnees.type === Hls.ErrorTypes.MEDIA_ERROR ? "codec" : "indisponible");
+    if (donnees.response?.code === 401) signalerNonConnecte();
+    else if (donnees.fatal) surEchec(donnees.type === Hls.ErrorTypes.MEDIA_ERROR ? "codec" : "indisponible");
   });
   signal.addEventListener(
     "abort",
