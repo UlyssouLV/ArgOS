@@ -1,6 +1,6 @@
 #!/bin/bash
-# Ouvre une nouvelle session Claude Code sur /implement #<n>, hors du terminal courant.
-# Usage (depuis la racine du repo) : bash agents/scripts/enchainer-implement.sh <n>
+# Ouvre une conversation Claude Code vierge sur /implement #<n> (nouveau Terminal.app).
+# Ne ferme / clear pas la session courante. Usage : bash agents/scripts/enchainer-implement.sh <n>
 # macOS + Terminal.app. Ne remplace pas /implement dans Cursor Agent chat.
 set -euo pipefail
 
