@@ -17,6 +17,8 @@ from test_cameras import connecte, creer_camera  # noqa: F401 (fixtures)
 from test_etat_cameras import url_simulee
 
 PORTS_HTTP = (80, 8080)
+# Anciens ports en clair de l'API, du HLS et de WHEP : plus publiés, seule l'origine HTTPS y mène.
+PORTS_FERMES = (8000, 8888, 8889)
 TYPE_AUTORITE = "application/x-x509-ca-cert"
 # Un tour de réconciliation du pont (10 s) + démarrage du Flux à la demande, avec de la marge.
 DELAI_RELAIS_S = 45
@@ -93,6 +95,20 @@ def test_la_cle_de_l_autorite_n_est_pas_dans_web():
     assert trouve == ""
 
 
+def test_api_ne_recoit_que_la_partie_publique_de_l_autorite():
+    conteneur = compose("ps", "-q", "api").stdout.strip()
+    montages = json.loads(
+        subprocess.run(
+            ["docker", "inspect", "-f", "{{json .Mounts}}", conteneur], capture_output=True, text=True, check=True
+        ).stdout
+    )
+    lisibles = compose("exec", "-T", "api", "sh", "-c", "ls /etc/argos").stdout.split()
+
+    assert not any(m.get("Name", "").endswith("_autorite") for m in montages), montages
+    assert all(not m["RW"] for m in montages), montages
+    assert lisibles == ["argos-ca.crt"]
+
+
 def test_l_ui_est_servie_par_l_origine_https(client):
     reponse = client.get("/live")
 
@@ -102,6 +118,24 @@ def test_l_ui_est_servie_par_l_origine_https(client):
 
 def test_l_api_est_servie_sous_api_par_l_origine_https(client):
     assert client.get("/api/moi").status_code == 401
+
+
+@pytest.mark.parametrize("port", PORTS_FERMES)
+def test_les_anciens_ports_en_clair_ne_repondent_plus(port):
+    with pytest.raises(OSError):
+        socket.create_connection(("localhost", port), timeout=2).close()
+
+
+@pytest.mark.parametrize("origine", ["https://localhost", "http://localhost:5173", "http://site-tiers.example"])
+def test_aucune_reponse_de_l_api_ne_porte_d_en_tete_cors(client, origine):
+    simple = client.get("/api/moi", headers={"Origin": origine})
+    preflight = client.options(
+        "/api/session",
+        headers={"Origin": origine, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type"},
+    )
+
+    assert "access-control-allow-origin" not in simple.headers
+    assert "access-control-allow-origin" not in preflight.headers
 
 
 def test_whep_accepte_une_offre_sdp_par_l_origine_https_puis_ferme_la_session(client, creer_camera):

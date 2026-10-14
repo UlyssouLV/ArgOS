@@ -61,6 +61,10 @@ def base_vide(url_base: str) -> None:
     moteur.dispose()
 
 
+# L'API vue par web, sous l'origine HTTPS du Site : le cookie de session (Secure) revient à chaque requête.
+URL_SITE = "https://testserver"
+
+
 @pytest.fixture
 def horloge() -> HorlogeFigee:
     return HorlogeFigee()
@@ -76,7 +80,7 @@ def demarrer(url_base: str, horloge: HorlogeFigee) -> Callable[..., TestClient]:
             ARGOS_MOT_DE_PASSE=mot_de_passe,
             ARGOS_URL_BASE=url_base,
         )
-        return TestClient(creer_app(configuration, horloge))
+        return TestClient(creer_app(configuration, horloge), base_url=URL_SITE)
 
     return _demarrer
 

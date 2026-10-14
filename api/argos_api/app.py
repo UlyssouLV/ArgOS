@@ -11,7 +11,6 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
@@ -187,16 +186,8 @@ def creer_app(
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
-    # L'UI est servie sur une autre origine (port 8080, ou 5173 en dev) : CORS avec credentials,
-    # jamais `*`, seulement les origines exactes de la configuration (docs/securite.md).
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=configuration.liste_origines_autorisees(),
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type"],
-    )
-    # Ajouté en dernier, donc le plus extérieur : refuse avant CORS, routage et session.
+    # L'UI et l'API partagent l'origine HTTPS servie par web (ADR 0005) : pas de CORS.
+    # Refuse avant routage et session.
     adresses_reseau_cameras = configuration.adresses_reseau_cameras()
     app.add_middleware(SortieSeulement, adresses=adresses_reseau_cameras)
 
@@ -230,7 +221,7 @@ def creer_app(
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Identifiant ou mot de passe incorrect.")
         reponse = Response(status_code=status.HTTP_204_NO_CONTENT)
         jeton = sessions.ouvrir(base, configuration.mot_de_passe, horloge())
-        reponse.set_cookie(COOKIE_SESSION, jeton, httponly=True, samesite="lax")
+        reponse.set_cookie(COOKIE_SESSION, jeton, secure=True, httponly=True, samesite="lax")
         return reponse
 
     @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)
@@ -238,7 +229,7 @@ def creer_app(
         if jeton is not None:
             sessions.fermer(base, jeton)
         reponse = Response(status_code=status.HTTP_204_NO_CONTENT)
-        reponse.delete_cookie(COOKIE_SESSION, httponly=True, samesite="lax")
+        reponse.delete_cookie(COOKIE_SESSION, secure=True, httponly=True, samesite="lax")
         return reponse
 
     @app.get("/api/moi")
@@ -269,7 +260,9 @@ def creer_app(
         return soi.adresses_des_conteneurs([hote_pont]) | adresses_reseau_cameras
 
     app.include_router(
-        _routes_detection(configuration.reglage_detection(), adresses_d_argos, base, administrateur_connecte)
+        _routes_detection(
+            configuration.reglage_detection(), configuration.port_https, adresses_d_argos, base, administrateur_connecte
+        )
     )
     app.include_router(_routes_essai(apercus, configuration, adresses_d_argos, base, administrateur_connecte))
     return app
@@ -353,6 +346,7 @@ def _routes_cameras(
 
 def _routes_detection(
     reglage: ReglageDetection,
+    port_https: int,
     adresses_d_argos: Callable[[], set[IPv4Address]],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
@@ -381,7 +375,7 @@ def _routes_detection(
         try:
             debut = monotonic()
             trouves = detection.detecter(reglage.sous_reseaux, reglage.ports, adresses_d_argos(), DELAI_DETECTION_S)
-            argos = soi.publient_cette_api({c.ip for c in trouves}, DELAI_DETECTION_S)
+            argos = soi.publient_cette_api({c.ip for c in trouves}, port_https, DELAI_DETECTION_S)
             candidats = [c for c in trouves if c.ip not in argos]
             duree_s = round(monotonic() - debut, 1)
         finally:
@@ -448,7 +442,7 @@ def _routes_essai(
             raise HTTPException(status.HTTP_409_CONFLICT, ESSAI_EN_COURS)
         try:
             if demande.ip in adresses_d_argos() or soi.publient_cette_api(
-                [demande.ip], DELAI_DETECTION_S
+                [demande.ip], configuration.port_https, DELAI_DETECTION_S
             ):
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ADRESSE_D_ARGOS)
             generation = apercus.debuter()

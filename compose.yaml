@@ -7,9 +7,8 @@ services:
       - ./media/mediamtx.yml:/mediamtx.yml:ro
     ports:
       - "8554:8554"  # RTSP
-      - "8888:8888"  # HLS
-      - "8889:8889"  # WebRTC (page et signalisation)
-      - "8189:8189/udp"  # WebRTC (ICE)
+      - "8189:8189/udp"  # WebRTC (ICE, média chiffré en DTLS-SRTP)
+      # 8888 (HLS) et 8889 (WHEP) non publiés : relayés par web sous l'origine HTTPS (/flux).
       # 9997 (API de contrôle, pilotée par api) volontairement non publié : réseau Compose seulement (docs/securite.md).
     environment:
       # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
@@ -21,8 +20,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"  # API du Site (HTTP, voir docs/securite.md)
+      certificats:
+        condition: service_completed_successfully
+    volumes:
+      # Partie publique de l'Autorité seule : la Détection vérifie l'hôte du Site en HTTPS (argos_api/soi.py).
+      - type: volume
+        source: certificats-serveur
+        target: /etc/argos/argos-ca.crt
+        read_only: true
+        volume:
+          subpath: argos-ca.crt
+    # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.
       ARGOS_IDENTIFIANT: ${ARGOS_IDENTIFIANT:-}
@@ -31,8 +39,8 @@ services:
       # Sonde de l'état des Caméras : voir .env.example.
       ARGOS_SONDE_INTERVALLE_S: ${ARGOS_SONDE_INTERVALLE_S:-10}
       ARGOS_SONDE_DELAI_S: ${ARGOS_SONDE_DELAI_S:-5}
-      # Origines de l'UI autorisées à appeler l'API avec le cookie : voir .env.example.
-      ARGOS_ORIGINES_AUTORISEES: ${ARGOS_ORIGINES_AUTORISEES:-http://localhost:8080,http://localhost:5173}
+      # Port HTTPS publié par web : la Détection y reconnaît l'hôte du Site (argos_api/soi.py).
+      ARGOS_PORT_HTTPS: ${ARGOS_PORT_HTTPS:-443}
       # Détection des Caméras : sous-réseaux autorisés et ports sondés, voir .env.example. Vide : non configurée.
       ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:-}
       ARGOS_DETECTION_CAMERAS_PORTS: ${ARGOS_DETECTION_CAMERAS_PORTS:-554,8554}

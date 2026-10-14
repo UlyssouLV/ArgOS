@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from argos_api.app import creer_app
 from argos_api.configuration import Configuration
-from conftest import IDENTIFIANT, MOT_DE_PASSE, se_connecter
+from conftest import IDENTIFIANT, MOT_DE_PASSE, URL_SITE, se_connecter
 
 
 def test_reglage_vide_detection_non_configuree_le_reste_marche(url_base, horloge):
@@ -15,7 +15,7 @@ def test_reglage_vide_detection_non_configuree_le_reste_marche(url_base, horloge
         ARGOS_URL_BASE=url_base,
         ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX="",
     )
-    client = TestClient(creer_app(configuration, horloge))
+    client = TestClient(creer_app(configuration, horloge), base_url=URL_SITE)
     assert se_connecter(client).status_code == 204
 
     etat = client.get("/api/detection")
@@ -56,7 +56,7 @@ def test_reglage_invalide_detection_refusee_avec_la_raison_le_reste_marche(
         ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX=sous_reseaux,
         ARGOS_DETECTION_CAMERAS_PORTS=ports,
     )
-    client = TestClient(creer_app(configuration, horloge))
+    client = TestClient(creer_app(configuration, horloge), base_url=URL_SITE)
     assert se_connecter(client).status_code == 204
 
     etat = client.get("/api/detection")
@@ -79,7 +79,7 @@ def test_plafond_atteint_sans_le_depasser_detection_configuree(url_base, horloge
         # 1024 adresses ; le doublon ne compte qu'une fois.
         ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX="10.0.0.0/23,10.1.0.0/23,10.1.0.0/23",
     )
-    client = TestClient(creer_app(configuration, horloge))
+    client = TestClient(creer_app(configuration, horloge), base_url=URL_SITE)
     assert se_connecter(client).status_code == 204
 
     assert client.get("/api/detection").json()["configuree"] is True

@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from argos_api import soi
 from argos_api.app import creer_app
 from argos_api.configuration import Configuration
-from conftest import IDENTIFIANT, MOT_DE_PASSE, se_connecter
+from conftest import IDENTIFIANT, MOT_DE_PASSE, URL_SITE, se_connecter
 
 # Adresse d'ArgOS sur le réseau des caméras (plages de documentation : jamais jointe).
 IP_ARGOS = "192.0.2.250"
@@ -101,7 +101,7 @@ def test_ip_d_argos_sur_le_reseau_des_cameras_jamais_candidat(
         ARGOS_DETECTION_CAMERAS_PORTS=str(camera_locale),
         ARGOS_RESEAU_CAMERAS_ADRESSES=adresses_argos,
     )
-    client = TestClient(app)
+    client = TestClient(app, base_url=URL_SITE)
     assert se_connecter(client).status_code == 204
 
     detection = client.post("/api/detection")

@@ -23,10 +23,8 @@ class Configuration(BaseSettings):
     delai_mediamtx: float = Field(5, gt=0, validation_alias="ARGOS_MEDIAMTX_DELAI_S")
     # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes (réglable pour les tests).
     expiration_apercu: float = Field(120, gt=0, validation_alias="ARGOS_APERCU_EXPIRATION_S")
-    # Origines exactes (séparées par des virgules) autorisées à appeler l'API avec le cookie de session.
-    origines_autorisees: str = Field(
-        "http://localhost:8080,http://localhost:5173", validation_alias="ARGOS_ORIGINES_AUTORISEES"
-    )
+    # Port HTTPS du Site publié sur l'hôte : la Détection y demande le jeton de cette instance (soi.py).
+    port_https: int = Field(443, gt=0, lt=65536, validation_alias="ARGOS_PORT_HTTPS")
 
     # Détection des Caméras : sous-réseaux IPv4 (CIDR) et ports sondés, séparés par des virgules.
     # Réglage vide ou invalide : l'API démarre, seule la Détection est indisponible.
@@ -35,9 +33,6 @@ class Configuration(BaseSettings):
     # Adresses d'ArgOS sur le réseau des caméras (macvlan, prod Linux : compose.reseau-cameras.yaml),
     # séparées par des virgules : jamais Candidat, et aucune requête n'y est servie (ADR 0003).
     reseau_cameras_adresses: str = Field("", validation_alias="ARGOS_RESEAU_CAMERAS_ADRESSES")
-
-    def liste_origines_autorisees(self) -> list[str]:
-        return [origine.strip() for origine in self.origines_autorisees.split(",") if origine.strip()]
 
     def adresses_reseau_cameras(self) -> set[IPv4Address]:
         """Une adresse invalide est ignorée : le réseau des caméras n'empêche jamais l'API de démarrer."""

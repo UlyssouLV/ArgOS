@@ -1,7 +1,7 @@
 """Écoute de l'API : le réseau des caméras est une sortie, jamais une entrée (ADR 0003, docs/securite.md).
 
 Une requête arrivée sur une adresse d'ArgOS du réseau des caméras (macvlan) est refusée avant tout
-traitement : ni routage, ni session, ni CORS. Le healthcheck (`localhost`) et le bridge restent servis.
+traitement : ni routage, ni session. Le healthcheck (`localhost`) et le bridge restent servis.
 """
 
 import json
