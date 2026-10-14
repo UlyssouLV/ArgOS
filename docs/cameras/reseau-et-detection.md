@@ -266,7 +266,7 @@ La Détection trouve un Candidat dont la MAC est celle d’une Caméra du Site, 
 
 Toutes les mises à jour d’une Détection s’écrivent ensemble : deux caméras qui ont **échangé** leurs IP sont toutes deux corrigées.
 
-**Conflit** : si la nouvelle URL est déjà celle d’une autre Caméra, sans MAC, qui ne bouge pas, ArgOS ne modifie pas la Caméra de l’Appareil, et le Candidat l’affiche : **adresse non mise à jour : URL déjà prise par <nom>**. À corriger à la main (**Modifier**), puis relancer la Détection.
+**Conflit** : si la nouvelle URL est déjà celle d’une autre Caméra, sans MAC, qui ne bouge pas, ArgOS ne modifie pas la Caméra de l’Appareil, et le Candidat l’affiche : **adresse non mise à jour : URL déjà prise par &lt;nom&gt;**. À corriger à la main (**Modifier**), puis relancer la Détection.
 
 ### « Autre appareil à cette adresse »
 
@@ -287,7 +287,7 @@ Sans MAC, la Caméra garde le comportement de la 0.4.1 : l’UI affiche **—**,
 
 Un enregistreur (NVR), un encodeur multi-voies ou une caméra à plusieurs objectifs porte **plusieurs Flux sous une seule MAC**, un par chemin RTSP. ArgOS le tolère depuis la 0.4.2 :
 
-- **à l’ajout**, un Flux déjà configuré sur le même Appareil (même MAC, même chemin, même si l’IP a changé) est refusé : **Déjà configurée : <nom>**. Un autre chemin du même Appareil est permis, avec l’avertissement **Cet appareil porte déjà la Caméra <nom>** ([Ajouter une Caméra](ajouter-une-camera.md#1-le-déroulé)) ;
+- **à l’ajout**, un Flux déjà configuré sur le même Appareil (même MAC, même chemin, même si l’IP a changé) est refusé : **Déjà configurée : &lt;nom&gt;**. Un autre chemin du même Appareil est permis, avec l’avertissement **Cet appareil porte déjà la Caméra &lt;nom&gt;** ([Ajouter une Caméra](ajouter-une-camera.md#1-le-déroulé)) ;
 - **à la Détection**, toutes ses Caméras sont mises à jour ensemble quand son IP change ; le Candidat est rangé sous la plus ancienne (au même port de préférence).
 
 **Reste à étudier** sur du vrai matériel ([feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md#un-appareil-plusieurs-caméras)) : comment chaque voie expose son chemin RTSP selon les marques, proposer à l’ajout toutes les voies d’un Appareil plutôt que la première trouvée, et regrouper les Caméras d’un même Appareil dans l’Administration.

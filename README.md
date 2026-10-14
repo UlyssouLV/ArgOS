@@ -4,6 +4,8 @@ Plateforme de **vidéosurveillance IP auto-hébergée**, conçue pour rester gé
 
 Le nom évoque à la fois le chien d’Ulysse et Argos Panoptès (la vigilance à plusieurs yeux). Le projet est né d’un besoin de surveillance locale sur une grande propriété ; l’objectif logiciel est un produit self-hosted, sans dépendance cloud propriétaire.
 
+Documentation en ligne (guides Caméras, feuille de route, changelog, bugs connus) : **https://ulyssoulv.github.io/ArgOS/**, publiée par GitHub Pages à chaque merge sur `main` qui touche `docs/` ou `docs-site/`, et à chaque release.
+
 ## Quoi
 
 Version **0.1.0** : trois **Caméras simulées** (`cam1`, `cam2`, `cam3`). MediaMTX diffuse en boucle une vidéo de dev par Caméra (H.264 1280×720, sans réencodage), joignable en RTSP et visible dans un navigateur (HLS, WebRTC), en local et sur le réseau local.
@@ -412,7 +414,7 @@ docs/specs/               Specs de version et contexte initial
 docs/adr/                 Décisions d’architecture (MediaMTX en pont, Détection depuis le réseau bridge, macvlan, HLS pour le H.265)
 docs/securite.md          Sécurité : limites connues, exposition réseau, Détection, dettes
 docs/glossaire.md         Glossaire (Site, Administrateur, Appareil, Caméra, Flux, Incrustation, Horloge…)
-docs-site/                Site de documentation (Docusaurus), publié sur GitHub Pages
+docs-site/                Site de documentation (Docusaurus), publié sur https://ulyssoulv.github.io/ArgOS/
 AGENTS.md, agents/        Cycle de dev avec les agents, skills, rôles
 ```
 

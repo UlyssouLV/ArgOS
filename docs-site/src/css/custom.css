@@ -1,14 +1,5 @@
-@font-face {
-  font-family: "Manrope";
-  src: url("../../../poste/frontend/src/assets/fonts/manrope-variable.woff2") format("woff2");
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Même palette que poste/frontend/src/index.css (identité 1.2.1).
-   Le poste n'a pas de mode sombre : le site de doc non plus, y compris
-   si le navigateur a déjà mémorisé data-theme=dark. */
+/* Pas de mode sombre, y compris si le navigateur a déjà mémorisé
+   data-theme=dark. */
 :root,
 [data-theme='dark'] {
   --bbass-anthracite: #3c3844;
@@ -20,8 +11,8 @@
   --bbass-bordure: #e6e4e8;
   --bbass-fond: #ffffff;
 
-  --ifm-font-family-base: "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-  --ifm-heading-font-family: "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --ifm-font-family-base: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --ifm-heading-font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   --ifm-font-family-monospace: ui-monospace, Consolas, monospace;
   --ifm-font-color-base: var(--bbass-texte);
   --ifm-heading-color: var(--bbass-anthracite);

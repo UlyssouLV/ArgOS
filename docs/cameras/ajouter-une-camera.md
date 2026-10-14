@@ -12,11 +12,11 @@ Dans l’**Administration**, section Détection :
 2. **Recherche du Flux…** : ArgOS essaie les chemins courants des caméras (§ 2). Quelques secondes.
 3. Selon la réponse de la caméra :
    - Flux trouvé → **Aperçu** (§ 5) ;
-   - Flux trouvé, mais déjà configuré sur le même appareil (même MAC, même chemin, même si l’IP a changé) → **Déjà configurée : <nom>**, sans Aperçu ;
+   - Flux trouvé, mais déjà configuré sur le même appareil (même MAC, même chemin, même si l’IP a changé) → **Déjà configurée : &lt;nom&gt;**, sans Aperçu ;
    - **Cette caméra demande un mot de passe.** → identifiant et mot de passe (§ 3) ;
    - **Flux introuvable.** → chemin RTSP (§ 4) ;
    - **Aucune caméra ne répond à cette adresse.** → rien à faire depuis ArgOS : la caméra est éteinte, a changé d’adresse, ou ne parle pas RTSP sur ce port.
-4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active, apparaît dans la liste des Caméras et dans le Live, et le Candidat passe dans **Déjà configurées**, sans relancer de Détection. Si l’appareil porte déjà une autre Caméra (même MAC, autre chemin : enregistreur, encodeur multi-voies), l’Aperçu avertit **Cet appareil porte déjà la Caméra <nom>** ; l’ajout reste permis.
+4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active, apparaît dans la liste des Caméras et dans le Live, et le Candidat passe dans **Déjà configurées**, sans relancer de Détection. Si l’appareil porte déjà une autre Caméra (même MAC, autre chemin : enregistreur, encodeur multi-voies), l’Aperçu avertit **Cet appareil porte déjà la Caméra &lt;nom&gt;** ; l’ajout reste permis.
 
 **Annuler** est offert à chaque étape : rien n’est créé, et l’Aperçu est retiré. Un nom déjà pris est refusé avec le message habituel ; l’Aperçu reste ouvert pour corriger.
 
@@ -87,7 +87,7 @@ Pour un appareil que la Détection n’a pas trouvé (sous-réseau non déclaré
 
 Avant d’essayer, ArgOS refuse :
 
-- une IP **déjà configurée** (même IP et même port qu’une Caméra du Site, désactivées comprises) : **Déjà configurée : <nom>**, sans ouvrir le parcours ;
+- une IP **déjà configurée** (même IP et même port qu’une Caméra du Site, désactivées comprises) : **Déjà configurée : &lt;nom&gt;**, sans ouvrir le parcours ;
 - une IP **hors du réseau local** (seules `10.x`, `172.16-31.x` et `192.168.x` sont acceptées) : ArgOS ne sert pas à joindre internet ;
 - une IP **d’ArgOS lui-même** (la machine qui publie le pont, ou un de ses conteneurs).
 
