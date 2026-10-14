@@ -306,7 +306,7 @@ Retire `ready-for-agent` et ferme l’issue. Refuse s’il n’y a pas `Part of`
 
 **Corps :** versions à ajouter ou à reformuler, si tu les as déjà ; sinon le skill lit la feuille de route de dev et propose.
 
-Lit le rôle **`roadmap`** (`docs/dev/feuille-de-route-dev.md`), liste les `X.Y.Z` et les « Plus tard », argumente, **attend**, puis écrit uniquement ce que tu as validé (`## X.Y.Z — un job`). Pas de `/c` tout seul. Skill `augmenter-la-feuille-de-route-dev`.
+Lit le rôle **`roadmap`** (`docs/dev/feuille-de-route/feuille-de-route-dev.md`), liste les `X.Y.Z` et les « Plus tard », argumente, **attend**, puis écrit uniquement ce que tu as validé (`## X.Y.Z — un job`). Pas de `/c` tout seul. Skill `augmenter-la-feuille-de-route-dev`.
 
 **Exemple :**
 

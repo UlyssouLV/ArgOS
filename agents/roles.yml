@@ -10,10 +10,13 @@
 roles:
   roadmap:
     paths:
-      - docs/dev/feuille-de-route-dev.md
+      - docs/dev/feuille-de-route/feuille-de-route-dev.md
+  docs-site:
+    paths:
+      - docs-site/
   glossary:
     paths:
-      - CONTEXT.md
+      - docs/glossaire.md
   spec:
     paths:
       - docs/specs/
@@ -38,3 +41,4 @@ roles:
       - tests/regles-sessions/
       - tests/web/
       - tests/scripts/
+      - simulation/onvif/

@@ -32,13 +32,26 @@ CHEMINS_SIMULES = {
 MACS_SIMULEES = {n: f"02:a6:05:00:00:0{n}" for n in CHEMINS_SIMULES}
 IPS_SIMULEES = {n: f"172.30.0.1{n}" for n in CHEMINS_SIMULES}
 RESEAU_SIMULATION = "cameras-simulees"
+# Interfaces ONVIF des Caméras simulées (simulation/onvif/README.md).
+SIMULATEURS_ONVIF = ("camera-simulee-2-onvif", "camera-simulee-4-onvif")
+# Lancé dans `api` : envoie une enveloppe SOAP à une adresse ONVIF ; faute SOAP → code de sortie non nul.
+_ENVOYER_SOAP = """
+import sys, urllib.request
+adresse, corps = sys.argv[1:]
+enveloppe = ('<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope"'
+             ' xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl"'
+             ' xmlns:tt="http://www.onvif.org/ver10/schema"><env:Body>' + corps + '</env:Body></env:Envelope>')
+requete = urllib.request.Request(adresse, data=enveloppe.encode(), headers={"Content-Type": "application/soap+xml"})
+urllib.request.urlopen(requete, timeout=5).read()
+"""
 
 
-def compose(*args: str) -> subprocess.CompletedProcess[str]:
+def compose(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """`env` : variables de plus, lues par l'interpolation des fichiers compose."""
     return subprocess.run(
         ["docker", "compose", *(option for fichier in FICHIERS_COMPOSE for option in ("-f", fichier)), *args],
         cwd=REPO_ROOT,
-        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S)},
+        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
         capture_output=True,
         text=True,
         check=True,
@@ -109,6 +122,30 @@ def url_camera_simulee(numero: int, requete: str, identifiants: bool = True, che
     chemin = chemin or CHEMINS_SIMULES[numero]
     separateur = "&" if "?" in chemin else "?"
     return f"rtsp://{utilisateur}camera-simulee-{numero}/{chemin}{separateur}test={requete}"
+
+
+def remettre_onvif_en_usine() -> None:
+    """Recrée les simulateurs ONVIF : leur état, en mémoire, revient « sortie d'usine »."""
+    compose("up", "-d", "--force-recreate", "--wait", *SIMULATEURS_ONVIF)
+
+
+def camera_simulee_4_sans_recreation_de_la_date() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-4, « sortie d'usine », sans savoir recréer la date et l'heure.
+
+    `remettre_onvif_en_usine` lui rend ensuite les deux types d'Incrustation.
+    """
+    compose(
+        "up", "-d", "--force-recreate", "--wait", "camera-simulee-4-onvif", env={"ONVIF_TYPES_CREABLES_4": "Plain"}
+    )
+
+
+def regler_camera_simulee_4_en_onvif(service: str, corps: str) -> None:
+    """Envoie une requête SOAP (`corps` de l'enveloppe) à l'interface ONVIF de camera-simulee-4, sans identifiants.
+
+    `service` : `device` ou `media`. Par le conteneur `api`, seul à joindre le réseau des Caméras simulées.
+    """
+    adresse = f"http://camera-simulee-4:80/onvif/{service}_service"
+    compose("exec", "-T", "api", "python", "-c", _ENVOYER_SOAP, adresse, corps)
 
 
 def adresses_ip(service: str) -> set[str]:

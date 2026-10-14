@@ -91,6 +91,8 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "mac": None,
         # Lu dans le SDP par l'essai ou la sonde : inconnu tant que la sonde n'a pas joint la Caméra.
         "codec": None,
+        # Cherché à la première ouverture des Réglages de la Caméra, jamais saisi.
+        "port_onvif": None,
     }
 
 

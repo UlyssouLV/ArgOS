@@ -9,3 +9,6 @@ cookies.txt
 
 node_modules/
 dist/
+
+# Cache de compilation TypeScript
+*.tsbuildinfo

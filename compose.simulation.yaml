@@ -5,6 +5,7 @@
 # style Hikvision (1), style Dahua avec identifiants (2), chemin exotique `flux` (3), style Hikvision en H.265 (4).
 # Aucun port publié : on les regarde par le Live, une fois déclarées comme Caméras (media/simulated/README.md).
 # MAC et IP fixes, comme l'étiquette et le bail d'une vraie caméra : la Détection et l'essai les lisent.
+# Les Caméras simulées 2 et 4 répondent aussi en ONVIF (simulation/onvif/README.md).
 
 x-camera-simulee: &camera-simulee
   image: bluenviron/mediamtx:1.21.1-ffmpeg
@@ -72,6 +73,28 @@ services:
       - ./media/simulated/cam4.mp4:/media/video.mp4:ro
     environment:
       CHEMIN_FLUX: Streaming/Channels/101
+
+  # Interfaces ONVIF des Caméras simulées 2 et 4 (simulation/onvif/README.md) : chacune partage le réseau de sa
+  # Caméra simulée, donc son IP et sa MAC, comme l'interface ONVIF d'une vraie caméra. Les 1 et 3 n'en ont pas.
+  camera-simulee-2-onvif:
+    build: ./simulation/onvif
+    restart: unless-stopped
+    network_mode: service:camera-simulee-2
+    environment:
+      # Port des caméras XiongMai ; identifiants de dev de camera-simulee-2, les mêmes que pour son Flux.
+      ONVIF_PORT: "8899"
+      ONVIF_IDENTIFIANT: admin
+      ONVIF_MOT_DE_PASSE: argos-simulee
+
+  camera-simulee-4-onvif:
+    build: ./simulation/onvif
+    restart: unless-stopped
+    network_mode: service:camera-simulee-4
+    environment:
+      # Sans identifiants.
+      ONVIF_PORT: "80"
+      # Types d'Incrustation recréables ; les tests en retirent un pour simuler une caméra qui ne sait pas.
+      ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:

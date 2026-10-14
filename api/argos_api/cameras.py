@@ -1,18 +1,18 @@
 """Caméras du Site : URL RTSP (validation, masquage, hôte et port) et règles de gestion."""
 
 import socket
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from ipaddress import IPv4Address
 from typing import Annotated, Literal
 from urllib.parse import SplitResult, urlsplit
 
 from pydantic import AfterValidator, BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from argos_api import voisinage
+from argos_api import onvif, voisinage
 from argos_api.detection import Candidat
 from argos_api.modeles import AUTRE_APPAREIL, Camera, RaisonEtat
 from argos_api.pont import chemin_flux
@@ -93,6 +93,8 @@ class CameraLue(BaseModel):
     mac: str | None
     # Nom d'encodage lu dans le SDP (`H264`, `H265`…) ; `None` : jamais lu. Jamais modifiable par l'Administrateur.
     codec: str | None
+    # Port ONVIF trouvé par ArgOS à l'ouverture des Réglages ; `None` : jamais cherché. Jamais modifiable.
+    port_onvif: int | None
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -111,6 +113,7 @@ class CameraLue(BaseModel):
             chemin_flux=chemin_flux(camera.id) if camera.active else None,
             mac=camera.mac,
             codec=camera.codec,
+            port_onvif=camera.port_onvif,
         )
 
 
@@ -348,6 +351,7 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
     if url != masquer(camera.url_rtsp) and url != camera.url_rtsp:
         camera.url_rtsp = url
+        camera.port_onvif = None
         _remettre_a_unknown(camera)
     for champ, valeur in champs.items():
         setattr(camera, champ, valeur)
@@ -355,6 +359,48 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
         _remettre_a_unknown(camera)
     _enregistrer(base, camera)
     return CameraLue.depuis(camera)
+
+
+def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Reglages:
+    """Réglages lus sur la caméra d'une Caméra active, par ONVIF ; retient le port qui a répondu.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.lire_reglages(url, port, maintenant))
+
+
+def modifier_reglages(
+    base: Session, id_camera: int, modification: onvif.ModificationReglages, maintenant: Callable[[], datetime]
+) -> onvif.ResultatModification:
+    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le port.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.modifier_reglages(url, port, modification, maintenant))
+
+
+def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
+    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le port.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    return _par_onvif(base, id_camera, lambda url, port: onvif.mettre_a_l_heure(url, port, maintenant))
+
+
+def _par_onvif[T](base: Session, id_camera: int, echange: Callable[[str, int | None], tuple[T, int]]) -> T:
+    """Échange ONVIF avec la caméra d'une Caméra active ; retient le port qui a répondu."""
+    camera = _trouver(base, id_camera)
+    if not camera.active:
+        raise CameraIntrouvable
+    url, port_retenu = camera.url_rtsp, camera.port_onvif
+    # Pas de transaction ouverte pendant l'échange réseau.
+    base.rollback()
+    resultat, port = echange(url, port_retenu)
+    if port != port_retenu:
+        # Seulement si l'URL n'a pas changé entre-temps : le port est celui de cet hôte.
+        base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(port_onvif=port))
+        base.commit()
+    return resultat
 
 
 def supprimer(base: Session, id_camera: int) -> None:

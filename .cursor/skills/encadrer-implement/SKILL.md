@@ -2,16 +2,17 @@
 name: encadrer-implement
 description: >-
   Green pytest after a child GitHub ticket, or the implement plugin's closing
-  step: `/t`, `/c -p`, `/qg -w`, `/cqg` if the gate is red, `/cci #<n>`,
-  then the next unblocked child or ask the user to test then Finalise la
-  version. Load this as soon as /implement tests pass.
+  step: `/t`, `/c -p`, `/cci #<n>`, then the next unblocked ready-for-agent
+  child, or fill the human-test plan and point to `/th`, or (all Closed)
+  `/code-review` then Finalise. Do not wait for the quality gate. Do not run
+  `/code-review` here. Load this as soon as /implement tests pass.
 ---
 
 # Wrap `/implement`
 
 Use the plugin **`/implement`** for TDD and the ticket body. **This skill owns the end of the run.** The plugin’s last line is a review step; in this repo that last line is **this skill, from Tests onward**.
 
-Git, tests, the gate, and closing the child go through the skills below, not inline. Do **not** close the **parent** spec (squash `Fixes #<parent>` does that). Do **not** `/implement` the parent.
+Git, tests, and closing the child go through the skills below, not inline. The quality gate is not this skill. Do **not** close the **parent** spec (squash `Fixes #<parent>` does that). Do **not** `/implement` the parent.
 
 ## 1. Tests
 
@@ -23,41 +24,43 @@ Stage **only** the ticket files. Never `.env`, `*.db`, `.venv/`, secrets. Do **n
 
 Then run skill **`commit`** as if the user had typed **`/c -p`**.
 
-## 3. Quality gate
+Do **not** `/qg`, `/qg -w`, or `/cqg`. Do **not** leave the child Open while Sonar runs. Do **not** add a label for that wait. The gate is one read of the PR `HEAD`, in `finaliser-la-version`.
 
-Load `.env` the same way **`quality-gate`** does. If any of that skill’s three `SONAR_*` keys is missing or empty → continue **now**. One line that Sonar is skipped. Do not `/qg`. Do not wait. Do not `/cqg`.
-
-Otherwise run **`quality-gate`** as if **`/qg -w`**.
-
-- No analysis for `HEAD` after the wait → **stop**. Do not `/cci`. Tell the user Sonar n’a pas encore analysé ce commit (pousser la branche / attendre le check **SonarCloud Code Analysis**, puis `/qg -w`).
-- **`OK`** → continue.
-- Not **`OK`** (`ERROR`, `WARN`, …) → run skill **`corriger-quality-gate`** as if **`/cqg`**.
-  - That skill stopped without a code change (policy / user needed) → **stop**. No `/cci`.
-  - Working tree dirty after the fix → run **`/t`** (fail → **stop**, no `/cci`). Then stage the ticket files and run **`/c -p`**. Then **`/qg -w`** once. Not **`OK`**, or no analysis this time → **stop**. No `/cci`.
-
-## 4. Close the child
+## 3. Close the child
 
 Run skill **`fermer-ticket-enfant`** as if the user had typed **`/cci #<n>`** (`<n>` = the child just implemented). No `-t` (tests already ran). That skill refuses if `<n>` is not a child.
 
-## 5. More child tickets on this PR?
+## 4. More child tickets on this PR?
 
 Find the parent (`## Parent` / `Part of #n` on the issue you just finished). List **open** children of that parent.
 
 - **Done:** Closed.
 - **Still to build:** Open, `ready-for-agent` (and not `wontfix`).
+- **Human tests:** Open, `ready-for-human` (title `Tests humains — …`). Never `/implement`.
 
 A remaining ticket is **unblocked** when GitHub reports no open blockers (`issue_dependencies_summary.blocked_by` is 0), or every issue in a fallback **Blocked by** body line is Closed. See `agents/issue-tracker.md`.
 
-**If at least one unblocked child remains:**
+**If at least one unblocked `ready-for-agent` child remains:**
 
 - Propose the **next** unblocked child (lowest issue number among unblocked `ready-for-agent`).
+- In that proposal, quote the `## Blocked by` clause of that child (the `vraie dépendance` / `ordre de confort` line) in one sentence, so the human can say what would have broken.
 - Ask the user to `/clear` then `/implement #<next>`. Wait. Do not start the next implement in this same compacted window.
 
-**If no remaining children** (all PR children are Closed):
+**Else if an open `ready-for-human` human-test child remains** (format: `agents/issue-tracker.md`, *Human-test child*):
+
+1. Build a **concrete** numbered test plan in product language from the parent spec and the Closed implementation children (what a human can click / verify). Partial runs are allowed later.
+2. `gh issue edit` that issue: replace `## Plan de tests` with checkboxes for each scenario (leave `## Résultats` and `## Ce qu’on peut faire maintenant` for `/th`).
+3. Stop after telling the user, in French (adapt `#n` / PR):
+
+   Tous les tickets d’implémentation sont Closed. Plan de tests humains proposé sur #<n>. Jouez ce que vous voulez (plan partiel OK). Quand c’est fait, lancez **`/th`** avec le récit précis des résultats (`/th` vérifie ce qui est observable). Ajoutez **captures** / **preuves** dans le même message si vous voulez des screenshots après vérif OK (ou joignez vos images). Ne lancez pas `/code-review` tant que #<n> est Open.
+
+4. Do **not** propose `/code-review` or Finalise here. Do not merge, tag, or start the next version.
+
+**Else if all in-scope children are Closed** (including the human-test child):
 
 - Stop after telling the user, in French, exactly this handoff (adapt only the parent/PR numbers if useful):
 
-  Tous les tickets ont été implémentés. Veuillez faire des tests pour valider que tout est fonctionnel ; lorsque ce sera bon, lancez le skill **Finalise la version** (`finaliser-la-version`).
+  Tous les tickets sont Closed (implémentation et tests humains). Lancez `/code-review`. Si la revue est bonne, lancez le skill **Finalise la version** (`finaliser-la-version`) : le quality gate est lu à ce moment-là, et s’il n’est pas OK c’est `/cqg`, pas la release.
 
 - Do not merge, tag, or start the next version.
 
@@ -68,6 +71,7 @@ A remaining ticket is **unblocked** when GitHub reports no open blockers (`issue
 - Read-only gate → `quality-gate` (`/qg`)
 - Fix the gate only → `corriger-quality-gate` (`/cqg`)
 - Close a child only → `fermer-ticket-enfant` (`/cci`)
+- Human-test results / close → `tests-humains` (`/th`)
 - Opening or merging the PR, GitHub Release, deleting the branch → `finaliser-la-version`
 - Re-implementing Closed children
 - `needs-triage` work that is not a child of this PR
