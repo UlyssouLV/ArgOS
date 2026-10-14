@@ -59,3 +59,7 @@ _Avoid_ : preview, prévisualisation
 **Live** :
 La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à la suivante.
 _Avoid_ : mur d'images, mosaïque, visionneuse
+
+**Autorité du Site** :
+Certificat qui permet à un poste de reconnaître le Site en HTTPS ; installée une fois par poste.
+_Avoid_ : CA, certificat racine, certificat auto-signé
