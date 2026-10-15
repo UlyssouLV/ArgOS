@@ -47,12 +47,16 @@ def _attendre(port: int) -> None:
 class Lancement:
     """`python camera_onvif.py` lancé avec ces variables d'environnement, arrêté à la sortie."""
 
-    def __init__(self, env: dict[str, str]) -> None:
+    def __init__(self, env: dict[str, str], journal: bool = False) -> None:
+        """`journal` : garde la sortie d'erreur (le journal des requêtes), lisible après la sortie."""
         self.env = env
+        self.sortie = subprocess.PIPE if journal else subprocess.DEVNULL
 
     def __enter__(self) -> "Lancement":
         propre = {k: v for k, v in os.environ.items() if not k.startswith("ONVIF_")}
-        self.processus = subprocess.Popen([sys.executable, str(MODULE)], env={**propre, **self.env}, stderr=subprocess.DEVNULL)
+        self.processus = subprocess.Popen(
+            [sys.executable, str(MODULE)], env={**propre, **self.env}, stderr=self.sortie, text=True
+        )
         for cle in ("ONVIF_PORT", "ONVIF_PORT_HTTPS"):
             if cle in self.env:
                 _attendre(int(self.env[cle]))
@@ -61,6 +65,9 @@ class Lancement:
     def __exit__(self, *_) -> None:
         self.processus.terminate()
         self.processus.wait(timeout=5)
+
+    def journal(self) -> list[str]:
+        return self.processus.stderr.read().splitlines() if self.processus.stderr else []
 
 
 def _heure_lue(url: str) -> bool:
@@ -197,3 +204,50 @@ def test_identifiants_par_variables_d_environnement_en_https(tmp_path):
         camera = Camera(f"https://127.0.0.1:{https}", IDENTIFIANTS)
         assert camera.appeler("<tds:GetNTP/>").statut == 200
         assert camera.appeler("<tds:GetNTP/>", identifiants=None).faute == "ter:NotAuthorized"
+
+
+# --- TLS ancien et journal --------------------------------------------------------------------------------------
+
+
+def _version_negociee(port: int) -> str | None:
+    """Version TLS négociée par un client qui accepte TLS 1.0, comme celui d'ArgOS."""
+    contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    contexte.check_hostname = False
+    contexte.verify_mode = ssl.CERT_NONE
+    contexte.minimum_version = ssl.TLSVersion.TLSv1
+    contexte.set_ciphers("DEFAULT:@SECLEVEL=0")
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as brut:
+        with contexte.wrap_socket(brut) as tls:
+            return tls.version()
+
+
+def test_tls_plafonne_a_1_0(tmp_path):
+    https = _port_libre()
+
+    env = _env_https(tmp_path, https) | {"ONVIF_TLS_MAX": "1.0"}
+
+    with Lancement(env):
+        assert _version_negociee(https) == "TLSv1"
+        sonde = subprocess.run([sys.executable, str(MODULE), "sonde"], env={**os.environ, **env}, timeout=10)
+
+    assert sonde.returncode == 0
+
+
+def test_tls_recent_par_defaut(tmp_path):
+    https = _port_libre()
+
+    with Lancement(_env_https(tmp_path, https)):
+        assert _version_negociee(https) in ("TLSv1.2", "TLSv1.3")
+
+
+def test_journal_dit_le_schema_et_le_port_de_chaque_requete(tmp_path):
+    https, http = _port_libre(), _port_libre()
+    env = _env_https(tmp_path, https) | {"ONVIF_PORT": str(http)}
+
+    with Lancement(env, journal=True) as lancement:
+        _heure_lue(f"https://127.0.0.1:{https}")
+        _heure_lue(f"http://127.0.0.1:{http}")
+    lignes = lancement.journal()
+
+    assert any(f"https:{https} " in ligne and "POST /onvif/device_service" in ligne for ligne in lignes), lignes
+    assert any(f"http:{http} " in ligne and "POST /onvif/device_service" in ligne for ligne in lignes), lignes

@@ -37,7 +37,25 @@ export type Reglages = {
   incrustations: { nom: IncrustationNom; date_heure: IncrustationDateHeure };
 };
 
-export async function lireReglages(idCamera: number): Promise<Reglages> {
+/** Sécurité de l'échange ONVIF avec la caméra (docs/adr/0007-onvif-en-https-par-cle-memorisee.md). */
+export type SecuriteOnvif = {
+  chiffre: boolean;
+  /** Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil ; `null` hors HTTPS. */
+  empreinte: string | null;
+  empreinte_memorisee_le: string | null;
+  /** TLS 1.0 ou 1.1 : accepté, mais signalé. */
+  tls_ancien: boolean;
+};
+
+/** Réglages lus à l'ouverture, avec la sécurité de l'échange. */
+export type ReglagesLus = Reglages & { securite: SecuriteOnvif };
+
+/** Empreinte courte du Certificat de l'Appareil : ses 16 premiers chiffres, par groupes de 4. */
+export function empreinteCourte(empreinte: string): string {
+  return (empreinte.slice(0, 16).match(/.{1,4}/g) ?? []).join(" ");
+}
+
+export async function lireReglages(idCamera: number): Promise<ReglagesLus> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages`);
   if (reponse.ok) return reponse.json();
   return lever(reponse);

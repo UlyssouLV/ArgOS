@@ -1,6 +1,7 @@
 """Réglages de la Caméra, lus par ONVIF sur les Caméras simulées (simulation/onvif/), vus de l'extérieur de la stack.
 
-La 2 répond sur `8899` avec ses identifiants de dev, la 4 sur `80` sans identifiants, les 1 et 3 pas du tout.
+La 2 répond en HTTPS sur `443` avec ses identifiants de dev (HTTP gardé sur `8899`), la 4 en HTTP sur `80` sans
+identifiants, les 1 et 3 pas du tout. Le détail d'HTTPS (clé mémorisée, TLS ancien) : `test_reglages_https.py`.
 Les simulateurs ONVIF sont recréés « sortie d'usine » au début du module et après chaque test qui les change.
 """
 
@@ -100,7 +101,7 @@ def test_fuseaux_sans_session_401(client):
     assert client.get("/api/fuseaux").status_code == 401
 
 
-def test_camera_simulee_2_usine_sur_le_port_8899_retenu(connecte, camera_simulee):
+def test_camera_simulee_2_usine_en_https_sur_le_port_443_retenu(connecte, camera_simulee):
     id_camera = camera_simulee(2)
     assert port_onvif(connecte, id_camera) is None
 
@@ -108,7 +109,7 @@ def test_camera_simulee_2_usine_sur_le_port_8899_retenu(connecte, camera_simulee
 
     assert reponse.status_code == 200
     assert_usine(reponse.json())
-    assert port_onvif(connecte, id_camera) == 8899
+    assert port_onvif(connecte, id_camera) == 443
 
 
 def test_camera_simulee_4_sans_identifiants_usine_sur_le_port_80(connecte, camera_simulee):
@@ -131,16 +132,16 @@ def test_ecart_avec_l_heure_du_site(connecte, camera_simulee):
 
 
 def test_port_retenu_qui_ne_repond_plus_nouvelle_recherche(connecte, camera_simulee):
-    id_camera = camera_simulee(2)
+    id_camera = camera_simulee(4)
     # Aucune Caméra simulée ne répond en ONVIF sur 2000 : comme une caméra dont le port a changé.
     compose("exec", "-T", "db", "psql", "-U", "argos", "-d", "argos", "-c",
-            f"UPDATE cameras SET port_onvif = 2000 WHERE id = {id_camera}")
+            f"UPDATE cameras SET schema_onvif = 'http', port_onvif = 2000 WHERE id = {id_camera}")
     assert port_onvif(connecte, id_camera) == 2000
 
     reponse = lire(connecte, id_camera)
 
     assert reponse.status_code == 200
-    assert port_onvif(connecte, id_camera) == 8899
+    assert port_onvif(connecte, id_camera) == 80
 
 
 @pytest.mark.parametrize("numero", [1, 3])
@@ -191,6 +192,7 @@ def test_url_modifiee_oublie_le_port_retenu(connecte, camera_simulee):
     assert connecte.patch(f"/api/cameras/{id_camera}", json={"url_rtsp": url}).status_code == 200
 
     assert port_onvif(connecte, id_camera) is None
+    assert connecte.get(f"/api/cameras/{id_camera}").json()["schema_onvif"] is None
 
 
 @pytest.fixture

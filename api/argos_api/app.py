@@ -131,6 +131,7 @@ MESSAGES_ONVIF: dict[onvif.CodeErreur, str] = {
     "sans_onvif": "Cette caméra ne répond pas en ONVIF.",
     "identifiants_refuses": "La caméra refuse ces identifiants en ONVIF.",
     "injoignable": "Caméra injoignable.",
+    "certificat_change": "Le certificat de cette caméra a changé.",
 }
 
 
@@ -317,11 +318,12 @@ def _routes_cameras(
 
     @routes.get(
         "/{id_camera}/reglages",
-        response_model=onvif.Reglages,
+        response_model=cameras.ReglagesLus,
         responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
     )
-    def lire_reglages(id_camera: int, base: Base) -> onvif.Reglages:
-        """Réglages lus sur la caméra à chaque appel, jamais gardés en base (seul le port ONVIF l'est)."""
+    def lire_reglages(id_camera: int, base: Base) -> cameras.ReglagesLus:
+        """Réglages lus sur la caméra à chaque appel, jamais gardés en base (seuls le contact ONVIF et la clé du
+        Certificat de l'Appareil le sont), avec la sécurité de l'échange."""
         with _erreurs_cameras():
             return cameras.lire_reglages(base, id_camera, horloge)
 

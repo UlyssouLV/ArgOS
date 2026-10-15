@@ -25,6 +25,10 @@ Toute autre opération reçoit une faute SOAP `ter:ActionNotSupported`. L'état 
 
 Le service écoute en HTTP sur `ONVIF_PORT`, en HTTPS sur `ONVIF_PORT_HTTPS`, ou les deux (HTTP sur `80` si aucun n'est renseigné) : une seule caméra, même état, mêmes identifiants. En HTTPS, `ONVIF_CERTIFICAT` et `ONVIF_CLE` donnent les chemins du certificat et de sa clé ; s'ils n'existent pas, un certificat auto-signé est créé (`openssl`), puis gardé : la clé ne change que si les fichiers disparaissent. Les tests s'en servent pour lancer une caméra avec une autre clé.
 
+`ONVIF_TLS_MAX` (`1.0` à `1.3`) plafonne la version TLS servie : c'est le cas d'une caméra ancienne, signalée « TLS ancien » par ArgOS. Pour la Caméra simulée 2, compose le lit dans `ONVIF_TLS_MAX_2`.
+
+Chaque requête reçue est journalisée (sortie d'erreur, `docker compose logs`) avec l'IP du client, le schéma et le port (`172.30.0.2 https:443 "POST /onvif/device_service HTTP/1.1" 200 -`) : les tests y lisent ce que la caméra a reçu, et par où.
+
 `GetCapabilities` annonce toujours ses adresses en `http://`, à l'hôte sous lequel on la joint, même jointe en HTTPS : comme beaucoup de vraies caméras. Le client ne doit en garder que le chemin.
 
 ## Identifiants

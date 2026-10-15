@@ -47,3 +47,9 @@ class Camera(Base):
     codec: Mapped[str | None] = mapped_column(String)
     # Port ONVIF qui a répondu à la dernière lecture des Réglages, cherché par ArgOS ; jamais saisi.
     port_onvif: Mapped[int | None] = mapped_column(Integer)
+    # Schéma de ce port (`https`, `http`), cherché avec lui (docs/adr/0007-onvif-en-https-par-cle-memorisee.md).
+    schema_onvif: Mapped[str | None] = mapped_column(String(5))
+    # Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil, mémorisée au premier contact
+    # HTTPS, et sa date : toute autre clé est ensuite refusée.
+    empreinte_onvif: Mapped[str | None] = mapped_column(String(64))
+    empreinte_onvif_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

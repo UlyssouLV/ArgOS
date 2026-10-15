@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 import { messageEchec, type Camera } from "../cameras";
 import {
   COINS,
+  empreinteCourte,
   estVide,
   fuseauLu,
   lireFuseaux,
@@ -20,14 +21,16 @@ import {
   type IncrustationSaisie,
   type Position,
   type Reglages,
+  type ReglagesLus,
   type Saisie,
+  type SecuriteOnvif,
 } from "../reglages";
 
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
 /** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent. */
 export function ReglagesCamera({ camera, onFermer }: Props) {
-  const [lus, setLus] = useState<{ origine: Reglages; fuseaux: string[] } | null>(null);
+  const [lus, setLus] = useState<{ origine: ReglagesLus; fuseaux: string[] } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,7 +58,29 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
           {erreur}
         </p>
       )}
+      {lus && <BandeauSecurite securite={lus.origine.securite} />}
       {lus && <FormulaireReglages camera={camera} origine={lus.origine} fuseaux={lus.fuseaux} />}
+    </section>
+  );
+}
+
+/** Échange chiffré : empreinte courte du Certificat de l'Appareil (entière au survol) et sa date ; « TLS ancien ». */
+function BandeauSecurite({ securite }: Readonly<{ securite: SecuriteOnvif }>) {
+  if (!securite.chiffre || !securite.empreinte) return null;
+  return (
+    <section className="reglages-securite" aria-label="Sécurité de l'échange">
+      <p>
+        Échange chiffré (HTTPS). Certificat de l'Appareil <code title={securite.empreinte}>{empreinteCourte(securite.empreinte)}</code>
+        {securite.empreinte_memorisee_le &&
+          `, mémorisé le ${new Date(securite.empreinte_memorisee_le).toLocaleDateString("fr-FR")}`}
+        .
+      </p>
+      {securite.tls_ancien && (
+        <p className="avertissement">
+          TLS ancien : la caméra ne propose que TLS 1.0 ou 1.1, des versions dépassées. L'échange reste chiffré, avec
+          la clé mémorisée.
+        </p>
+      )}
     </section>
   );
 }

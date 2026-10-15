@@ -95,6 +95,8 @@ class CameraLue(BaseModel):
     codec: str | None
     # Port ONVIF trouvé par ArgOS à l'ouverture des Réglages ; `None` : jamais cherché. Jamais modifiable.
     port_onvif: int | None
+    # Schéma de ce port, cherché avec lui.
+    schema_onvif: onvif.Schema | None
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -114,6 +116,7 @@ class CameraLue(BaseModel):
             mac=camera.mac,
             codec=camera.codec,
             port_onvif=camera.port_onvif,
+            schema_onvif=camera.schema_onvif,
         )
 
 
@@ -351,7 +354,7 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
     if url != masquer(camera.url_rtsp) and url != camera.url_rtsp:
         camera.url_rtsp = url
-        camera.port_onvif = None
+        _oublier_onvif(camera)
         _remettre_a_unknown(camera)
     for champ, valeur in champs.items():
         setattr(camera, champ, valeur)
@@ -361,46 +364,103 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     return CameraLue.depuis(camera)
 
 
-def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Reglages:
-    """Réglages lus sur la caméra d'une Caméra active, par ONVIF ; retient le port qui a répondu.
+class SecuriteOnvif(BaseModel):
+    """Sécurité de l'échange ONVIF avec la caméra, montrée dans ses Réglages."""
+
+    # Joint en HTTPS (docs/adr/0007-onvif-en-https-par-cle-memorisee.md).
+    chiffre: bool
+    # Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil, et sa date de mémorisation ;
+    # `None` hors HTTPS.
+    empreinte: str | None
+    empreinte_memorisee_le: datetime | None
+    # TLS 1.0 ou 1.1 négocié : accepté, mais signalé.
+    tls_ancien: bool
+
+
+class ReglagesLus(onvif.Reglages):
+    securite: SecuriteOnvif
+
+
+def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> ReglagesLus:
+    """Réglages lus sur la caméra d'une Caméra active, par ONVIF, et sécurité de l'échange ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.lire_reglages(url, port, maintenant))
+    reglages, securite = _par_onvif(
+        base, id_camera, maintenant, lambda url, retenu: onvif.lire_reglages(url, retenu, maintenant)
+    )
+    return ReglagesLus(**reglages.model_dump(), securite=securite)
 
 
 def modifier_reglages(
     base: Session, id_camera: int, modification: onvif.ModificationReglages, maintenant: Callable[[], datetime]
 ) -> onvif.ResultatModification:
-    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le port.
+    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.modifier_reglages(url, port, modification, maintenant))
+    resultat, _ = _par_onvif(
+        base,
+        id_camera,
+        maintenant,
+        lambda url, retenu: onvif.modifier_reglages(url, retenu, modification, maintenant),
+    )
+    return resultat
 
 
 def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
-    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le port.
+    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.mettre_a_l_heure(url, port, maintenant))
+    horloge, _ = _par_onvif(
+        base, id_camera, maintenant, lambda url, retenu: onvif.mettre_a_l_heure(url, retenu, maintenant)
+    )
+    return horloge
 
 
-def _par_onvif[T](base: Session, id_camera: int, echange: Callable[[str, int | None], tuple[T, int]]) -> T:
-    """Échange ONVIF avec la caméra d'une Caméra active ; retient le port qui a répondu."""
+def _par_onvif[T](
+    base: Session,
+    id_camera: int,
+    maintenant: Callable[[], datetime],
+    echange: Callable[[str, onvif.Retenu], tuple[T, onvif.Contact]],
+) -> tuple[T, SecuriteOnvif]:
+    """Échange ONVIF avec la caméra d'une Caméra active ; retient le contact, et la clé au premier contact HTTPS."""
     camera = _trouver(base, id_camera)
     if not camera.active:
         raise CameraIntrouvable
-    url, port_retenu = camera.url_rtsp, camera.port_onvif
+    url = camera.url_rtsp
+    retenu = onvif.Retenu(camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif)
+    memorisee_le = camera.empreinte_onvif_le
     # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
-    resultat, port = echange(url, port_retenu)
-    if port != port_retenu:
-        # Seulement si l'URL n'a pas changé entre-temps : le port est celui de cet hôte.
-        base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(port_onvif=port))
+    resultat, contact = echange(url, retenu)
+    valeurs: dict[str, object] = {}
+    if (contact.schema, contact.port) != (retenu.schema, retenu.port):
+        valeurs |= {"schema_onvif": contact.schema, "port_onvif": contact.port}
+    if contact.empreinte is not None and retenu.empreinte is None:
+        memorisee_le = maintenant()
+        valeurs |= {"empreinte_onvif": contact.empreinte, "empreinte_onvif_le": memorisee_le}
+    if valeurs:
+        # Seulement si l'URL n'a pas changé entre-temps : le contact est celui de cet hôte.
+        base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(**valeurs))
         base.commit()
-    return resultat
+    chiffre = contact.schema == "https"
+    securite = SecuriteOnvif(
+        chiffre=chiffre,
+        empreinte=contact.empreinte if chiffre else None,
+        empreinte_memorisee_le=memorisee_le if chiffre else None,
+        tls_ancien=contact.tls_ancien,
+    )
+    return resultat, securite
+
+
+def _oublier_onvif(camera: Camera) -> None:
+    """Contact et clé ONVIF retenus pour l'hôte de l'URL : à chercher de nouveau."""
+    camera.port_onvif = None
+    camera.schema_onvif = None
+    camera.empreinte_onvif = None
+    camera.empreinte_onvif_le = None
 
 
 def supprimer(base: Session, id_camera: int) -> None:

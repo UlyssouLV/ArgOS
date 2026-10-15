@@ -9,6 +9,7 @@ import socket
 import ssl
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -172,6 +173,22 @@ def camera_simulee_4_sans_recreation_de_la_date() -> None:
     compose(
         "up", "-d", "--force-recreate", "--wait", "camera-simulee-4-onvif", env={"ONVIF_TYPES_CREABLES_4": "Plain"}
     )
+
+
+def camera_simulee_2_en_tls_ancien() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », en TLS 1.0 au plus (même certificat).
+
+    `remettre_onvif_en_usine` lui rend ensuite un TLS récent.
+    """
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_TLS_MAX_2": "1.0"})
+
+
+def requetes_onvif_recues(service: str, depuis: datetime, de: str, schema_port: str) -> list[str]:
+    """Lignes du journal d'une interface ONVIF simulée : requêtes reçues depuis `depuis`, de l'IP `de`, sur
+    `schema_port` (`https:443`, `http:8899`). Le healthcheck, local, n'y est pas compté.
+    """
+    journal = compose("logs", "--no-log-prefix", "--since", depuis.isoformat(), service).stdout
+    return [ligne for ligne in journal.splitlines() if ligne.startswith(f"{de} {schema_port} ")]
 
 
 def regler_camera_simulee_4_en_onvif(service: str, corps: str) -> None:

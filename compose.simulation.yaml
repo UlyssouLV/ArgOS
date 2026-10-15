@@ -92,6 +92,8 @@ services:
       # Identifiants de dev de camera-simulee-2, les mêmes que pour son Flux.
       ONVIF_IDENTIFIANT: admin
       ONVIF_MOT_DE_PASSE: argos-simulee
+      # Version TLS la plus haute servie ; les tests la baissent à 1.0 pour simuler une caméra ancienne.
+      ONVIF_TLS_MAX: ${ONVIF_TLS_MAX_2:-}
 
   camera-simulee-4-onvif:
     build: ./simulation/onvif

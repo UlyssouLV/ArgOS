@@ -12,6 +12,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from stack_compose import (
+    camera_simulee_2_en_tls_ancien,
     camera_simulee_4_sans_recreation_de_la_date,
     regler_camera_simulee_4_en_onvif,
     remettre_onvif_en_usine,
@@ -98,6 +99,50 @@ def test_position_personnalisee(administration: Page, api, noms, nom_hors_d_un_c
     position = reglages.get_by_label("Position du nom", exact=True)
     expect(position).to_have_value("Custom", timeout=DELAI_LECTURE_MS)
     expect(position.locator("option:checked")).to_have_text("position personnalisée")
+
+
+def test_bandeau_chiffre_avec_l_empreinte_courte_et_sa_date(administration: Page, api, noms):
+    nom = noms()
+    creer(administration, api, nom, url_simulee(2))
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("Échange chiffré", timeout=DELAI_LECTURE_MS)
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    securite = api.get(f"/api/cameras/{camera['id']}/reglages", timeout=30).json()["securite"]
+    courte = " ".join(securite["empreinte"][i : i + 4] for i in range(0, 16, 4))
+    expect(bandeau).to_contain_text(courte)
+    memorisee_le = datetime.fromisoformat(securite["empreinte_memorisee_le"]).astimezone()
+    expect(bandeau).to_contain_text(f"mémorisé le {memorisee_le:%d/%m/%Y}")
+    expect(bandeau).not_to_contain_text("TLS ancien")
+
+
+def test_pas_de_bandeau_chiffre_en_http(administration: Page, api, noms):
+    nom = noms()
+    creer(administration, api, nom, url_simulee(4))
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_text("Échange chiffré")).to_have_count(0)
+
+
+@pytest.fixture
+def tls_ancien():
+    camera_simulee_2_en_tls_ancien()
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_tls_ancien_signale(administration: Page, api, noms, tls_ancien):
+    nom = noms()
+    creer(administration, api, nom, url_simulee(2))
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("TLS ancien", timeout=DELAI_LECTURE_MS)
 
 
 @pytest.mark.parametrize(

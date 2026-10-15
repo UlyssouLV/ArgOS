@@ -299,6 +299,21 @@ button.danger {
   gap: 0.75rem;
 }
 
+.reglages-securite {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #2e7d32;
+  background: #eef6ee;
+}
+
+.reglages-securite p {
+  margin: 0;
+}
+
+.reglages-securite .avertissement {
+  margin-top: 0.4rem;
+  color: #8a5a00;
+}
+
 .reglages-en-tete {
   display: flex;
   align-items: center;
