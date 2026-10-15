@@ -86,10 +86,10 @@ def decrit_depuis_la_machine_hote(chemin: str) -> str:
         connexion.sendall(
             f"DESCRIBE rtsp://127.0.0.1:{PORT_RTSP}/{chemin} RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n".encode()
         )
-        with connexion.makefile("rb") as lue:
-            entetes = b"".join(iter(lue.readline, b"\r\n"))
+        with connexion.makefile("rb") as reponse:
+            entetes = b"".join(iter(reponse.readline, b"\r\n"))
             longueur = re.search(rb"(?im)^content-length:\s*(\d+)", entetes)
-            corps = lue.read(int(longueur.group(1))) if longueur else b""
+            corps = reponse.read(int(longueur.group(1))) if longueur else b""
     return (entetes + b"\r\n" + corps).decode()
 
 

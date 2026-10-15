@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FICHIERS_COMPOSE = ("compose.yaml", "compose.simulation.yaml")
 # L'origine unique du Site (docs/adr/0005-…) : UI, API (/api) et Live (/flux), en HTTPS.
 URL_SITE = "https://localhost"
+COOKIE_SESSION = "argos_session"
 DELAI_PRET_S = 120
 CLES_ADMINISTRATEUR = ("ARGOS_IDENTIFIANT", "ARGOS_MOT_DE_PASSE")
 # Délai d'expiration d'un Aperçu sans renouvellement, raccourci pour les tests (2 minutes en prod).

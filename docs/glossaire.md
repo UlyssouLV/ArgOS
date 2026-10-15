@@ -86,6 +86,18 @@ La vue qui montre le Flux d'une seule Caméra active à la fois, avec passage à
 
 À éviter : mur d'images, mosaïque, visionneuse.
 
+## Session {#session}
+
+Connexion ouverte par l’Administrateur sur un poste, portée par un cookie : sans elle, ni l’API ni les Flux ne répondent.
+
+À éviter : login, token.
+
+## Pont {#pont}
+
+Relais vidéo du Site (MediaMTX) : il lit les Flux des Caméras en RTSP et les sert au navigateur en WebRTC ou en HLS.
+
+À éviter : proxy, serveur média.
+
 ## Autorité du Site {#autorite-du-site}
 
 Certificat qui permet à un poste de reconnaître le Site en HTTPS ; installée une fois par poste.

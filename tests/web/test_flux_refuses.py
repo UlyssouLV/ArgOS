@@ -6,15 +6,16 @@ répond plus au navigateur ensuite : seul un Flux refusé peut alors ramener l'U
 Que Chromium décode le HEVC dépend de la machine : pour lire en HLS, la Caméra simulée H.264 est annoncée en H.265.
 MediaMTX sert aussi son Flux en HLS, que le lecteur demande alors comme pour une Caméra H.265, et le navigateur
 dit décoder le HEVC pour que le lecteur le demande : les images reçues, elles, sont en H.264.
+Le HLS natif (Safari sur iPhone) est simulé en retirant Media Source Extensions : hls.js n'est alors pas pris.
 """
 
 import re
 
 from playwright.sync_api import Page, Route, expect
 
-from stack_compose import adresses_ip, client_du_site
+from stack_compose import COOKIE_SESSION, adresses_ip, client_du_site
 from test_administration import administration, api, noms, unique, url_simulee  # noqa: F401 (fixtures)
-from test_ajout_camera import DELAI_APERCU_MS, ajouter_par_ip, attendre_la_lecture, sans_essai  # noqa: F401 (fixtures)
+from test_ajout_camera import ajouter_par_ip, attendre_la_lecture, sans_essai  # noqa: F401 (fixtures)
 from test_live import (  # noqa: F401 (fixtures)
     attendre_que_la_video_joue,
     camera_affichee,
@@ -27,7 +28,6 @@ from test_live import (  # noqa: F401 (fixtures)
     whep,
 )
 
-COOKIE_SESSION = "argos_session"
 # Une requête de Flux suit de près : LL-HLS recharge sa playlist en continu, « Suivant » négocie aussitôt.
 DELAI_RETOUR_MS = 15_000
 
@@ -35,6 +35,15 @@ DELAI_RETOUR_MS = 15_000
 HEVC_ANNONCE = """
 const isTypeSupported = MediaSource.isTypeSupported.bind(MediaSource);
 MediaSource.isTypeSupported = (type) => /hvc1|hev1/.test(type) || isTypeSupported(type);
+"""
+
+# Safari sur iPhone : pas de Media Source Extensions, la balise vidéo lit le HLS elle-même et dit décoder le HEVC.
+HLS_NATIF = """
+for (const nom of ["MediaSource", "ManagedMediaSource", "WebKitMediaSource"]) delete window[nom];
+const canPlayType = HTMLMediaElement.prototype.canPlayType;
+HTMLMediaElement.prototype.canPlayType = function (type) {
+  return /hvc1|hev1/.test(type) ? "maybe" : canPlayType.call(this, type);
+};
 """
 
 
@@ -47,7 +56,7 @@ def fermer_la_session_cote_api(page: Page) -> None:
         assert client.get("/api/session").status_code == 401
 
 
-def expect_retour_a_la_connexion(page: Page) -> None:
+def attendre_le_retour_a_la_connexion(page: Page) -> None:
     expect(page).to_have_url(re.compile(r"/connexion$"), timeout=DELAI_RETOUR_MS)
     expect(page.get_by_role("button", name="Se connecter")).to_be_visible()
 
@@ -66,7 +75,26 @@ def test_session_fermee_pendant_un_live_hls_renvoie_a_la_connexion(
 
     fermer_la_session_cote_api(live)
 
-    expect_retour_a_la_connexion(live)
+    attendre_le_retour_a_la_connexion(live)
+
+
+def test_session_fermee_pendant_un_live_hls_natif_renvoie_a_la_connexion(seules_actives, creer, en_h265, live: Page):
+    """Le HLS natif ne dit pas au lecteur que le Flux est refusé : l'UI le demande à l'API (GET /api/session)."""
+    nom = creer(url_simulee(1))
+    en_h265(nom)
+    playlists: list[Route] = []
+    live.route("**/flux/hls/**", lambda route: playlists.append(route))
+    live.add_init_script(HLS_NATIF)
+    with live.expect_request("**/flux/hls/**"):
+        live.reload()
+    expect(camera_affichee(live)).to_have_text(nom)
+
+    fermer_la_session_cote_api(live)
+    live.route("**/api/session", lambda route: route.continue_())
+    for playlist in playlists:
+        playlist.continue_()
+
+    attendre_le_retour_a_la_connexion(live)
 
 
 def test_session_fermee_puis_camera_suivante_en_webrtc_renvoie_a_la_connexion(
@@ -81,7 +109,7 @@ def test_session_fermee_puis_camera_suivante_en_webrtc_renvoie_a_la_connexion(
 
     live.get_by_role("button", name="Suivant").click()
 
-    expect_retour_a_la_connexion(live)
+    attendre_le_retour_a_la_connexion(live)
     assert hls(requetes_flux) == []
 
 
@@ -104,4 +132,4 @@ def test_session_fermee_pendant_l_apercu_hls_d_un_ajout_renvoie_a_la_connexion(
 
     fermer_la_session_cote_api(administration)
 
-    expect_retour_a_la_connexion(administration)
+    attendre_le_retour_a_la_connexion(administration)

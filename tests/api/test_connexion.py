@@ -3,8 +3,7 @@
 import httpx
 
 from conftest import attendre_api, client_du_site, compose
-
-COOKIE_SESSION = "argos_session"
+from stack_compose import COOKIE_SESSION
 
 
 def se_connecter(client: httpx.Client, identifiant: str, mot_de_passe: str) -> httpx.Response:

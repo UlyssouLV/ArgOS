@@ -129,3 +129,7 @@ Trouver les caméras par l’annonce ONVIF plutôt qu’en essayant les ports co
 ### Identifiants ONVIF distincts
 
 Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui séparent les comptes (Hikvision…).
+
+### Couper un Live WebRTC à la fin de la session
+
+Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.

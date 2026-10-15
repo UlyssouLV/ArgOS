@@ -5,6 +5,7 @@ pour une session valide : sans elle, `401` à chaque requête, pour tout chemin 
 """
 
 import re
+from typing import NamedTuple
 
 import httpx
 import pytest
@@ -20,22 +21,30 @@ from test_mediamtx_en_pont import CHEMIN_HLS, attendre_playlist
 COOKIE_INVALIDE = "jeton-qui-n-existe-pas"
 
 
-def requetes_de_flux(chemin: str) -> list[tuple[str, str, bytes | None]]:
+class RequeteDeFlux(NamedTuple):
+    """Une requête qu'un lecteur envoie pour lire un Flux ; `corps` est une offre SDP pour WHEP."""
+
+    methode: str
+    url: str
+    corps: bytes | None = None
+
+
+def requetes_de_flux(chemin: str) -> list[RequeteDeFlux]:
     """Ce qu'un lecteur demande pour lire un chemin : offre WHEP, playlist et segment HLS."""
     return [
-        ("POST", f"/flux/webrtc/{chemin}/whep", OFFRE_SDP.encode()),
-        ("GET", f"{CHEMIN_HLS}/{chemin}/index.m3u8", None),
-        ("GET", f"{CHEMIN_HLS}/{chemin}/seg0.mp4", None),
+        RequeteDeFlux("POST", f"/flux/webrtc/{chemin}/whep", OFFRE_SDP.encode()),
+        RequeteDeFlux("GET", f"{CHEMIN_HLS}/{chemin}/index.m3u8"),
+        RequeteDeFlux("GET", f"{CHEMIN_HLS}/{chemin}/seg0.mp4"),
     ]
 
 
-def statut(methode: str, url: str, corps: bytes | None, cookie: str | None) -> int:
+def statut(requete: RequeteDeFlux, cookie: str | None) -> int:
     """Code HTTP d'une requête de Flux par un client neuf, avec ce cookie de session (ou aucun)."""
-    entetes = {"Content-Type": "application/sdp"} if corps else {}
+    entetes = {"Content-Type": "application/sdp"} if requete.corps else {}
     if cookie is not None:
         entetes["Cookie"] = f"{COOKIE_SESSION}={cookie}"
     with client_du_site() as c:
-        return c.request(methode, url, content=corps, headers=entetes).status_code
+        return c.request(requete.methode, requete.url, content=requete.corps, headers=entetes).status_code
 
 
 @pytest.fixture
@@ -48,11 +57,11 @@ def cookie_ferme(administrateur) -> str:
     return jeton
 
 
-def refusees_sans_session(chemin: str, cookie_ferme: str) -> dict:
+def refusees_sans_session(chemin: str, cookie_ferme: str) -> dict[tuple[RequeteDeFlux, str], int]:
     """Codes HTTP des requêtes de Flux sans cookie, avec un cookie invalide et avec celui d'une session fermée."""
     return {
-        (methode, url, nom): statut(methode, url, corps, cookie)
-        for methode, url, corps in requetes_de_flux(chemin)
+        (requete, nom): statut(requete, cookie)
+        for requete in requetes_de_flux(chemin)
         for nom, cookie in (("sans", None), ("invalide", COOKIE_INVALIDE), ("fermee", cookie_ferme))
     }
 
@@ -83,14 +92,14 @@ def test_un_segment_hls_servi_a_une_session_est_refuse_sans_elle(connecte, creer
     url_init = str(url_variante.join(init))
     assert connecte.get(url_init).status_code == 200
 
-    assert statut("GET", url_init, None, None) == 401
-    assert statut("GET", str(url_variante), None, None) == 401
+    assert statut(RequeteDeFlux("GET", url_init), None) == 401
+    assert statut(RequeteDeFlux("GET", str(url_variante)), None) == 401
 
 
 def test_verification_de_session_401_sans_session_2xx_avec(client, administrateur, cookie_ferme):
     assert client.get("/api/session").status_code == 401
-    assert statut("GET", "/api/session", None, COOKIE_INVALIDE) == 401
-    assert statut("GET", "/api/session", None, cookie_ferme) == 401
+    assert statut(RequeteDeFlux("GET", "/api/session"), COOKIE_INVALIDE) == 401
+    assert statut(RequeteDeFlux("GET", "/api/session"), cookie_ferme) == 401
 
     assert se_connecter(client, **administrateur).status_code == 204
 
