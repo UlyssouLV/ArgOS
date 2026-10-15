@@ -133,6 +133,7 @@ MESSAGES_ONVIF: dict[onvif.CodeErreur, str] = {
     "injoignable": "Caméra injoignable.",
     "certificat_change": "Le certificat de cette caméra a changé.",
     "https_indisponible": "Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair.",
+    "en_clair_non_accepte": "Cette caméra ne propose pas HTTPS : ONVIF en clair non accepté.",
 }
 
 
@@ -369,6 +370,18 @@ def _routes_cameras(
         """« Oublier le certificat de cette caméra » : le contact suivant repart de zéro."""
         with _erreurs_cameras():
             cameras.oublier_certificat(base, id_camera)
+
+    @routes.put("/{id_camera}/reglages/onvif-en-clair", status_code=status.HTTP_204_NO_CONTENT)
+    def accepter_en_clair(id_camera: int, base: Base) -> None:
+        """« Régler quand même en clair » : une caméra sans HTTPS est ensuite réglée en HTTP."""
+        with _erreurs_cameras():
+            cameras.accepter_en_clair(base, id_camera, accepte=True)
+
+    @routes.delete("/{id_camera}/reglages/onvif-en-clair", status_code=status.HTTP_204_NO_CONTENT)
+    def retirer_en_clair(id_camera: int, base: Base) -> None:
+        """Retire l'accord ONVIF en clair : seule la sonde repart en HTTP."""
+        with _erreurs_cameras():
+            cameras.accepter_en_clair(base, id_camera, accepte=False)
 
     return routes
 

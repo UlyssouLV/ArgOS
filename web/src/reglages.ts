@@ -72,7 +72,8 @@ export type CodeOnvif =
   | "identifiants_refuses"
   | "injoignable"
   | "certificat_change"
-  | "https_indisponible";
+  | "https_indisponible"
+  | "en_clair_non_accepte";
 
 /** `502` des Réglages : `code` dit lequel ; `certificat_change` porte les deux empreintes. */
 export class RefusOnvif extends Refus {
@@ -97,6 +98,14 @@ export async function faireConfiance(idCamera: number, empreinte: string): Promi
 /** « Oublier le certificat de cette caméra » : le contact suivant repart de zéro. */
 export async function oublierCertificat(idCamera: number): Promise<void> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages/certificat`, { method: "DELETE" });
+  if (!reponse.ok) return lever(reponse);
+}
+
+/** « Régler quand même en clair » (`accepte`), ou retrait de l'accord ONVIF en clair. */
+export async function accepterEnClair(idCamera: number, accepte: boolean): Promise<void> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages/onvif-en-clair`, {
+    method: accepte ? "PUT" : "DELETE",
+  });
   if (!reponse.ok) return lever(reponse);
 }
 

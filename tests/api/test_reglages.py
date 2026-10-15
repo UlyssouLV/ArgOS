@@ -50,16 +50,23 @@ def usine():
 
 
 @pytest.fixture
-def camera_simulee(creer_camera):
-    """Crée une Caméra sur une Caméra simulée ; `identifiants` remplace ceux de l'URL (`user:mdp`, ou `""`)."""
+def camera_simulee(connecte, creer_camera):
+    """Crée une Caméra sur une Caméra simulée ; `identifiants` remplace ceux de l'URL (`user:mdp`, ou `""`).
 
-    def _creer(numero: int, identifiants: str | None = None) -> int:
+    `en_clair` : l'Administrateur accepte l'ONVIF en clair ; par défaut pour la 4 seule, qui ne propose pas HTTPS.
+    """
+
+    def _creer(numero: int, identifiants: str | None = None, en_clair: bool | None = None) -> int:
         url = url_camera_simulee(numero, unique("reglages"), identifiants=identifiants is None)
         if identifiants:
             url = url.replace("rtsp://", f"rtsp://{identifiants}@")
         reponse = creer_camera(url_rtsp=url)
         assert reponse.status_code == 201
-        return reponse.json()["id"]
+        id_camera = reponse.json()["id"]
+        accepte = numero == 4 if en_clair is None else en_clair
+        if accepte:
+            assert connecte.put(f"/api/cameras/{id_camera}/reglages/onvif-en-clair").status_code == 204
+        return id_camera
 
     return _creer
 
@@ -192,7 +199,9 @@ def test_url_modifiee_oublie_le_port_retenu(connecte, camera_simulee):
     assert connecte.patch(f"/api/cameras/{id_camera}", json={"url_rtsp": url}).status_code == 200
 
     assert port_onvif(connecte, id_camera) is None
-    assert connecte.get(f"/api/cameras/{id_camera}").json()["schema_onvif"] is None
+    camera = connecte.get(f"/api/cameras/{id_camera}").json()
+    assert camera["schema_onvif"] is None
+    assert camera["onvif_en_clair_accepte"] is False
 
 
 @pytest.fixture

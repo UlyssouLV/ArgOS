@@ -35,6 +35,13 @@ def usine():
     remettre_onvif_en_usine()
 
 
+def creer_en_clair_accepte(page: Page, api, nom: str) -> None:
+    """Caméra sur la Caméra simulée 4 (sans HTTPS), ONVIF en clair déjà accepté par l'API."""
+    creer(page, api, nom, url_simulee(4))
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    assert api.put(f"/api/cameras/{camera['id']}/reglages/onvif-en-clair").status_code == 204
+
+
 def ouvrir_reglages(page: Page, nom: str) -> Locator:
     ligne(page, nom).get_by_role("button", name="Réglages").click()
     return page.get_by_role("region", name=f"Réglages de {nom}")
@@ -94,7 +101,7 @@ def nom_hors_d_un_coin():
 
 def test_position_personnalisee(administration: Page, api, noms, nom_hors_d_un_coin):
     nom = noms()
-    creer(administration, api, nom, url_simulee(4))
+    creer_en_clair_accepte(administration, api, nom)
 
     reglages = ouvrir_reglages(administration, nom)
 
@@ -120,14 +127,47 @@ def test_bandeau_chiffre_avec_l_empreinte_courte_et_sa_date(administration: Page
     expect(bandeau).not_to_contain_text("TLS ancien")
 
 
-def test_pas_de_bandeau_chiffre_en_http(administration: Page, api, noms):
+def test_onvif_en_clair_accepte_puis_bandeau_et_retrait(administration: Page, api, noms):
     nom = noms()
     creer(administration, api, nom, url_simulee(4))
 
     reglages = ouvrir_reglages(administration, nom)
 
+    accord = reglages.get_by_role("region", name="ONVIF en clair")
+    expect(accord.get_by_role("alert")).to_contain_text(
+        "ONVIF en clair non accepté", timeout=DELAI_LECTURE_MS
+    )
+    expect(accord).to_contain_text("mot de passe")
+    expect(accord).to_contain_text("en clair sur le réseau des caméras")
+    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+
+    accord.get_by_role("button", name="Régler quand même en clair").click()
+
     expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
-    expect(reglages.get_by_text("Échange chiffré")).to_have_count(0)
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("ONVIF en clair")
+    expect(bandeau).not_to_contain_text("Échange chiffré")
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    assert camera["onvif_en_clair_accepte"] is True
+
+    bandeau.get_by_role("button", name="Retirer l'accord ONVIF en clair").click()
+
+    expect(reglages.get_by_role("region", name="ONVIF en clair").get_by_role("alert")).to_contain_text(
+        "ONVIF en clair non accepté", timeout=DELAI_LECTURE_MS
+    )
+    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    assert camera["onvif_en_clair_accepte"] is False
+
+
+def test_pas_de_bandeau_en_clair_en_https(administration: Page, api, noms):
+    nom = noms()
+    creer(administration, api, nom, url_simulee(2))
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_text("ONVIF en clair")).to_have_count(0)
 
 
 @pytest.fixture
@@ -270,7 +310,10 @@ def remise_en_usine():
 def ouvrir_formulaire(page: Page, api, noms, numero: int) -> tuple[str, Locator]:
     """Caméra créée sur la Caméra simulée `numero`, Réglages ouverts et lus."""
     nom = noms()
-    creer(page, api, nom, url_simulee(numero))
+    if numero == 4:
+        creer_en_clair_accepte(page, api, nom)
+    else:
+        creer(page, api, nom, url_simulee(numero))
     reglages = ouvrir_reglages(page, nom)
     expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_visible(timeout=DELAI_LECTURE_MS)
     return nom, reglages

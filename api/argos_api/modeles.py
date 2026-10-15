@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
@@ -53,3 +53,5 @@ class Camera(Base):
     # HTTPS, et sa date : toute autre clé est ensuite refusée.
     empreinte_onvif: Mapped[str | None] = mapped_column(String(64))
     empreinte_onvif_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # L'Administrateur accepte de régler en ONVIF en clair cette caméra sans HTTPS ; révocable.
+    onvif_en_clair_accepte: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

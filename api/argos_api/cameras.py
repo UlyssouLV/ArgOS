@@ -105,6 +105,8 @@ class CameraLue(BaseModel):
     port_onvif: int | None
     # Schéma de ce port, cherché avec lui.
     schema_onvif: onvif.Schema | None
+    # L'Administrateur accepte l'ONVIF en clair (caméra sans HTTPS) ; depuis ses Réglages.
+    onvif_en_clair_accepte: bool
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -125,6 +127,7 @@ class CameraLue(BaseModel):
             codec=camera.codec,
             port_onvif=camera.port_onvif,
             schema_onvif=camera.schema_onvif,
+            onvif_en_clair_accepte=camera.onvif_en_clair_accepte,
         )
 
 
@@ -460,7 +463,9 @@ def _par_onvif[T](
     if not camera.active:
         raise CameraIntrouvable
     url = camera.url_rtsp
-    retenu = onvif.Retenu(camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif)
+    retenu = onvif.Retenu(
+        camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif, camera.onvif_en_clair_accepte
+    )
     memorisee_le = camera.empreinte_onvif_le
     # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
@@ -558,12 +563,24 @@ def oublier_certificat(base: Session, id_camera: int) -> None:
     journal.info("ONVIF : Caméra %s, certificat %s oublié", id_camera, ancienne)
 
 
+def accepter_en_clair(base: Session, id_camera: int, accepte: bool) -> None:
+    """« Régler quand même en clair » (`accepte`), ou retrait de l'accord. Lève `CameraIntrouvable`.
+
+    Une Caméra en HTTPS n'est jamais réglée en clair : l'accord ne sert qu'à une caméra sans HTTPS.
+    """
+    camera = _trouver(base, id_camera)
+    camera.onvif_en_clair_accepte = accepte
+    base.commit()
+    journal.info("ONVIF : Caméra %s, ONVIF en clair %s", id_camera, "accepté" if accepte else "retiré")
+
+
 def _oublier_onvif(camera: Camera) -> None:
-    """Contact et clé ONVIF retenus pour l'hôte de l'URL : à chercher de nouveau."""
+    """Contact, clé et accord ONVIF retenus pour l'hôte de l'URL : à chercher, et à demander, de nouveau."""
     camera.port_onvif = None
     camera.schema_onvif = None
     camera.empreinte_onvif = None
     camera.empreinte_onvif_le = None
+    camera.onvif_en_clair_accepte = False
 
 
 def supprimer(base: Session, id_camera: int) -> None:

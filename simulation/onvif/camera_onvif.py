@@ -126,7 +126,7 @@ def _verifier_identifiants(entete: ET.Element | None, identifiants: tuple[str, s
     except ValueError:
         raise Faute("ter:NotAuthorized", "Nonce illisible") from None
     attendue = base64.b64encode(
-        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()  # NOSONAR : SHA-1 imposé par WS-Security, risque traité en 0.6.3
+        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()  # NOSONAR : SHA-1 imposé par WS-Security
     ).decode()
     bon_identifiant = hmac.compare_digest(_texte(jeton, "wsse:Username"), identifiant)
     bonne_empreinte = hmac.compare_digest(_texte(jeton, "wsse:Password"), attendue)

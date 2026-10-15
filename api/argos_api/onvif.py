@@ -9,6 +9,8 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
   Caméra retenue en HTTP y passe dès que la caméra le propose) ; sinon le port HTTP retenu s'il répond encore en
   SOAP, sinon recherche sur les ports HTTP courants, dans leur ordre. Une Caméra retenue en HTTPS n'est jamais
   cherchée en HTTP : sans HTTPS, refus (`https_indisponible`).
+- ONVIF en clair : en HTTP, seule la sonde (`GetSystemDateAndTime` sans identifiants) part sans l'accord de
+  l'Administrateur ; sans lui, refus (`en_clair_non_accepte`).
 - TLS : ni autorité, ni nom, ni expiration (certificats auto-signés, adressés par IP) ; la clé publique (SPKI) du
   Certificat de l'Appareil est comparée sur chaque connexion à celle mémorisée, ou, au premier contact, à la
   première vue dans l'échange. TLS 1.0 minimum, pour ce seul client.
@@ -81,7 +83,9 @@ journal = logging.getLogger("argos_api.onvif")
 # requête.
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
-CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable", "certificat_change", "https_indisponible"]
+CodeErreur = Literal[
+    "sans_onvif", "identifiants_refuses", "injoignable", "certificat_change", "https_indisponible", "en_clair_non_accepte"
+]
 Schema = Literal["https", "http"]
 Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
 Position = Coin | Literal["Custom"]
@@ -108,6 +112,8 @@ class Retenu:
     port: int | None = None
     # Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil, mémorisée au premier contact.
     empreinte: str | None = None
+    # L'Administrateur accepte l'ONVIF en clair, pour une caméra sans HTTPS.
+    en_clair_accepte: bool = False
 
 
 @dataclass(frozen=True)
@@ -369,6 +375,14 @@ def _trouver_contact(session: requests.Session, tls: _ContexteTls, hote: str, re
         # Pas de rétrogradation : un HTTPS disparu peut être filtré par qui veut lire l'échange en clair. Une
         # caméra muette sur 443 est plutôt éteinte.
         raise ErreurOnvif("injoignable" if sonde_https is _Sonde.MUET else "https_indisponible")
+    http = _chercher_http(session, hote, retenu, sonde_https)
+    if not retenu.en_clair_accepte:
+        raise ErreurOnvif("en_clair_non_accepte")
+    return http  # NOSONAR : HTTP seulement après accord de l'Administrateur, caméra sans HTTPS
+
+
+def _chercher_http(session: requests.Session, hote: str, retenu: Retenu, sonde_https: _Sonde) -> Contact:
+    """Port HTTP qui répond en SOAP : le retenu d'abord, sinon les ports courants. Rien que la sonde."""
     if retenu.schema == "http" and retenu.port is not None:
         http = Contact("http", retenu.port)
         if _sonder(session, _adresse(http, hote, CHEMIN_APPAREIL)) is _Sonde.SOAP:

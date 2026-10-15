@@ -333,6 +333,20 @@ button.danger {
   color: #8a5a00;
 }
 
+/* ONVIF en clair : rappel, en couleur d'avertissement plutôt que de l'échange chiffré. */
+.reglages-securite.reglages-en-clair {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-left-color: #8a5a00;
+  background: #fbf4e6;
+}
+
+.reglages-en-clair .avertissement {
+  margin-top: 0;
+}
+
 .reglages-en-tete {
   display: flex;
   align-items: center;
