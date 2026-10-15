@@ -1,13 +1,11 @@
 name: Deploy docs
 
+# À chaque push sur main (pas seulement la doc) : le site publie aussi les
+# compteurs de commits lus par les badges du README (static/stats/).
 on:
   push:
     branches:
       - main
-    paths:
-      - 'docs/**'
-      - 'docs-site/**'
-      - '.github/workflows/deploy-docs.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -54,6 +52,13 @@ jobs:
         working-directory: docs-site
         run: |
           npm ci --ignore-scripts
+
+      - name: Compteurs de commits
+        working-directory: docs-site
+        run: node scripts/generer-stats-commits.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Build
         working-directory: docs-site

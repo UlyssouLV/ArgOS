@@ -2,3 +2,5 @@ node_modules
 build
 .docusaurus
 .cache-loader
+# Compteurs générés en CI (Deploy docs)
+static/stats/
