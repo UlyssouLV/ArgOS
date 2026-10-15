@@ -27,6 +27,8 @@ Le service écoute en HTTP sur `ONVIF_PORT`, en HTTPS sur `ONVIF_PORT_HTTPS`, ou
 
 `ONVIF_TLS_MAX` (`1.0` à `1.3`) plafonne la version TLS servie : c'est le cas d'une caméra ancienne, signalée « TLS ancien » par ArgOS. Pour la Caméra simulée 2, compose le lit dans `ONVIF_TLS_MAX_2`.
 
+Pour la Caméra simulée 2, compose lit aussi `ONVIF_PORT_HTTPS_2` (vide : HTTP seulement, une caméra dont HTTPS a disparu) et `ONVIF_CERTIFICAT_2` / `ONVIF_CLE_2` (hors du volume : une autre clé à la même adresse, comme après une remise en usine). `remettre_onvif_en_usine` (`tests/stack_compose.py`) lui rend HTTPS et son certificat habituel.
+
 Chaque requête reçue est journalisée (sortie d'erreur, `docker compose logs`) avec l'IP du client, le schéma et le port (`172.30.0.2 https:443 "POST /onvif/device_service HTTP/1.1" 200 -`) : les tests y lisent ce que la caméra a reçu, et par où.
 
 `GetCapabilities` annonce toujours ses adresses en `http://`, à l'hôte sous lequel on la joint, même jointe en HTTPS : comme beaucoup de vraies caméras. Le client ne doit en garder que le chemin.

@@ -305,6 +305,25 @@ button.danger {
   background: #eef6ee;
 }
 
+.reglages-refus {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #b3261e;
+  background: #fbeeed;
+}
+
+.reglages-refus p,
+.reglages-refus dl {
+  margin: 0;
+}
+
+.reglages-refus code {
+  word-break: break-all;
+}
+
 .reglages-securite p {
   margin: 0;
 }

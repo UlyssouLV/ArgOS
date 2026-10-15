@@ -1,5 +1,6 @@
 """Caméras du Site : URL RTSP (validation, masquage, hôte et port) et règles de gestion."""
 
+import logging
 import socket
 from collections.abc import Callable, Sequence
 from datetime import datetime
@@ -22,6 +23,9 @@ MASQUE = "***"
 
 Etat = Literal["unknown", "online", "offline"]
 
+# Refus et décisions sur le Certificat de l'Appareil : id de Caméra et empreintes, jamais d'identifiant ni d'URL.
+journal = logging.getLogger("argos_api.cameras")
+
 
 class CameraIntrouvable(Exception):
     pass
@@ -33,6 +37,10 @@ class Doublon(Exception):
 
 class CameraActive(Exception):
     """Seule une Caméra désactivée peut être supprimée."""
+
+
+class CertificatNonPresente(Exception):
+    """La caméra ne présente pas (ou plus) le Certificat de l'Appareil auquel l'Administrateur veut faire confiance."""
 
 
 def _decouper(url: str) -> SplitResult:
@@ -381,6 +389,28 @@ class ReglagesLus(onvif.Reglages):
     securite: SecuriteOnvif
 
 
+class CertificatsCompares(BaseModel):
+    """Clé mémorisée (et sa date) et clé que la caméra présente, pour que l'Administrateur tranche."""
+
+    # `None` : changée dès le premier contact, au milieu de l'échange.
+    empreinte_memorisee: str | None
+    empreinte_memorisee_le: datetime | None
+    empreinte_presentee: str | None
+
+
+class CertificatChange(onvif.ErreurOnvif):
+    """`certificat_change` d'une Caméra, avec les deux empreintes."""
+
+    def __init__(self, certificats: CertificatsCompares) -> None:
+        super().__init__("certificat_change", empreinte_vue=certificats.empreinte_presentee)
+        self.certificats = certificats
+
+
+class ConfianceCertificat(BaseModel):
+    # Empreinte que les Réglages ont montrée comme présentée : la caméra doit la présenter encore.
+    empreinte: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> ReglagesLus:
     """Réglages lus sur la caméra d'une Caméra active, par ONVIF, et sécurité de l'échange ; retient le contact.
 
@@ -434,7 +464,11 @@ def _par_onvif[T](
     memorisee_le = camera.empreinte_onvif_le
     # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
-    resultat, contact = echange(url, retenu)
+    try:
+        resultat, contact = echange(url, retenu)
+    except onvif.ErreurOnvif as erreur:
+        _signaler_refus(id_camera, retenu, memorisee_le, erreur)
+        raise
     valeurs: dict[str, object] = {}
     if (contact.schema, contact.port) != (retenu.schema, retenu.port):
         valeurs |= {"schema_onvif": contact.schema, "port_onvif": contact.port}
@@ -453,6 +487,75 @@ def _par_onvif[T](
         tls_ancien=contact.tls_ancien,
     )
     return resultat, securite
+
+
+def _signaler_refus(
+    id_camera: int, retenu: onvif.Retenu, memorisee_le: datetime | None, erreur: onvif.ErreurOnvif
+) -> None:
+    """Journalise un refus de sécurité ; un certificat changé repart avec les deux empreintes."""
+    if erreur.code == "certificat_change":
+        journal.warning(
+            "ONVIF : Caméra %s, certificat changé (mémorisé %s, présenté %s) : refusé",
+            id_camera,
+            retenu.empreinte,
+            erreur.empreinte_vue,
+        )
+        raise CertificatChange(
+            CertificatsCompares(
+                empreinte_memorisee=retenu.empreinte,
+                empreinte_memorisee_le=memorisee_le,
+                empreinte_presentee=erreur.empreinte_vue,
+            )
+        ) from erreur
+    if erreur.code == "https_indisponible":
+        journal.warning(
+            "ONVIF : Caméra %s, HTTPS indisponible (certificat mémorisé %s) : refusé, sans repli HTTP",
+            id_camera,
+            retenu.empreinte,
+        )
+
+
+def faire_confiance(base: Session, id_camera: int, empreinte: str, maintenant: Callable[[], datetime]) -> None:
+    """Mémorise la clé que la caméra d'une Caméra active présente, si c'est bien `empreinte` (celle montrée à
+    l'Administrateur) ; le contact devient HTTPS.
+
+    Lève `CameraIntrouvable`, `CertificatNonPresente` ou `onvif.ErreurOnvif` (la caméra ne répond pas en HTTPS).
+    """
+    camera = _trouver(base, id_camera)
+    if not camera.active:
+        raise CameraIntrouvable
+    url, ancienne = camera.url_rtsp, camera.empreinte_onvif
+    base.rollback()
+    presentee = onvif.empreinte_presentee(url)
+    if presentee != empreinte:
+        journal.warning(
+            "ONVIF : Caméra %s, confiance refusée : %s n'est pas le certificat présenté (%s)",
+            id_camera,
+            empreinte,
+            presentee,
+        )
+        raise CertificatNonPresente
+    base.execute(
+        update(Camera)
+        .where(Camera.id == id_camera, Camera.url_rtsp == url)
+        .values(
+            schema_onvif="https",
+            port_onvif=onvif.PORT_HTTPS,
+            empreinte_onvif=presentee,
+            empreinte_onvif_le=maintenant(),
+        )
+    )
+    base.commit()
+    journal.info("ONVIF : Caméra %s, confiance au nouveau certificat %s (remplace %s)", id_camera, presentee, ancienne)
+
+
+def oublier_certificat(base: Session, id_camera: int) -> None:
+    """Efface clé, schéma et port ONVIF retenus : le contact suivant repart de zéro. Lève `CameraIntrouvable`."""
+    camera = _trouver(base, id_camera)
+    ancienne = camera.empreinte_onvif
+    _oublier_onvif(camera)
+    base.commit()
+    journal.info("ONVIF : Caméra %s, certificat %s oublié", id_camera, ancienne)
 
 
 def _oublier_onvif(camera: Camera) -> None:

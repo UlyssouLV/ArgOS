@@ -132,6 +132,7 @@ MESSAGES_ONVIF: dict[onvif.CodeErreur, str] = {
     "identifiants_refuses": "La caméra refuse ces identifiants en ONVIF.",
     "injoignable": "Caméra injoignable.",
     "certificat_change": "Le certificat de cette caméra a changé.",
+    "https_indisponible": "Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair.",
 }
 
 
@@ -140,6 +141,8 @@ class ErreurOnvifLue(BaseModel):
 
     code: onvif.CodeErreur
     detail: str
+    # `certificat_change` : les deux empreintes, pour trancher.
+    certificat: cameras.CertificatsCompares | None = None
 
 
 class AjoutDepuisEssai(BaseModel):
@@ -251,8 +254,10 @@ def creer_app(
     @app.exception_handler(onvif.ErreurOnvif)
     def erreur_onvif(_: Request, erreur: onvif.ErreurOnvif) -> JSONResponse:
         """`502` des Réglages de la Caméra : la caméra n'a pas pu être lue ou réglée par ONVIF."""
-        lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code])
-        return JSONResponse(lue.model_dump(), status_code=status.HTTP_502_BAD_GATEWAY)
+        certificat = erreur.certificats if isinstance(erreur, cameras.CertificatChange) else None
+        lue = ErreurOnvifLue(code=erreur.code, detail=MESSAGES_ONVIF[erreur.code], certificat=certificat)
+        # `certificat` absent hors `certificat_change`.
+        return JSONResponse(lue.model_dump(mode="json", exclude_none=True), status_code=status.HTTP_502_BAD_GATEWAY)
 
     @app.get("/api/fuseaux", dependencies=[Depends(administrateur_connecte)])
     def lister_fuseaux() -> list[str]:
@@ -348,6 +353,22 @@ def _routes_cameras(
         """Envoie une fois l'heure UTC du serveur à la caméra (mode manuel, fuseau gardé), puis relit son Horloge."""
         with _erreurs_cameras():
             return cameras.mettre_a_l_heure(base, id_camera, horloge)
+
+    @routes.post(
+        "/{id_camera}/reglages/certificat",
+        status_code=status.HTTP_204_NO_CONTENT,
+        responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
+    )
+    def faire_confiance(id_camera: int, confiance: cameras.ConfianceCertificat, base: Base) -> None:
+        """« Faire confiance au nouveau certificat » : seulement à l'empreinte que la caméra présente encore."""
+        with _erreurs_cameras():
+            cameras.faire_confiance(base, id_camera, confiance.empreinte, horloge)
+
+    @routes.delete("/{id_camera}/reglages/certificat", status_code=status.HTTP_204_NO_CONTENT)
+    def oublier_certificat(id_camera: int, base: Base) -> None:
+        """« Oublier le certificat de cette caméra » : le contact suivant repart de zéro."""
+        with _erreurs_cameras():
+            cameras.oublier_certificat(base, id_camera)
 
     return routes
 
@@ -541,4 +562,8 @@ def _erreurs_cameras() -> Iterator[None]:
     except cameras.CameraActive:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Désactiver la Caméra avant de la supprimer."
+        ) from None
+    except cameras.CertificatNonPresente:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "La caméra ne présente plus ce certificat : rouvrir ses Réglages."
         ) from None

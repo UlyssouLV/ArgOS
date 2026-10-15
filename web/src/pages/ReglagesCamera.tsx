@@ -4,17 +4,22 @@ import { messageEchec, type Camera } from "../cameras";
 import {
   COINS,
   empreinteCourte,
+  empreinteGroupee,
   estVide,
+  faireConfiance,
   fuseauLu,
   lireFuseaux,
   lireReglages,
   mettreALHeure,
   modificationsEntre,
   modifierReglages,
+  oublierCertificat,
+  RefusOnvif,
   saisieDepuis,
   texteDateHeure,
   texteEcart,
   textePosition,
+  type CertificatsCompares,
   type ChampModifie,
   type CleIncrustation,
   type Horloge,
@@ -28,21 +33,37 @@ import {
 
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
-/** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent. */
+/**
+ * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent.
+ * Un certificat changé ou un HTTPS disparu bloque les Réglages jusqu'à la décision de l'Administrateur, puis relit.
+ */
 export function ReglagesCamera({ camera, onFermer }: Props) {
   const [lus, setLus] = useState<{ origine: ReglagesLus; fuseaux: string[] } | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [echec, setEchec] = useState<unknown>(null);
+  // Incrémentée après une décision sur le certificat : relit la caméra.
+  const [lecture, setLecture] = useState(0);
 
   useEffect(() => {
     let ouvert = true;
     Promise.all([lireReglages(camera.id), lireFuseaux()]).then(
       ([origine, fuseaux]) => ouvert && setLus({ origine, fuseaux }),
-      (e: unknown) => ouvert && setErreur(messageEchec(e)),
+      (e: unknown) => ouvert && setEchec(e ?? new Error()),
     );
     return () => {
       ouvert = false;
     };
-  }, [camera.id]);
+  }, [camera.id, lecture]);
+
+  function relire() {
+    setLus(null);
+    setEchec(null);
+    setLecture((n) => n + 1);
+  }
+
+  const refus = echec instanceof RefusOnvif ? echec : null;
+  // Certificat changé et HTTPS indisponible ont leur écran ; les autres échecs, leur message.
+  const decision = refus?.code === "certificat_change" || refus?.code === "https_indisponible";
+  const erreur = echec === null || decision ? null : messageEchec(echec);
 
   return (
     <section className="reglages" aria-label={`Réglages de ${camera.nom}`}>
@@ -52,7 +73,18 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
           Fermer
         </button>
       </div>
-      {!lus && !erreur && <p>Lecture de la caméra…</p>}
+      {!lus && echec === null && <p>Lecture de la caméra…</p>}
+      {refus?.code === "certificat_change" && (
+        <CertificatChange
+          camera={camera}
+          message={refus.message}
+          certificat={refus.certificat}
+          onDecide={relire}
+        />
+      )}
+      {refus?.code === "https_indisponible" && (
+        <HttpsIndisponible camera={camera} message={refus.message} onDecide={relire} />
+      )}
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}
@@ -81,6 +113,121 @@ function BandeauSecurite({ securite }: Readonly<{ securite: SecuriteOnvif }>) {
           la clé mémorisée.
         </p>
       )}
+    </section>
+  );
+}
+
+type PropsRefus = Readonly<{ camera: Camera; message: string; onDecide: () => void }>;
+
+function texteEmpreinte(empreinte: string | null): string {
+  return empreinte ? empreinteGroupee(empreinte) : "inconnu";
+}
+
+/**
+ * La caméra présente une autre clé que celle mémorisée : rien d'authentifié n'est parti. Les deux empreintes et les
+ * causes possibles ; « Faire confiance au nouveau certificat », confirmé, n'accepte que l'empreinte montrée ici.
+ */
+function CertificatChange({
+  camera,
+  message,
+  certificat,
+  onDecide,
+}: PropsRefus & Readonly<{ certificat: CertificatsCompares | null }>) {
+  const [confirmation, setConfirmation] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const presentee = certificat?.empreinte_presentee ?? null;
+
+  async function confier(empreinte: string) {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await faireConfiance(camera.id, empreinte);
+      onDecide();
+    } catch (e) {
+      setErreur(messageEchec(e));
+      setConfirmation(false);
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <section className="reglages-refus" aria-label="Certificat changé">
+      <p className="erreur" role="alert">
+        {message}
+      </p>
+      <dl>
+        <dt>Certificat mémorisé</dt>
+        <dd>
+          <code>{texteEmpreinte(certificat?.empreinte_memorisee ?? null)}</code>
+          {certificat?.empreinte_memorisee_le &&
+            `, le ${new Date(certificat.empreinte_memorisee_le).toLocaleDateString("fr-FR")}`}
+        </dd>
+        <dt>Certificat présenté</dt>
+        <dd>
+          <code>{texteEmpreinte(presentee)}</code>
+        </dd>
+      </dl>
+      <p>
+        Causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse. Rien n'est envoyé à la
+        caméra avec ses identifiants tant que vous n'avez pas tranché.
+      </p>
+      {presentee && !confirmation && (
+        <button type="button" disabled={envoi} onClick={() => setConfirmation(true)}>
+          Faire confiance au nouveau certificat
+        </button>
+      )}
+      {presentee && confirmation && (
+        <p className="confirmation">
+          <span>
+            ArgOS réglera cette caméra avec le certificat <code>{empreinteCourte(presentee)}</code> et refusera
+            l'ancien. Ne le faites que si vous savez pourquoi il a changé.
+          </span>
+          <button type="button" className="danger" disabled={envoi} onClick={() => void confier(presentee)}>
+            Confirmer la confiance
+          </button>
+          <button type="button" disabled={envoi} onClick={() => setConfirmation(false)}>
+            Annuler
+          </button>
+        </p>
+      )}
+      {erreur && <p className="erreur">{erreur}</p>}
+    </section>
+  );
+}
+
+/** La Caméra répondait en HTTPS et ne le fait plus : pas de repli en clair ; « Oublier le certificat » repart de zéro. */
+function HttpsIndisponible({ camera, message, onDecide }: PropsRefus) {
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function oublier() {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await oublierCertificat(camera.id);
+      onDecide();
+    } catch (e) {
+      setErreur(messageEchec(e));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <section className="reglages-refus" aria-label="HTTPS indisponible">
+      <p className="erreur" role="alert">
+        {message}
+      </p>
+      <p>
+        Causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse, ou quelqu'un qui bloque
+        HTTPS pour lire l'échange en clair. Oublier le certificat fait repartir le contact suivant de zéro.
+      </p>
+      <button type="button" disabled={envoi} onClick={() => void oublier()}>
+        Oublier le certificat de cette caméra
+      </button>
+      {erreur && <p className="erreur">{erreur}</p>}
     </section>
   );
 }

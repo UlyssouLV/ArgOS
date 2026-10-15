@@ -7,7 +7,8 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
 
 - Contact (docs/adr/0007-onvif-en-https-par-cle-memorisee.md) : HTTPS sur `443` d'abord, à chaque échange (une
   Caméra retenue en HTTP y passe dès que la caméra le propose) ; sinon le port HTTP retenu s'il répond encore en
-  SOAP, sinon recherche sur les ports HTTP courants, dans leur ordre.
+  SOAP, sinon recherche sur les ports HTTP courants, dans leur ordre. Une Caméra retenue en HTTPS n'est jamais
+  cherchée en HTTP : sans HTTPS, refus (`https_indisponible`).
 - TLS : ni autorité, ni nom, ni expiration (certificats auto-signés, adressés par IP) ; la clé publique (SPKI) du
   Certificat de l'Appareil est comparée sur chaque connexion à celle mémorisée, ou, au premier contact, à la
   première vue dans l'échange. TLS 1.0 minimum, pour ce seul client.
@@ -80,7 +81,7 @@ journal = logging.getLogger("argos_api.onvif")
 # requête.
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
-CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable", "certificat_change"]
+CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable", "certificat_change", "https_indisponible"]
 Schema = Literal["https", "http"]
 Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
 Position = Coin | Literal["Custom"]
@@ -348,11 +349,26 @@ class _Sonde(Enum):
     MUET = "muet"
 
 
+def empreinte_presentee(url_rtsp: str) -> str:
+    """Empreinte de la clé publique du Certificat que la caméra de `url_rtsp` présente en ONVIF chiffré, sans rien
+    envoyer d'authentifié. Lève `ErreurOnvif` si elle ne répond pas en ONVIF chiffré."""
+    hote = urlsplit(url_rtsp).hostname or ""
+    tls = _contexte_tls(None)
+    sonde = _sonder(_session(tls), _adresse(Contact("https", PORT_HTTPS), hote, CHEMIN_APPAREIL))
+    if sonde is not _Sonde.SOAP or tls.attendue is None:
+        raise ErreurOnvif("injoignable" if sonde is _Sonde.MUET else "https_indisponible")
+    return tls.attendue
+
+
 def _trouver_contact(session: requests.Session, tls: _ContexteTls, hote: str, retenu: Retenu) -> Contact:
     https = Contact("https", PORT_HTTPS)
     sonde_https = _sonder(session, _adresse(https, hote, CHEMIN_APPAREIL))
     if sonde_https is _Sonde.SOAP:
         return Contact("https", PORT_HTTPS, tls.attendue, tls.version)
+    if retenu.schema == "https":
+        # Pas de rétrogradation : un HTTPS disparu peut être filtré par qui veut lire l'échange en clair. Une
+        # caméra muette sur 443 est plutôt éteinte.
+        raise ErreurOnvif("injoignable" if sonde_https is _Sonde.MUET else "https_indisponible")
     if retenu.schema == "http" and retenu.port is not None:
         http = Contact("http", retenu.port)
         if _sonder(session, _adresse(http, hote, CHEMIN_APPAREIL)) is _Sonde.SOAP:

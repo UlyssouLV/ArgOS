@@ -12,7 +12,9 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from stack_compose import (
+    camera_simulee_2_avec_une_autre_cle,
     camera_simulee_2_en_tls_ancien,
+    camera_simulee_2_sans_https,
     camera_simulee_4_sans_recreation_de_la_date,
     regler_camera_simulee_4_en_onvif,
     remettre_onvif_en_usine,
@@ -143,6 +145,84 @@ def test_tls_ancien_signale(administration: Page, api, noms, tls_ancien):
 
     bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
     expect(bandeau).to_contain_text("TLS ancien", timeout=DELAI_LECTURE_MS)
+
+
+def groupee(empreinte: str) -> str:
+    return " ".join(empreinte[i : i + 4] for i in range(0, len(empreinte), 4))
+
+
+@pytest.fixture
+def camera_2_lue_en_https(administration: Page, api, noms) -> tuple[str, dict]:
+    """Caméra simulée 2 créée et lue une fois en HTTPS par l'API : sa clé est mémorisée."""
+    nom = noms()
+    creer(administration, api, nom, url_simulee(2))
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    securite = api.get(f"/api/cameras/{camera['id']}/reglages", timeout=30).json()["securite"]
+    return nom, securite
+
+
+@pytest.fixture
+def autre_cle():
+    camera_simulee_2_avec_une_autre_cle()
+    yield
+    remettre_onvif_en_usine()
+
+
+@pytest.fixture
+def sans_https():
+    camera_simulee_2_sans_https()
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_certificat_change_montre_les_deux_empreintes_puis_confiance_confirmee(
+    administration: Page, camera_2_lue_en_https, autre_cle
+):
+    nom, securite = camera_2_lue_en_https
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    refus = reglages.get_by_role("region", name="Certificat changé")
+    expect(refus.get_by_role("alert")).to_contain_text(
+        "Le certificat de cette caméra a changé", timeout=DELAI_LECTURE_MS
+    )
+    expect(valeur(refus, "Certificat mémorisé")).to_contain_text(groupee(securite["empreinte"]))
+    memorisee_le = datetime.fromisoformat(securite["empreinte_memorisee_le"]).astimezone()
+    expect(valeur(refus, "Certificat mémorisé")).to_contain_text(f"le {memorisee_le:%d/%m/%Y}")
+    presente = valeur(refus, "Certificat présenté")
+    expect(presente).not_to_contain_text(groupee(securite["empreinte"]))
+    expect(refus).to_contain_text("remise en usine")
+    expect(refus).to_contain_text("nouveau firmware")
+    expect(refus).to_contain_text("autre appareil à cette adresse")
+    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+
+    refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
+    refus.get_by_role("button", name="Annuler").click()
+    expect(refus.get_by_role("button", name="Confirmer la confiance")).to_have_count(0)
+    refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
+    refus.get_by_role("button", name="Confirmer la confiance").click()
+
+    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("Échange chiffré")
+    expect(bandeau).not_to_contain_text(groupee(securite["empreinte"][:16]))
+    expect(reglages.get_by_role("region", name="Certificat changé")).to_have_count(0)
+
+
+def test_https_indisponible_puis_oublier_le_certificat(administration: Page, api, camera_2_lue_en_https, sans_https):
+    nom, _ = camera_2_lue_en_https
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    refus = reglages.get_by_role("region", name="HTTPS indisponible")
+    expect(refus.get_by_role("alert")).to_contain_text("ne répond plus en HTTPS", timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+
+    refus.get_by_role("button", name="Oublier le certificat de cette caméra").click()
+
+    expect(reglages.get_by_role("region", name="HTTPS indisponible")).to_have_count(0, timeout=DELAI_LECTURE_MS)
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    assert camera["schema_onvif"] != "https"
 
 
 @pytest.mark.parametrize(

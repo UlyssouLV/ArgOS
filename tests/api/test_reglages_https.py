@@ -15,7 +15,10 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from stack_compose import (
     IPS_SIMULEES,
     adresses_ip,
+    camera_simulee_2_avec_une_autre_cle,
     camera_simulee_2_en_tls_ancien,
+    camera_simulee_2_sans_https,
+    client_du_site,
     compose,
     remettre_onvif_en_usine,
     requetes_onvif_recues,
@@ -154,3 +157,135 @@ def test_tls_1_0_accepte_et_signale(connecte, camera_simulee, tls_ancien):
     securite = reponse.json()["securite"]
     assert securite["chiffre"] is True
     assert securite["tls_ancien"] is True
+
+
+# --- Refus : certificat changé, HTTPS indisponible --------------------------------------------------------------
+
+
+def journal_api(depuis: datetime) -> list[str]:
+    return compose("logs", "--no-log-prefix", "--since", depuis.isoformat(), "api").stdout.splitlines()
+
+
+def lignes_onvif(journal: list[str], id_camera: int) -> list[str]:
+    """Lignes de refus et de décision ONVIF d'une Caméra ; jamais d'identifiant ni d'URL."""
+    lignes = [ligne for ligne in journal if f"ONVIF : Caméra {id_camera}," in ligne]
+    for ligne in lignes:
+        assert "argos-simulee" not in ligne and "rtsp://" not in ligne and "camera-simulee" not in ligne
+    return lignes
+
+
+@pytest.fixture
+def camera_2_en_https(connecte, camera_simulee) -> tuple[int, str]:
+    """Caméra simulée 2 lue une fois en HTTPS, et l'empreinte de la clé mémorisée alors."""
+    id_camera = camera_simulee(2)
+    reponse = lire(connecte, id_camera)
+    assert reponse.status_code == 200
+    return id_camera, reponse.json()["securite"]["empreinte"]
+
+
+@pytest.fixture
+def autre_cle():
+    camera_simulee_2_avec_une_autre_cle()
+    yield
+    remettre_onvif_en_usine()
+
+
+@pytest.fixture
+def sans_https():
+    camera_simulee_2_sans_https()
+    yield
+    remettre_onvif_en_usine()
+
+
+def faire_confiance(client, id_camera: int, empreinte: str):
+    return client.post(f"/api/cameras/{id_camera}/reglages/certificat", json={"empreinte": empreinte}, timeout=30)
+
+
+def test_cle_changee_refusee_sans_rien_envoyer_avec_les_deux_empreintes(
+    connecte, camera_2_en_https, autre_cle, ip_api
+):
+    id_camera, memorisee = camera_2_en_https
+    vue = empreinte_spki(IPS_SIMULEES[2], 443)
+    assert vue != memorisee
+    depuis = datetime.now(UTC) - timedelta(seconds=1)
+
+    reponse = lire(connecte, id_camera)
+
+    assert reponse.status_code == 502
+    corps = reponse.json()
+    assert corps["code"] == "certificat_change"
+    assert corps["certificat"]["empreinte_memorisee"] == memorisee
+    assert corps["certificat"]["empreinte_presentee"] == vue
+    assert corps["certificat"]["empreinte_memorisee_le"] is not None
+    assert requetes_onvif_recues(SIMULATEUR_2, depuis, ip_api, "https:443") == []
+    assert requetes_onvif_recues(SIMULATEUR_2, depuis, ip_api, "http:8899") == []
+    (ligne,) = lignes_onvif(journal_api(depuis), id_camera)
+    assert memorisee in ligne and vue in ligne
+
+
+def test_faire_confiance_au_nouveau_certificat_puis_lire(connecte, camera_2_en_https, autre_cle):
+    id_camera, _ = camera_2_en_https
+    vue = empreinte_spki(IPS_SIMULEES[2], 443)
+    depuis = datetime.now(UTC) - timedelta(seconds=1)
+
+    reponse = faire_confiance(connecte, id_camera, vue)
+
+    assert reponse.status_code == 204
+    securite = lire(connecte, id_camera).json()["securite"]
+    assert securite["empreinte"] == vue
+    assert datetime.fromisoformat(securite["empreinte_memorisee_le"]) >= depuis
+    (ligne,) = lignes_onvif(journal_api(depuis), id_camera)
+    assert vue in ligne
+
+
+def test_faire_confiance_a_une_empreinte_qui_n_est_plus_presentee_refuse(connecte, camera_2_en_https, autre_cle):
+    id_camera, memorisee = camera_2_en_https
+    depuis = datetime.now(UTC) - timedelta(seconds=1)
+
+    # L'ancienne clé, que la caméra ne présente plus.
+    reponse = faire_confiance(connecte, id_camera, memorisee)
+
+    assert reponse.status_code == 409
+    assert "detail" in reponse.json()
+    assert lire(connecte, id_camera).json()["code"] == "certificat_change"
+    assert lignes_onvif(journal_api(depuis), id_camera)
+
+
+def test_https_disparu_refuse_sans_repli_http(connecte, camera_2_en_https, sans_https, ip_api):
+    id_camera, _ = camera_2_en_https
+    depuis = datetime.now(UTC) - timedelta(seconds=1)
+
+    reponse = lire(connecte, id_camera)
+
+    assert reponse.status_code == 502
+    assert reponse.json()["code"] == "https_indisponible"
+    assert requetes_onvif_recues(SIMULATEUR_2, depuis, ip_api, "http:8899") == []
+    camera = camera_lue(connecte, id_camera)
+    assert (camera["schema_onvif"], camera["port_onvif"]) == ("https", 443)
+    (ligne,) = lignes_onvif(journal_api(depuis), id_camera)
+    assert "HTTPS indisponible" in ligne
+
+
+def test_oublier_le_certificat_repart_de_zero(connecte, camera_2_en_https, sans_https):
+    id_camera, _ = camera_2_en_https
+    depuis = datetime.now(UTC) - timedelta(seconds=1)
+
+    reponse = connecte.delete(f"/api/cameras/{id_camera}/reglages/certificat")
+
+    assert reponse.status_code == 204
+    camera = camera_lue(connecte, id_camera)
+    assert (camera["schema_onvif"], camera["port_onvif"]) == (None, None)
+    (ligne,) = lignes_onvif(journal_api(depuis), id_camera)
+    assert "oublié" in ligne
+    # HTTPS revenu : premier contact, la clé est mémorisée de nouveau.
+    remettre_onvif_en_usine()
+    securite = lire(connecte, id_camera).json()["securite"]
+    assert securite["chiffre"] is True
+    assert datetime.fromisoformat(securite["empreinte_memorisee_le"]) >= depuis
+
+
+def test_confiance_et_oubli_exigent_la_session(camera_2_en_https):
+    id_camera, _ = camera_2_en_https
+    with client_du_site() as anonyme:
+        assert faire_confiance(anonyme, id_camera, "a" * 64).status_code == 401
+        assert anonyme.delete(f"/api/cameras/{id_camera}/reglages/certificat").status_code == 401

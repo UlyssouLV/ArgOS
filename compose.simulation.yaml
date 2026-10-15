@@ -84,10 +84,12 @@ services:
       # Certificat auto-signé créé au premier démarrage, gardé ensuite : sa clé ne change pas d'un démarrage à l'autre.
       - camera-simulee-2-onvif-certificat:/certificat
     environment:
-      # HTTPS sur 443, et HTTP gardé sur le port des caméras XiongMai, comme beaucoup de vraies caméras.
-      ONVIF_PORT_HTTPS: "443"
-      ONVIF_CERTIFICAT: /certificat/certificat.pem
-      ONVIF_CLE: /certificat/cle.pem
+      # HTTPS sur 443, et HTTP gardé sur le port des caméras XiongMai, comme beaucoup de vraies caméras. Les tests
+      # retirent HTTPS (`ONVIF_PORT_HTTPS_2` vide) pour simuler une caméra qui ne répond plus qu'en HTTP.
+      ONVIF_PORT_HTTPS: ${ONVIF_PORT_HTTPS_2-443}
+      # Les tests le placent hors du volume pour simuler une autre clé à la même adresse (remise en usine…).
+      ONVIF_CERTIFICAT: ${ONVIF_CERTIFICAT_2:-/certificat/certificat.pem}
+      ONVIF_CLE: ${ONVIF_CLE_2:-/certificat/cle.pem}
       ONVIF_PORT: "8899"
       # Identifiants de dev de camera-simulee-2, les mêmes que pour son Flux.
       ONVIF_IDENTIFIANT: admin

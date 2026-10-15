@@ -183,6 +183,29 @@ def camera_simulee_2_en_tls_ancien() -> None:
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_TLS_MAX_2": "1.0"})
 
 
+def camera_simulee_2_avec_une_autre_cle() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2 avec un nouveau certificat, d'une autre clé, à la même adresse.
+
+    Hors du volume : `remettre_onvif_en_usine` lui rend ensuite son certificat habituel.
+    """
+    compose(
+        "up",
+        "-d",
+        "--force-recreate",
+        "--wait",
+        "camera-simulee-2-onvif",
+        env={"ONVIF_CERTIFICAT_2": "/tmp/autre-certificat.pem", "ONVIF_CLE_2": "/tmp/autre-cle.pem"},
+    )
+
+
+def camera_simulee_2_sans_https() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2 en HTTP seulement (8899) : HTTPS a disparu.
+
+    `remettre_onvif_en_usine` lui rend ensuite HTTPS, avec le même certificat.
+    """
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_PORT_HTTPS_2": ""})
+
+
 def requetes_onvif_recues(service: str, depuis: datetime, de: str, schema_port: str) -> list[str]:
     """Lignes du journal d'une interface ONVIF simulée : requêtes reçues depuis `depuis`, de l'IP `de`, sur
     `schema_port` (`https:443`, `http:8899`). Le healthcheck, local, n'y est pas compté.
