@@ -43,6 +43,8 @@ Version **0.6.0** : chaque Caméra active a des **Réglages** dans l’Administr
 
 Version **0.6.1** : le Site n’est plus servi qu’en **HTTPS**, sous une seule adresse, **`https://<IP du Site>`** : UI, API et Live passent par le nginx de `web`, et les anciens ports HTTP (`8000`, `8888`, `8889`) sont fermés ; `http://…:8080` redirige vers HTTPS. Le certificat est signé par l’**Autorité du Site**, créée par ArgOS au premier lancement et installée une fois par poste ; un Administrateur qui a son propre certificat peut le déposer à la place (voir [Installer l’Autorité du Site](docs/features/reseau/installer-l-autorite-du-site.md) et le [schéma du réseau](docs/features/reseau/schema-flux.md)).
 
+Version **0.6.2** : regarder une Caméra passe par la **connexion** d’ArgOS. Le Live et l’Aperçu (WebRTC et HLS) ne sont relayés qu’à une **session** valide (`401` sinon), et l’UI revient à la connexion quand un Flux est refusé. Le RTSP du pont (`8554`) n’est plus publié sur l’hôte : il n’est plus lisible depuis le réseau local (en dev, la simulation le republie sur `127.0.0.1:8554` seulement). Un Live WebRTC déjà ouvert continue après la déconnexion (voir [sécurité](docs/securite.md), [ADR 0006](docs/adr/0006-flux-authentifies-par-nginx.md)).
+
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose
