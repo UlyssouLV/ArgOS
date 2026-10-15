@@ -364,8 +364,10 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     url = champs.pop("url_rtsp", camera.url_rtsp)
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
     if url != masquer(camera.url_rtsp) and url != camera.url_rtsp:
+        # Le contact ONVIF suit l'hôte : un autre mot de passe ou chemin le garde (et un changement d'IP par la MAC).
+        if _decouper(url).hostname != _decouper(camera.url_rtsp).hostname:
+            _oublier_onvif(camera)
         camera.url_rtsp = url
-        _oublier_onvif(camera)
         _remettre_a_unknown(camera)
     for champ, valeur in champs.items():
         setattr(camera, champ, valeur)
@@ -575,7 +577,10 @@ def accepter_en_clair(base: Session, id_camera: int, accepte: bool) -> None:
 
 
 def _oublier_onvif(camera: Camera) -> None:
-    """Contact, clé et accord ONVIF retenus pour l'hôte de l'URL : à chercher, et à demander, de nouveau."""
+    """Contact, clé et accord ONVIF retenus pour l'hôte de l'URL : à chercher, et à demander, de nouveau.
+
+    Gardés tant que l'hôte reste celui de l'Appareil : autre mot de passe ou chemin, nouvelle IP suivie par la MAC.
+    """
     camera.port_onvif = None
     camera.schema_onvif = None
     camera.empreinte_onvif = None

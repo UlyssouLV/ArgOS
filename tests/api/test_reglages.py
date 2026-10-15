@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from stack_compose import (
+    IPS_SIMULEES,
     camera_simulee_4_sans_recreation_de_la_date,
     compose,
     regler_camera_simulee_4_en_onvif,
@@ -191,17 +192,60 @@ def test_camera_inconnue_404(connecte):
     assert lire(connecte, 999_999_999).status_code == 404
 
 
-def test_url_modifiee_oublie_le_port_retenu(connecte, camera_simulee):
-    id_camera = camera_simulee(4)
-    assert lire(connecte, id_camera).status_code == 200
+def onvif_retenu(client, id_camera: int) -> tuple:
+    """Port, schéma et accord ONVIF en clair retenus pour la Caméra."""
+    camera = client.get(f"/api/cameras/{id_camera}").json()
+    return camera["port_onvif"], camera["schema_onvif"], camera["onvif_en_clair_accepte"]
 
-    url = url_camera_simulee(2, unique("reglages"))
-    assert connecte.patch(f"/api/cameras/{id_camera}", json={"url_rtsp": url}).status_code == 200
 
-    assert port_onvif(connecte, id_camera) is None
-    camera = connecte.get(f"/api/cameras/{id_camera}").json()
-    assert camera["schema_onvif"] is None
-    assert camera["onvif_en_clair_accepte"] is False
+def modifier_url(client, id_camera: int, url: str) -> None:
+    assert client.patch(f"/api/cameras/{id_camera}", json={"url_rtsp": url}).status_code == 200
+
+
+@pytest.fixture
+def camera_2_reglee(connecte, camera_simulee) -> tuple[int, dict]:
+    """Caméra simulée 2, avec l'accord ONVIF en clair, lue une fois en HTTPS : son id et la sécurité de l'échange."""
+    id_camera = camera_simulee(2, en_clair=True)
+    reponse = lire(connecte, id_camera)
+    assert reponse.status_code == 200
+    assert onvif_retenu(connecte, id_camera) == (443, "https", True)
+    return id_camera, reponse.json()["securite"]
+
+
+def test_mot_de_passe_change_garde_port_schema_cle_et_accord(connecte, camera_2_reglee):
+    id_camera, securite = camera_2_reglee
+    masquee = connecte.get(f"/api/cameras/{id_camera}").json()["url_rtsp"]
+
+    modifier_url(connecte, id_camera, masquee.replace(":***@", ":mauvais@"))
+    assert onvif_retenu(connecte, id_camera) == (443, "https", True)
+    modifier_url(connecte, id_camera, masquee.replace(":***@", ":argos-simulee@"))
+
+    assert onvif_retenu(connecte, id_camera) == (443, "https", True)
+    # Clé oubliée, elle serait mémorisée de nouveau, à une autre date.
+    assert lire(connecte, id_camera).json()["securite"] == securite
+
+
+def test_chemin_change_garde_port_schema_cle_et_accord(connecte, camera_2_reglee):
+    id_camera, securite = camera_2_reglee
+
+    modifier_url(connecte, id_camera, url_camera_simulee(2, unique("reglages"), chemin="autre/chemin"))
+
+    assert onvif_retenu(connecte, id_camera) == (443, "https", True)
+    assert lire(connecte, id_camera).json()["securite"] == securite
+
+
+def test_hote_change_a_la_main_oublie_port_schema_cle_et_accord(connecte, camera_2_reglee):
+    id_camera, securite = camera_2_reglee
+    # Même Appareil, mais l'Administrateur saisit un autre hôte : ArgOS ne le sait pas.
+    url = url_camera_simulee(2, unique("reglages")).replace("camera-simulee-2", IPS_SIMULEES[2])
+
+    modifier_url(connecte, id_camera, url)
+
+    assert onvif_retenu(connecte, id_camera) == (None, None, False)
+    relue = lire(connecte, id_camera).json()["securite"]
+    assert relue["empreinte"] == securite["empreinte"]
+    memorisee_le = datetime.fromisoformat(relue["empreinte_memorisee_le"])
+    assert memorisee_le > datetime.fromisoformat(securite["empreinte_memorisee_le"])
 
 
 @pytest.fixture
