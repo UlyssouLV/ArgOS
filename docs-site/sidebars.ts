@@ -74,6 +74,11 @@ const sidebars: SidebarsConfig = {
           id: 'adr/0006-flux-authentifies-par-nginx',
           label: '0006 — Flux authentifiés',
         },
+        {
+          type: 'doc',
+          id: 'adr/0007-onvif-en-https-par-cle-memorisee',
+          label: '0007 — ONVIF en HTTPS',
+        },
       ],
     },
   ],

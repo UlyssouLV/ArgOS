@@ -103,3 +103,15 @@ Relais vidéo du Site (MediaMTX) : il lit les Flux des Caméras en RTSP et les s
 Certificat qui permet à un poste de reconnaître le Site en HTTPS ; installée une fois par poste.
 
 À éviter : CA, certificat racine, certificat auto-signé.
+
+## Certificat de l’Appareil {#certificat-de-l-appareil}
+
+Certificat que l’Appareil présente quand le Site le règle en ONVIF chiffré ; le Site mémorise sa clé au premier contact et refuse ensuite toute autre.
+
+À éviter : empreinte, pin, certificat de la caméra.
+
+## ONVIF en clair {#onvif-en-clair}
+
+Réglages d’une Caméra dont l’Appareil ne propose pas ONVIF chiffré, envoyés sans chiffrement après accord de l’Administrateur.
+
+À éviter : mode HTTP, mode non sécurisé.
