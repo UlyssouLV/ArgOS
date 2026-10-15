@@ -35,9 +35,15 @@ def usine():
     remettre_onvif_en_usine()
 
 
-def creer_en_clair_accepte(page: Page, api, nom: str) -> None:
-    """Caméra sur la Caméra simulée 4 (sans HTTPS), ONVIF en clair déjà accepté par l'API."""
-    creer(page, api, nom, url_simulee(4))
+def creer_en_clair_accepte(page: Page, api, nom: str, mot_de_passe: str | None = None) -> None:
+    """Caméra sur la Caméra simulée 4 (sans HTTPS), ONVIF en clair déjà accepté par l'API.
+
+    `mot_de_passe` : porté par l'URL, que la 4 ignore.
+    """
+    url = url_simulee(4)
+    if mot_de_passe is not None:
+        url = url.replace("rtsp://", f"rtsp://admin:{mot_de_passe}@")
+    creer(page, api, nom, url)
     (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
     assert api.put(f"/api/cameras/{camera['id']}/reglages/onvif-en-clair").status_code == 204
 
@@ -168,6 +174,31 @@ def test_pas_de_bandeau_en_clair_en_https(administration: Page, api, noms):
 
     expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
     expect(reglages.get_by_text("ONVIF en clair")).to_have_count(0)
+    expect(reglages.get_by_text("Mot de passe court")).to_have_count(0)
+
+
+def test_mot_de_passe_court_rappele_en_clair(administration: Page, api, noms):
+    nom = noms()
+    creer_en_clair_accepte(administration, api, nom, mot_de_passe="court")
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("ONVIF en clair", timeout=DELAI_LECTURE_MS)
+    expect(bandeau).to_contain_text("Mot de passe court")
+    expect(bandeau).to_contain_text("moins de 12 caractères")
+    expect(bandeau).to_contain_text("hors ligne")
+
+
+def test_pas_de_rappel_en_clair_avec_un_mot_de_passe_de_12_caracteres(administration: Page, api, noms):
+    nom = noms()
+    creer_en_clair_accepte(administration, api, nom, mot_de_passe="x" * 12)
+
+    reglages = ouvrir_reglages(administration, nom)
+
+    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    expect(bandeau).to_contain_text("ONVIF en clair", timeout=DELAI_LECTURE_MS)
+    expect(bandeau).not_to_contain_text("Mot de passe court")
 
 
 @pytest.fixture

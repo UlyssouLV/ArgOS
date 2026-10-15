@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
-import { messageEchec, type Camera } from "../cameras";
+import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, type Camera } from "../cameras";
 import {
   accepterEnClair,
   COINS,
@@ -113,7 +113,8 @@ function BandeauSecurite({
   securite,
   onDecide,
 }: Readonly<{ camera: Camera; securite: SecuriteOnvif; onDecide: () => void }>) {
-  if (!securite.chiffre) return <BandeauEnClair camera={camera} onDecide={onDecide} />;
+  if (!securite.chiffre)
+    return <BandeauEnClair camera={camera} motDePasseCourt={securite.mot_de_passe_court} onDecide={onDecide} />;
   if (!securite.empreinte) return null;
   return (
     <section className="reglages-securite" aria-label="Sécurité de l'échange">
@@ -154,8 +155,15 @@ function useDecision(onDecide: () => void) {
   return { envoi, erreur, decider };
 }
 
-/** Réglages en ONVIF en clair, accepté par l'Administrateur : rappelé à chaque ouverture, et révocable. */
-function BandeauEnClair({ camera, onDecide }: Readonly<{ camera: Camera; onDecide: () => void }>) {
+/**
+ * Réglages en ONVIF en clair, accepté par l'Administrateur : rappelé à chaque ouverture, et révocable.
+ * Mot de passe court : rappelé aussi, puisque son empreinte passe en clair.
+ */
+function BandeauEnClair({
+  camera,
+  motDePasseCourt,
+  onDecide,
+}: Readonly<{ camera: Camera; motDePasseCourt: boolean; onDecide: () => void }>) {
   const { envoi, erreur, decider } = useDecision(onDecide);
   return (
     <section className="reglages-securite reglages-en-clair" aria-label="Sécurité de l'échange">
@@ -163,6 +171,13 @@ function BandeauEnClair({ camera, onDecide }: Readonly<{ camera: Camera; onDecid
         ONVIF en clair : cette caméra ne propose pas HTTPS. Le mot de passe (en empreinte) et les réglages passent en
         clair sur le réseau des caméras.
       </p>
+      {motDePasseCourt && (
+        <p className="avertissement">
+          Mot de passe court (moins de {LONGUEUR_MOT_DE_PASSE_SUR} caractères) : son empreinte (SHA-1, imposé par la
+          norme), qui passe ici en clair, se casse hors ligne. Mieux vaut un mot de passe d'au moins{" "}
+          {LONGUEUR_MOT_DE_PASSE_SUR} caractères, sur la caméra puis dans l'URL de la Caméra.
+        </p>
+      )}
       <button type="button" disabled={envoi} onClick={() => void decider(() => accepterEnClair(camera.id, false))}>
         Retirer l'accord ONVIF en clair
       </button>

@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from ipaddress import IPv4Address
 from typing import Annotated, Literal
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, unquote, urlsplit
 
 from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import or_, select, update
@@ -20,6 +20,8 @@ from argos_api.pont import chemin_flux
 
 PORT_RTSP = 554
 MASQUE = "***"
+# En dessous, le mot de passe d'une caméra est signalé comme court (à l'ajout, et en ONVIF en clair).
+LONGUEUR_MOT_DE_PASSE_SUR = 12
 
 Etat = Literal["unknown", "online", "offline"]
 
@@ -388,6 +390,9 @@ class SecuriteOnvif(BaseModel):
     empreinte_memorisee_le: datetime | None
     # TLS 1.0 ou 1.1 négocié : accepté, mais signalé.
     tls_ancien: bool
+    # ONVIF en clair avec un mot de passe de moins de `LONGUEUR_MOT_DE_PASSE_SUR` caractères : son empreinte
+    # WS-Security (SHA-1) circule en clair et se casse hors ligne. Jamais le mot de passe ni sa longueur.
+    mot_de_passe_court: bool
 
 
 class ReglagesLus(onvif.Reglages):
@@ -492,8 +497,15 @@ def _par_onvif[T](
         empreinte=contact.empreinte if chiffre else None,
         empreinte_memorisee_le=memorisee_le if chiffre else None,
         tls_ancien=contact.tls_ancien,
+        mot_de_passe_court=not chiffre and _mot_de_passe_court(url),
     )
     return resultat, securite
+
+
+def _mot_de_passe_court(url: str) -> bool:
+    """Mot de passe de l'URL RTSP, décodé, de 1 à `LONGUEUR_MOT_DE_PASSE_SUR` - 1 caractères ; absent : non."""
+    mot_de_passe = unquote(urlsplit(url).password or "")
+    return 0 < len(mot_de_passe) < LONGUEUR_MOT_DE_PASSE_SUR
 
 
 def _signaler_refus(

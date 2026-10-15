@@ -138,6 +138,7 @@ def test_camera_en_http_seulement_non_chiffree(connecte, camera_simulee):
         "empreinte": None,
         "empreinte_memorisee_le": None,
         "tls_ancien": False,
+        "mot_de_passe_court": False,
     }
     camera = camera_lue(connecte, id_camera)
     assert (camera["schema_onvif"], camera["port_onvif"]) == ("http", 80)

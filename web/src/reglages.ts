@@ -45,6 +45,8 @@ export type SecuriteOnvif = {
   empreinte_memorisee_le: string | null;
   /** TLS 1.0 ou 1.1 : accepté, mais signalé. */
   tls_ancien: boolean;
+  /** ONVIF en clair avec un mot de passe court : seulement « court » ou non, jamais le mot de passe. */
+  mot_de_passe_court: boolean;
 };
 
 /** Réglages lus à l'ouverture, avec la sécurité de l'échange. */
