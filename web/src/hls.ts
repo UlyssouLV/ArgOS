@@ -55,7 +55,8 @@ export function lireHls(url: string, video: HTMLVideoElement, surEchec: (echec: 
   if (natif()) {
     const surErreurVideo = () => {
       if (video.error?.code === ERREUR_DECODAGE) return surEchec("codec");
-      sessionValide().then((valide) => {
+      // sessionValide ne rejette jamais : un 401 renvoie déjà à la connexion.
+      void sessionValide().then((valide) => {
         if (valide && !signal.aborted) surEchec("indisponible");
       });
     };
