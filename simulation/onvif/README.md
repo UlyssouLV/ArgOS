@@ -4,7 +4,7 @@ Fichiers de **dev**, utilisés seulement par `compose.simulation.yaml` (jamais p
 
 ## Pourquoi ce dossier
 
-Les Réglages de la Caméra (Incrustations, Horloge) passent par ONVIF. Pour les développer et les tester sans matériel, certaines Caméras simulées répondent en ONVIF comme de vraies caméras. MediaMTX ([`media/simulated/`](../../media/simulated/README.md)) ne sait que diffuser la vidéo : l'interface ONVIF est ce petit service SOAP, lancé à côté de chaque Caméra simulée qui en a une.
+Les Réglages de la Caméra (Incrustations, Horloge) passent par ONVIF, en HTTPS quand la caméra le propose, en clair seulement avec l'accord de l'Administrateur (`docs/adr/0007-onvif-en-https-par-cle-memorisee.md`). Pour les développer et les tester sans matériel, certaines Caméras simulées répondent en ONVIF comme de vraies caméras. MediaMTX ([`media/simulated/`](../../media/simulated/README.md)) ne sait que diffuser la vidéo : l'interface ONVIF est ce petit service SOAP, lancé à côté de chaque Caméra simulée qui en a une.
 
 `camera_onvif.py`, en bibliothèque standard Python, implémente **seulement** les opérations dont ArgOS se sert :
 
@@ -39,7 +39,7 @@ Avec des identifiants (`ONVIF_IDENTIFIANT`, `ONVIF_MOT_DE_PASSE`), toute opérat
 
 ## Pourquoi il ne dépend pas de l'API
 
-Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est importé de `api/`, et elle n'en importe rien. Les tests de l'API la joignent comme une caméra du réseau (SOAP sur HTTP), jamais par son code. Ainsi, une erreur d'ArgOS ne peut pas être masquée par un simulateur qui partagerait ses modèles.
+Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est importé de `api/`, et elle n'en importe rien. Les tests de l'API la joignent comme une caméra du réseau (SOAP sur HTTPS ou HTTP), jamais par son code. Ainsi, une erreur d'ArgOS ne peut pas être masquée par un simulateur qui partagerait ses modèles.
 
 ## Dans la stack de dev
 
