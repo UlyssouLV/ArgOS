@@ -1,5 +1,8 @@
 // Client WHEP minimal, en lecture seule : le Live lit le Flux d'une Caméra en WebRTC depuis MediaMTX.
 // Pas d'iframe : la négociation est un POST de l'offre SDP, la réponse SDP revient en 201.
+// Les Flux exigent la session ArgOS (docs/adr/0006-…) : un 401 renvoie à la connexion, comme l'API.
+
+import { appeler } from "./api";
 
 /** WHEP relayé par l'origine du Site vers MediaMTX (docs/adr/0005-…). */
 const PREFIXE_WEBRTC = "/flux/webrtc";
@@ -47,7 +50,7 @@ export async function lireWhep(
     pc.onconnectionstatechange = null;
     pc.close();
     // La session côté MediaMTX se libère aussi d'elle-même à la fermeture : le DELETE l'anticipe.
-    if (ressource) fetch(ressource, { method: "DELETE" }).catch(() => {});
+    if (ressource) appeler(ressource, { method: "DELETE" }).catch(() => {});
     video.srcObject = null;
   }
 
@@ -61,7 +64,7 @@ export async function lireWhep(
     await pc.setLocalDescription(await pc.createOffer());
     await candidatsRassembles(pc);
 
-    const reponse = await fetch(url, {
+    const reponse = await appeler(url, {
       method: "POST",
       headers: { "Content-Type": "application/sdp" },
       body: pc.localDescription!.sdp,

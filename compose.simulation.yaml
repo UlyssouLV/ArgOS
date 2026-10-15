@@ -98,6 +98,9 @@ services:
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:
+    # RTSP du pont lisible depuis la machine du développeur seulement (ffprobe, VLC), jamais du réseau local.
+    ports:
+      - "127.0.0.1:8554:8554"
     networks:
       - default
       - cameras-simulees

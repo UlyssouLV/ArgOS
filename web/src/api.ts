@@ -18,12 +18,17 @@ export function requete(chemin: string, init: RequestInit = {}): Promise<Respons
   });
 }
 
-/** Requête sur une route protégée : tout 401 ferme la session côté UI. */
+/** Requête sur une route protégée (API ou Flux WHEP) : tout 401 ferme la session côté UI. */
 export async function appeler(chemin: string, init: RequestInit = {}): Promise<Response> {
   const reponse = await requete(chemin, init);
   if (reponse.status === 401) {
-    quandNonConnecte();
+    signalerNonConnecte();
     throw new NonConnecte();
   }
   return reponse;
+}
+
+/** Un 401 reçu hors d'`appeler` (requêtes HLS, faites par hls.js) : ferme la session côté UI. */
+export function signalerNonConnecte(): void {
+  quandNonConnecte();
 }

@@ -8,7 +8,7 @@ Contraintes transverses :
 - README type repos Ulysse : sections claires (**quoi**, **prérequis**, **comment lancer**, structure) — enrichi dès qu’une version devient lançable ; avant ça, pas de fausse « souche » runnable.
 - Preuve 0.1.0 : flux RTSP simulés **joignables**, y compris un accès **navigateur** (ex. page HLS/WebRTC MediaMTX), plus tests auto (`ffprobe` / équivalent) via `/t`.
 - Auth 1.0.0 : compte **local** suffit. États caméra minimaux : `unknown` / `online` / `offline`.
-- **Pas d’installation sur de vraies caméras avant authentification des Flux et sécurisation d’ONVIF** (HTTPS livré en 0.6.1). Limites et dettes : [sécurité](../../securite.md).
+- **Pas d’installation sur de vraies caméras avant authentification des Flux et sécurisation d’ONVIF** (HTTPS livré en 0.6.1, Flux authentifiés en 0.6.2). Limites et dettes : [sécurité](../../securite.md).
 
 ## Déjà livré
 
@@ -21,14 +21,9 @@ Contraintes transverses :
 - **0.5.0** — Lecture des Flux H.265 sans réencodage : LL-HLS fMP4 pour le HEVC, WebRTC inchangé pour le H.264 ([PR #51](https://github.com/UlyssouLV/ArgOS/pull/51), [spec](../../specs/v0.5.0-lecture-flux-h265.md), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md)).
 - **0.6.0** — Paramétrage des Caméras par ONVIF : Réglages d’une Caméra active dans l’Administration, lus par ONVIF (port trouvé seul, identifiants du Flux) ; Incrustations (texte, coin, affichage du nom et de la date et heure) et Horloge (fuseau, mise à l’heure manuelle du Site, NTP en lecture seule), relues après envoi avec un statut par champ ; Caméras simulées 2 et 4 en ONVIF ; ONVIF en HTTP jusqu’à la 0.6.3 ([PR #58](https://github.com/UlyssouLV/ArgOS/pull/58), [spec](../../specs/v0.6.0-parametrage-des-cameras-par-onvif.md), [doc](../../cameras/parametrer-une-camera.md)).
 - **0.6.1** — HTTPS : UI, API et Live sous une seule origine HTTPS (nginx de `web`, port `443`), `80` / `8080` redirigent, ports `8000` / `8888` / `8889` fermés, cookie de session `Secure`, fin de CORS ; certificat signé par l’Autorité du Site générée au premier lancement, régénéré seul (IP, expiration), ou certificat fourni par l’Administrateur ; lanceur Mac en HTTPS et Autorité proposée au trousseau ([PR #67](https://github.com/UlyssouLV/ArgOS/pull/67), [spec](../../specs/v0.6.1-https.md), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md), [doc](../../features/reseau/installer-l-autorite-du-site.md)).
+- **0.6.2** — Authentification des Flux : WHEP et HLS relayés par nginx seulement à une session ArgOS (`auth_request`, `401` sinon), l’UI revient à la connexion quand un Flux est refusé ; RTSP `8554` n’est plus publié sur l’hôte (dev : `127.0.0.1` seulement) ; MediaMTX reste sans authentification derrière le réseau Compose ; un Live WebRTC déjà établi continue après la fin de la session (Plus tard) ([PR #74](https://github.com/UlyssouLV/ArgOS/pull/74), [spec](../../specs/v0.6.2-authentification-des-flux.md), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md)).
 
-## Prochaine : 0.6.2 — Authentification des Flux
-
-**Objectif.** Fermer l’accès libre aux Flux côté MediaMTX (WHEP, HLS, RTSP), pour que regarder une Caméra passe par la connexion d’ArgOS.
-
-**Hors périmètre :** images versionnées et compose de prod (0.7.0). Préalable, avec 0.6.3, à toute installation sur de vraies caméras.
-
-## Ensuite : 0.6.3 — Sécurisation d’ONVIF
+## Prochaine : 0.6.3 — Sécurisation d’ONVIF
 
 **Objectif.** Que régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras : ArgOS parle ONVIF en HTTPS quand la caméra le propose, en mémorisant son certificat au premier contact (un certificat qui change ensuite est refusé et signalé), et ne retombe en HTTP que pour une caméra qui ne le propose pas, signalée dans ses Réglages. Un mot de passe de caméra trop court est signalé à l’ajout, puisque l’empreinte WS-Security (SHA-1, imposé par la norme) se casse hors ligne s’il est faible. Règle les vulnérabilités Sonar laissées en 0.6.0 (`# NOSONAR` qui renvoient à cette version, à retirer).
 
@@ -129,3 +124,7 @@ Trouver les caméras par l’annonce ONVIF plutôt qu’en essayant les ports co
 ### Identifiants ONVIF distincts
 
 Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui séparent les comptes (Hikvision…).
+
+### Couper un Live WebRTC à la fin de la session
+
+Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.

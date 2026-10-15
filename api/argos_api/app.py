@@ -224,6 +224,12 @@ def creer_app(
         reponse.set_cookie(COOKIE_SESSION, jeton, secure=True, httponly=True, samesite="lax")
         return reponse
 
+    @app.get(
+        "/api/session", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(administrateur_connecte)]
+    )
+    def verifier_session() -> None:
+        """`204` si la session du cookie est valide, `401` sinon : nginx l'appelle avant tout relais d'un Flux (ADR 0006)."""
+
     @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)
     def se_deconnecter(base: Base, jeton: JetonSession = None) -> Response:
         if jeton is not None:

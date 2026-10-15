@@ -50,8 +50,20 @@ server {
         proxy_pass $api;
     }
 
+    # Flux réservés à une session ArgOS (docs/adr/0006-flux-authentifies-par-nginx.md) : chaque requête /flux/ est
+    # d'abord vérifiée par l'API avec le cookie du navigateur ; sans session valide, 401 et rien n'est relayé.
+    location = /_session-des-flux {
+        internal;
+        set $api http://api:8000;
+        proxy_pass $api/api/session;
+        proxy_method GET;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+
     # WHEP : /flux/webrtc/<chemin>/whep (offre SDP), puis PATCH et DELETE sur la session qu'il renvoie.
     location /flux/webrtc/ {
+        auth_request /_session-des-flux;
         set $webrtc http://mediamtx:8889;
         rewrite ^/flux/webrtc(/.*)$ $1 break;
         proxy_pass $webrtc;
@@ -60,6 +72,7 @@ server {
 
     # LL-HLS : /flux/hls/<chemin>/index.m3u8, ses variantes et segments, sans mise en tampon.
     location /flux/hls/ {
+        auth_request /_session-des-flux;
         set $hls http://mediamtx:8888;
         rewrite ^/flux/hls(/.*)$ $1 break;
         proxy_pass $hls;

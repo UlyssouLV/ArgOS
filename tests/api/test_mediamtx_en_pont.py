@@ -1,38 +1,64 @@
 """MediaMTX en pont (docs/adr/0001-mediamtx-en-pont.md), vu de l'extérieur de la stack.
 
-Toute Caméra active est relayée sur `rtsp://<hôte>:8554/<chemin_flux>` après un tour de
+Toute Caméra active est relayée sur `rtsp://mediamtx:8554/<chemin_flux>` après un tour de
 réconciliation (10 s), et en LL-HLS fMP4 sous l'origine HTTPS du Site, `/flux/hls/<chemin_flux>/`, pour le H.265
 (docs/adr/0004-hls-pour-les-flux-h265.md, docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md). Les Caméras simulées s'y déclarent sur leur chemin de vraie caméra :
 c'est le conteneur `mediamtx`, rattaché à leur réseau, qui tire le Flux.
+
+RTSP n'est servi qu'au réseau Compose (docs/adr/0006-flux-authentifies-par-nginx.md) : fermé à l'hôte vu du réseau
+local, republié par la simulation sur `127.0.0.1:8554` pour la machine du développeur.
 """
 
+import functools
 import json
 import re
+import socket
 import subprocess
 import time
 
 import httpx
 import pytest
 
-from stack_compose import client_du_site
+from stack_compose import client_du_site, compose
 from test_cameras import connecte, creer_camera, unique  # noqa: F401 (fixtures)
+from test_connexion import se_connecter
 from test_etat_cameras import url_simulee
 
 IMAGE_FFPROBE = "linuxserver/ffmpeg:version-7.1-cli"
-# Le conteneur ffprobe joint l'hôte via ses ports publiés, comme un client du réseau local.
-HOTE_DEPUIS_CONTENEUR = "host.docker.internal"
+# Le conteneur ffprobe, rattaché au réseau de la stack, y joint le pont par son nom Compose.
+PONT = "mediamtx"
 PORT_RTSP = 8554
 CHEMIN_HLS = "/flux/hls"
 # Un tour de réconciliation (10 s) + démarrage du Flux à la demande, avec de la marge.
 DELAI_RELAIS_S = 45
 
 
-def lisible(chemin: str) -> bool:
-    """Vrai si ffprobe lit au moins une image H.264 sur le relais."""
+@functools.cache
+def reseau_de_la_stack() -> str:
+    """Nom Docker du réseau par défaut de la stack (préfixé par le projet Compose)."""
+    return json.loads(compose("config", "--format", "json").stdout)["networks"]["default"]["name"]
+
+
+def hote_vu_du_reseau_local() -> str:
+    """L'hôte du Site tel qu'un poste du réseau local le joint : par une interface autre que son loopback.
+
+    La passerelle du réseau de la stack, et non `host.docker.internal` : sous Docker Desktop, celui-ci mène au
+    loopback du Mac, où la simulation republie justement `8554`.
+    """
+    return subprocess.run(
+        ["docker", "network", "inspect", "-f", "{{range .IPAM.Config}}{{.Gateway}}{{end}}", reseau_de_la_stack()],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def lisible(chemin: str, hote: str = PONT) -> bool:
+    """Vrai si ffprobe, dans un conteneur du réseau de la stack, lit au moins une image H.264 sur `hote`."""
     resultat = subprocess.run(
         [
             "docker", "run", "--rm",
-            "--add-host", f"{HOTE_DEPUIS_CONTENEUR}:host-gateway",
+            "--network", reseau_de_la_stack(),
             "--entrypoint", "ffprobe",
             IMAGE_FFPROBE,
             "-v", "error",
@@ -42,7 +68,7 @@ def lisible(chemin: str) -> bool:
             "-read_intervals", "%+#5",
             "-show_entries", "stream=codec_name,nb_read_frames",
             "-of", "json",
-            f"rtsp://{HOTE_DEPUIS_CONTENEUR}:{PORT_RTSP}/{chemin}",
+            f"rtsp://{hote}:{PORT_RTSP}/{chemin}",
         ],
         capture_output=True,
         text=True,
@@ -52,6 +78,19 @@ def lisible(chemin: str) -> bool:
         return False
     flux = json.loads(resultat.stdout).get("streams", [])
     return any(f["codec_name"] == "h264" and int(f.get("nb_read_frames", 0)) >= 1 for f in flux)
+
+
+def decrit_depuis_la_machine_hote(chemin: str) -> str:
+    """Réponse RTSP à un `DESCRIBE` de `chemin`, envoyé depuis la machine hôte sur `127.0.0.1:8554`."""
+    with socket.create_connection(("127.0.0.1", PORT_RTSP), timeout=10) as connexion:
+        connexion.sendall(
+            f"DESCRIBE rtsp://127.0.0.1:{PORT_RTSP}/{chemin} RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n".encode()
+        )
+        with connexion.makefile("rb") as reponse:
+            entetes = b"".join(iter(reponse.readline, b"\r\n"))
+            longueur = re.search(rb"(?im)^content-length:\s*(\d+)", entetes)
+            corps = reponse.read(int(longueur.group(1))) if longueur else b""
+    return (entetes + b"\r\n" + corps).decode()
 
 
 def ffprobe_http(lecteur: httpx.Client, url: str) -> dict:
@@ -144,10 +183,28 @@ def test_le_relais_suit_le_changement_d_url(connecte, creer_camera):
     attendre_lisible(camera["chemin_flux"], True)
 
 
+def test_rtsp_du_pont_ferme_a_l_hote_vu_du_reseau_local(creer_camera):
+    camera = creer_camera(url_rtsp=url_simulee(1)).json()
+    attendre_lisible(camera["chemin_flux"], True)
+
+    assert not lisible(camera["chemin_flux"], hote_vu_du_reseau_local())
+
+
+def test_rtsp_du_pont_lisible_depuis_la_machine_hote_avec_la_simulation(creer_camera):
+    camera = creer_camera(url_rtsp=url_simulee(1)).json()
+    attendre_lisible(camera["chemin_flux"], True)
+
+    reponse = decrit_depuis_la_machine_hote(camera["chemin_flux"])
+
+    assert reponse.startswith("RTSP/1.0 200"), reponse
+    assert "m=video" in reponse, reponse
+
+
 @pytest.fixture
-def lecteur():
-    """Lecteur HLS sous l'origine HTTPS du Site, sans session ArgOS."""
+def lecteur(administrateur):
+    """Lecteur HLS sous l'origine HTTPS du Site, connecté comme l'Administrateur : les Flux exigent une session (ADR 0006)."""
     with client_du_site() as c:
+        assert se_connecter(c, **administrateur).status_code == 204
         yield c
 
 
