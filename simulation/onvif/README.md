@@ -21,6 +21,14 @@ Toute autre opération reçoit une faute SOAP `ter:ActionNotSupported`. L'état 
 
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
+## HTTP, HTTPS ou les deux
+
+Le service écoute en HTTP sur `ONVIF_PORT`, en HTTPS sur `ONVIF_PORT_HTTPS`, ou les deux (HTTP sur `80` si aucun n'est renseigné) : une seule caméra, même état, mêmes identifiants. En HTTPS, `ONVIF_CERTIFICAT` et `ONVIF_CLE` donnent les chemins du certificat et de sa clé ; s'ils n'existent pas, un certificat auto-signé est créé (`openssl`), puis gardé : la clé ne change que si les fichiers disparaissent. Les tests s'en servent pour lancer une caméra avec une autre clé.
+
+`GetCapabilities` annonce toujours ses adresses en `http://`, à l'hôte sous lequel on la joint, même jointe en HTTPS : comme beaucoup de vraies caméras. Le client ne doit en garder que le chemin.
+
+## Identifiants
+
 Avec des identifiants (`ONVIF_IDENTIFIANT`, `ONVIF_MOT_DE_PASSE`), toute opération sauf `GetSystemDateAndTime` exige un WS-Security UsernameToken en empreinte ; sinon, faute `ter:NotAuthorized` (HTTP 400). La date `Created` du jeton n'est pas comparée à l'Horloge : celle de la caméra est fausse au démarrage. Les Incrustations ne sont pas dessinées dans la vidéo simulée.
 
 ## Pourquoi il ne dépend pas de l'API
@@ -31,14 +39,14 @@ Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est imp
 
 `compose.simulation.yaml` lance un service par Caméra simulée ONVIF, qui **partage le réseau** de sa Caméra simulée (`network_mode: service:camera-simulee-N`) : même IP, même MAC, comme l'interface ONVIF d'une vraie caméra.
 
-| Caméra simulée     | Service ONVIF            | Adresse                                      | Identifiants                              |
-|--------------------|--------------------------|----------------------------------------------|-------------------------------------------|
-| `camera-simulee-1` | aucun                    | —                                            | —                                         |
-| `camera-simulee-2` | `camera-simulee-2-onvif` | `http://172.30.0.12:8899/onvif/device_service` | `admin` / `argos-simulee` (comme le Flux) |
-| `camera-simulee-3` | aucun                    | —                                            | —                                         |
-| `camera-simulee-4` | `camera-simulee-4-onvif` | `http://172.30.0.14/onvif/device_service`    | aucun                                     |
+| Caméra simulée     | Service ONVIF            | Adresses                                                                                       | Identifiants                              |
+|--------------------|--------------------------|------------------------------------------------------------------------------------------------|-------------------------------------------|
+| `camera-simulee-1` | aucun                    | —                                                                                              | —                                         |
+| `camera-simulee-2` | `camera-simulee-2-onvif` | `https://172.30.0.12/onvif/device_service`, `http://172.30.0.12:8899/onvif/device_service` | `admin` / `argos-simulee` (comme le Flux) |
+| `camera-simulee-3` | aucun                    | —                                                                                              | —                                         |
+| `camera-simulee-4` | `camera-simulee-4-onvif` | `http://172.30.0.14/onvif/device_service` (HTTP seulement)                                     | aucun                                     |
 
-Les Caméras simulées 1 et 3 ne répondent pas en ONVIF : c'est le cas « caméra sans ONVIF ». Le port `8899` de la 2 est celui des caméras XiongMai.
+Les Caméras simulées 1 et 3 ne répondent pas en ONVIF : c'est le cas « caméra sans ONVIF ». La 2 répond en HTTPS sur `443` et garde HTTP sur `8899`, le port des caméras XiongMai, comme beaucoup de vraies caméras ; son certificat auto-signé est créé au premier démarrage dans le volume `camera-simulee-2-onvif-certificat`, et reste le même ensuite (`docker volume rm` en fait créer un nouveau). La 4 ne propose pas HTTPS.
 
 ## Tests
 
@@ -50,7 +58,7 @@ uv sync
 .venv/bin/python -m pytest
 ```
 
-Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP : réponses aux opérations, état modifié puis relu, refus sans bons identifiants, état « usine » au démarrage.
+Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu, refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre) lancent `camera_onvif.py` comme le conteneur.
 
 ## Plus tard
 

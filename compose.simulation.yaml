@@ -80,9 +80,16 @@ services:
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-2
+    volumes:
+      # Certificat auto-signé créé au premier démarrage, gardé ensuite : sa clé ne change pas d'un démarrage à l'autre.
+      - camera-simulee-2-onvif-certificat:/certificat
     environment:
-      # Port des caméras XiongMai ; identifiants de dev de camera-simulee-2, les mêmes que pour son Flux.
+      # HTTPS sur 443, et HTTP gardé sur le port des caméras XiongMai, comme beaucoup de vraies caméras.
+      ONVIF_PORT_HTTPS: "443"
+      ONVIF_CERTIFICAT: /certificat/certificat.pem
+      ONVIF_CLE: /certificat/cle.pem
       ONVIF_PORT: "8899"
+      # Identifiants de dev de camera-simulee-2, les mêmes que pour son Flux.
       ONVIF_IDENTIFIANT: admin
       ONVIF_MOT_DE_PASSE: argos-simulee
 
@@ -91,7 +98,7 @@ services:
     restart: unless-stopped
     network_mode: service:camera-simulee-4
     environment:
-      # Sans identifiants.
+      # HTTP seulement, sans identifiants.
       ONVIF_PORT: "80"
       # Types d'Incrustation recréables ; les tests en retirent un pour simuler une caméra qui ne sait pas.
       ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}
@@ -113,6 +120,9 @@ services:
     environment:
       # Complète les sous-réseaux de .env avec celui des Caméras simulées.
       ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:+${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX},}172.30.0.0/24
+
+volumes:
+  camera-simulee-2-onvif-certificat:
 
 networks:
   cameras-simulees:
