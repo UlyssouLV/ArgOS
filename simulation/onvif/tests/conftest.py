@@ -1,9 +1,11 @@
 """Fixtures : une Caméra simulée ONVIF lancée dans le processus des tests, interrogée en SOAP par HTTP ou HTTPS.
 
 `camera` répond sans identifiants (comme la Caméra simulée 4) ; `camera_protegee` exige ceux de la
-Caméra simulée 2 ; `camera_sans_recreation_de_la_date` ne sait recréer que le nom ; `camera_https_et_http` est
-une seule caméra avec identifiants, jointe en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans
-un dossier temporaire. Chaque test part d'une caméra neuve, « sortie d'usine ».
+Caméra simulée 2 ; `camera_complete` est la Caméra simulée 2 (identifiants, service image, média 2, deux profils
+aux chemins Dahua) et `camera_sans_media_2` la même sans média 2 ; `camera_sans_recreation_de_la_date` ne sait
+recréer que le nom ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
+en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire.
+Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
 import base64
@@ -35,7 +37,12 @@ NS = {
     "trt": "http://www.onvif.org/ver10/media/wsdl",
     "tt": "http://www.onvif.org/ver10/schema",
     "ter": "http://www.onvif.org/ver10/error",
+    "timg": "http://www.onvif.org/ver20/imaging/wsdl",
+    "tr2": "http://www.onvif.org/ver20/media/wsdl",
 }
+NS_IMAGE = NS["timg"]
+NS_MEDIA_2 = NS["tr2"]
+CHEMINS_RTSP_2 = ("/cam/realmonitor?channel=1&subtype=0", "/cam/realmonitor?channel=1&subtype=1")
 
 
 @dataclass
@@ -106,7 +113,7 @@ class Camera:
         entete = f"<env:Header>{entete_securite(*identifiants)}</env:Header>" if identifiants else ""
         enveloppe = (
             f'<env:Envelope xmlns:env="{NS["env"]}" xmlns:tds="{NS["tds"]}" xmlns:trt="{NS["trt"]}"'
-            f' xmlns:tt="{NS["tt"]}">{entete}<env:Body>{corps}</env:Body></env:Envelope>'
+            f' xmlns:tt="{NS["tt"]}" xmlns:timg="{NS["timg"]}" xmlns:tr2="{NS["tr2"]}">{entete}<env:Body>{corps}</env:Body></env:Envelope>'
         )
         requete = urllib.request.Request(
             self.url + chemin,
@@ -133,9 +140,28 @@ class Camera:
     def media(self, corps: str) -> Reponse:
         return self.appeler(corps, chemin=self.chemin_media())
 
+    def services(self) -> dict[str, str]:
+        """Adresses des services annoncés par `GetServices`, par espace de noms."""
+        reponse = self.appeler("<tds:GetServices><tds:IncludeCapability>false</tds:IncludeCapability></tds:GetServices>")
+        assert reponse.statut == 200
+        return {
+            service.findtext("tds:Namespace", namespaces=NS): service.findtext("tds:XAddr", namespaces=NS)
+            for service in reponse.xml.findall(".//tds:Service", NS)
+        }
 
-def _lancer(identifiants: tuple[str, str] | None, types_creables: tuple[str, ...] | None = None):
-    camera = camera_onvif.Camera(identifiants, *([types_creables] if types_creables else []))
+    def _service(self, espace: str, corps: str, identifiants) -> Reponse:
+        chemin = urllib.parse.urlsplit(self.services()[espace]).path
+        return self.appeler(corps, chemin=chemin, identifiants=identifiants)
+
+    def image(self, corps: str, identifiants: tuple[str, str] | None = ...) -> Reponse:
+        return self._service(NS_IMAGE, corps, identifiants)
+
+    def media_2(self, corps: str, identifiants: tuple[str, str] | None = ...) -> Reponse:
+        return self._service(NS_MEDIA_2, corps, identifiants)
+
+
+def _lancer(identifiants: tuple[str, str] | None, types_creables: tuple[str, ...] | None = None, **options):
+    camera = camera_onvif.Camera(identifiants, *([types_creables] if types_creables else []), **options)
     with _servir(camera) as url:
         yield Camera(url, identifiants)
 
@@ -169,6 +195,18 @@ def camera_sans_recreation_de_la_date():
     yield from _lancer(None, ("Plain",))
 
 
+@pytest.fixture
+def camera_complete():
+    """Comme la Caméra simulée 2 : identifiants, service image, média 2, deux profils aux chemins Dahua."""
+    yield from _lancer(IDENTIFIANTS, services=frozenset({"image", "media2"}), chemins_rtsp=CHEMINS_RTSP_2)
+
+
+@pytest.fixture
+def camera_sans_media_2():
+    """La Caméra simulée 2 lancée sans média 2 : le repli média 1 sur un Flux H.264."""
+    yield from _lancer(IDENTIFIANTS, services=frozenset({"image"}), chemins_rtsp=CHEMINS_RTSP_2)
+
+
 @dataclass
 class CameraHttpsEtHttp:
     https: Camera
@@ -180,6 +218,6 @@ class CameraHttpsEtHttp:
 def camera_https_et_http(tmp_path):
     certificat = (str(tmp_path / "certificat.pem"), str(tmp_path / "cle.pem"))
     assurer_certificat(*certificat)
-    camera = camera_onvif.Camera(IDENTIFIANTS)
+    camera = camera_onvif.Camera(IDENTIFIANTS, services=frozenset({"image", "media2"}))
     with _servir(camera, certificat) as url_https, _servir(camera) as url_http:
         yield CameraHttpsEtHttp(Camera(url_https, IDENTIFIANTS), Camera(url_http, IDENTIFIANTS), certificat[0])
