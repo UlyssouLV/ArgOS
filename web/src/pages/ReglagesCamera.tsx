@@ -874,8 +874,8 @@ function ChampsEncodage({ origine, actuels, saisie, horsBornes, statuts, onChang
         <h4>Encodage du Flux</h4>
         <p>
           {encodage.raison === "profil_introuvable"
-            ? "Profil vidéo introuvable pour ce Flux"
-            : "Vidéo non réglable sur cette caméra"}
+            ? "Encodage introuvable pour ce Flux"
+            : "Encodage non réglable sur cette caméra"}
         </p>
       </section>
     );
@@ -915,7 +915,7 @@ function ChampsEncodage({ origine, actuels, saisie, horsBornes, statuts, onChang
   return (
     <section aria-label="Encodage du Flux">
       <h4>Encodage du Flux</h4>
-      {!reglable && <p>Vidéo non réglable sur cette caméra</p>}
+      {!reglable && <p>Encodage non réglable sur cette caméra</p>}
       <dl>
         <dt>Profil</dt>
         <dd>{encodage.profil ?? "—"}</dd>

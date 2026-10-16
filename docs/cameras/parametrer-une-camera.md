@@ -140,7 +140,7 @@ Par l’API : la lecture renvoie `image` (`reglable`, `raison` = `non_reglable` 
 
 ### Régler l’Encodage du Flux
 
-L’Encodage est celui du **Flux de la Caméra** : ArgOS cherche, parmi les profils de la caméra (`GetProfiles`), celui dont l’URL de flux (`GetStreamUri`) a **le même chemin et la même requête** que l’URL RTSP de la Caméra (hôte, port et identifiants ignorés). La Caméra du flux secondaire (`…subtype=1`) règle donc le flux secondaire, celle du flux principal le flux principal. Aucun profil ne correspond (URL saisie avec un autre chemin, une requête en plus) : « Profil vidéo introuvable pour ce Flux », rien à régler.
+L’Encodage est celui du **Flux de la Caméra** : ArgOS cherche, parmi les profils de la caméra (`GetProfiles`), celui dont l’URL de flux (`GetStreamUri`) a **le même chemin et la même requête** que l’URL RTSP de la Caméra (hôte, port et identifiants ignorés). La Caméra du flux secondaire (`…subtype=1`) règle donc le flux secondaire, celle du flux principal le flux principal. Aucun profil ne correspond (URL saisie avec un autre chemin, une requête en plus) : « Encodage introuvable pour ce Flux », rien à régler.
 
 - **Résolution** : parmi celles que la caméra propose.
 - **Images par seconde** et **débit max** (kbit/s) : bornés par la caméra ; hors des bornes, « Enregistrer » reste grisé.
@@ -150,7 +150,7 @@ Par quel service ([ADR 0008](../adr/0008-encodage-par-media-2-media-1-seulement-
 
 - le **média 2** d’ONVIF quand la caméra l’annonce (`GetServices`) : il décrit le vrai codec, H.265 compris ;
 - sinon le **média 1**, **seulement si le Flux est en H.264** (codec lu dans le Flux par ArgOS) : le média 1 ne connaît pas le H.265 et le déclare souvent en H.264 (c’est le cas de la caméra de dev), si bien qu’un réglage par lui pourrait changer le codec du Flux ;
-- sinon, « Vidéo non réglable sur cette caméra » : les valeurs restent affichées, en lecture seule. Le codec affiché est alors celui du Flux.
+- sinon, « Encodage non réglable sur cette caméra » : les valeurs restent affichées, en lecture seule. Le codec affiché est alors celui du Flux.
 
 Un changement d’Encodage **coupe le Flux quelques secondes** (la caméra relance son encodeur). « Enregistrer » le confirme d’abord : « Le Flux de cette Caméra sera coupé quelques secondes. » (**Couper le Flux et enregistrer** ou **Garder le Flux**). Une modification d’Image, d’Incrustation ou d’Horloge seule part sans confirmation. L’Encodage part en dernier ; ArgOS relit ensuite la caméra toutes les 2 s environ, jusqu’à ce qu’elle réponde, 20 s au plus. Si elle ne répond plus : « pas pris — la caméra n’a pas répondu après l’envoi », et le formulaire garde les valeurs lues avant l’envoi.
 
@@ -158,7 +158,7 @@ Par l’API : la lecture renvoie `encodage` (`reglable`, `raison` = `profil_intr
 
 ### Limites
 
-- **H.265 sans média 2** : une caméra dont le Flux est en H.265 et qui n’annonce pas le média 2 a son Encodage en lecture seule (« Vidéo non réglable sur cette caméra »). Le média 1 ne sait pas décrire le H.265 : un réglage par lui risquerait de repasser le Flux en H.264 sans le dire ([ADR 0008](../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md)). Régler cette caméra par l’application du fabricant, ou attendre un firmware qui annonce le média 2.
+- **H.265 sans média 2** : une caméra dont le Flux est en H.265 et qui n’annonce pas le média 2 a son Encodage en lecture seule (« Encodage non réglable sur cette caméra »). Le média 1 ne sait pas décrire le H.265 : un réglage par lui risquerait de repasser le Flux en H.264 sans le dire ([ADR 0008](../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md)). Régler cette caméra par l’application du fabricant, ou attendre un firmware qui annonce le média 2.
 - **Codec, qualité, intervalle entre images clés** : affichés, jamais modifiables depuis ArgOS.
 - **Exposition, balance des blancs, mise au point** : ni lues, ni réglées. La caméra garde les siennes.
 - **Image partagée** : l’Image est celle de l’Appareil. La régler depuis une Caméra la change pour toutes les Caméras de la même MAC (flux principal et secondaire compris).
@@ -246,8 +246,8 @@ docker compose logs api | grep ONVIF
 | « Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair. » | Caméra déjà réglée en HTTPS qui ne répond plus qu’en HTTP ([HTTPS indisponible](#https-indisponible)). |
 | « Cette caméra ne propose pas HTTPS : ONVIF en clair non accepté. » | Caméra sans HTTPS, pas encore d’accord de l’Administrateur ([ONVIF en clair](#onvif-en-clair)). |
 | « Image non réglable sur cette caméra » | La caméra n’annonce pas de service image, ou il répond en faute ; le reste des Réglages fonctionne ([Régler l’Image](#régler-limage)). |
-| « Profil vidéo introuvable pour ce Flux » | Aucun profil de la caméra n’a l’URL de flux de la Caméra (chemin et requête) ([Régler l’Encodage du Flux](#régler-lencodage-du-flux)). |
-| « Vidéo non réglable sur cette caméra » | La caméra n’a pas de média 2 et son Flux n’est pas en H.264 (ou son codec n’est pas encore connu) : Encodage en lecture seule ([Limites](#limites)). |
+| « Encodage introuvable pour ce Flux » | Aucun profil de la caméra n’a l’URL de flux de la Caméra (chemin et requête) ([Régler l’Encodage du Flux](#régler-lencodage-du-flux)). |
+| « Encodage non réglable sur cette caméra » | La caméra n’a pas de média 2 et son Flux n’est pas en H.264 (ou son codec n’est pas encore connu) : Encodage en lecture seule ([Limites](#limites)). |
 | « pas pris — la caméra n’a pas répondu après l’envoi » | Après un changement d’Encodage, la caméra n’a plus répondu dans les 20 s. Rouvrir les Réglages un peu plus tard pour voir ce qu’elle a gardé. |
 
-Pour développer sans matériel, les Caméras simulées 2 et 4 répondent en ONVIF, « sortie d’usine » comme la caméra de dev : la 2 en HTTPS sur `443` (certificat auto-signé, gardé d’un démarrage à l’autre) et en HTTP sur `8899`, avec identifiants, et ArgOS doit choisir HTTPS ; la 4 en HTTP seulement sur `80`, sans identifiants : elle demande l’accord ONVIF en clair. La 2 a un service image (WDR accepté sans être appliqué : « pas pris ») et le média 2, avec deux profils aux chemins de son URL RTSP ; la 4 n’a ni l’un ni l’autre, et son Flux est en H.265 (« Image non réglable sur cette caméra », « Vidéo non réglable sur cette caméra »). Voir `simulation/onvif/README.md` dans le dépôt.
+Pour développer sans matériel, les Caméras simulées 2 et 4 répondent en ONVIF, « sortie d’usine » comme la caméra de dev : la 2 en HTTPS sur `443` (certificat auto-signé, gardé d’un démarrage à l’autre) et en HTTP sur `8899`, avec identifiants, et ArgOS doit choisir HTTPS ; la 4 en HTTP seulement sur `80`, sans identifiants : elle demande l’accord ONVIF en clair. La 2 a un service image (WDR accepté sans être appliqué : « pas pris ») et le média 2, avec deux profils aux chemins de son URL RTSP ; la 4 n’a ni l’un ni l’autre, et son Flux est en H.265 (« Image non réglable sur cette caméra », « Encodage non réglable sur cette caméra »). Voir `simulation/onvif/README.md` dans le dépôt.

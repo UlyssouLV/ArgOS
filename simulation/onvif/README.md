@@ -63,7 +63,7 @@ Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est imp
 | `camera-simulee-3` | aucun                    | —                                                                                              | —                                         |
 | `camera-simulee-4` | `camera-simulee-4-onvif` | `http://172.30.0.14/onvif/device_service` (HTTP seulement)                                     | aucun                                     |
 
-La 2 a le service image et le média 2, et deux profils aux chemins de son URL RTSP (`/cam/realmonitor?channel=1&subtype=0` et `subtype=1`). La 4 n'a que le média 1, sans service image, un seul profil (`/Streaming/Channels/101`), et son Flux est en H.265 : c'est le cas « Image non réglable » et « Vidéo non réglable ».
+La 2 a le service image et le média 2, et deux profils aux chemins de son URL RTSP (`/cam/realmonitor?channel=1&subtype=0` et `subtype=1`). La 4 n'a que le média 1, sans service image, un seul profil (`/Streaming/Channels/101`), et son Flux est en H.265 : c'est le cas « Image non réglable » et « Encodage non réglable ».
 
 Les Caméras simulées 1 et 3 ne répondent pas en ONVIF : c'est le cas « caméra sans ONVIF ». La 2 répond en HTTPS sur `443` et garde HTTP sur `8899`, le port des caméras XiongMai, comme beaucoup de vraies caméras ; son certificat auto-signé est créé au premier démarrage dans le volume `camera-simulee-2-onvif-certificat`, et reste le même ensuite (`docker volume rm` en fait créer un nouveau). La 4 ne propose pas HTTPS.
 

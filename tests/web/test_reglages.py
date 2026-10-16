@@ -773,7 +773,7 @@ def test_image_seule_envoyee_sans_confirmation(administration: Page, api, noms, 
 def test_encodage_non_reglable_valeurs_en_lecture_seule(administration: Page, api, noms):
     section = encodage(ouvrir_sur_le_profil(administration, api, noms, 4))
 
-    expect(section).to_contain_text("Vidéo non réglable sur cette caméra")
+    expect(section).to_contain_text("Encodage non réglable sur cette caméra")
     expect(valeur(section, "Résolution")).to_have_text("2304×1296")
     expect(valeur(section, "Images par seconde")).to_have_text("20")
     expect(section.get_by_role("spinbutton")).to_have_count(0)
@@ -783,7 +783,7 @@ def test_encodage_non_reglable_valeurs_en_lecture_seule(administration: Page, ap
 def test_profil_introuvable(administration: Page, api, noms):
     _, reglages = ouvrir_formulaire(administration, api, noms, 2)
 
-    expect(encodage(reglages)).to_contain_text("Profil vidéo introuvable pour ce Flux")
+    expect(encodage(reglages)).to_contain_text("Encodage introuvable pour ce Flux")
     expect(encodage(reglages).get_by_role("spinbutton")).to_have_count(0)
 
 

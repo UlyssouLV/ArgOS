@@ -1,6 +1,6 @@
 # Encodage réglé par le média 2, média 1 seulement en H.264
 
-Depuis la 0.6.4, le Site règle l'Encodage d'une Caméra (résolution, images par seconde, débit) par le **service média 2** d'ONVIF quand l'Appareil l'annonce. Sans média 2, il ne passe par le média 1 que si le Flux de la Caméra est en **H.264** (codec lu dans le Flux, déjà connu du Site) ; sinon l'Encodage reste en lecture seule (« Vidéo non réglable sur cette caméra »). À l'envoi, le codec, la qualité et l'intervalle entre images clés relus sont renvoyés tels quels.
+Depuis la 0.6.4, le Site règle l'Encodage d'une Caméra (résolution, images par seconde, débit) par le **service média 2** d'ONVIF quand l'Appareil l'annonce. Sans média 2, il ne passe par le média 1 que si le Flux de la Caméra est en **H.264** (codec lu dans le Flux, déjà connu du Site) ; sinon l'Encodage reste en lecture seule (« Encodage non réglable sur cette caméra »). À l'envoi, le codec, la qualité et l'intervalle entre images clés relus sont renvoyés tels quels.
 
 ## Considered Options
 
