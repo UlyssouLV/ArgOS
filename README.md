@@ -46,6 +46,8 @@ Version **0.6.2** : regarder une Caméra passe par la **connexion** d’ArgOS. L
 
 Version **0.6.3** : régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras. ArgOS parle **ONVIF en HTTPS** sur `443` quand la caméra le propose, en mémorisant la clé de son certificat (le **Certificat de l’Appareil**) au premier contact ; une clé qui change ensuite, ou un HTTPS qui disparaît, est refusé et signalé, et l’Administrateur tranche dans les Réglages. Une caméra sans HTTPS n’est réglée en clair qu’après son accord (**ONVIF en clair**). Un mot de passe de caméra de moins de 12 caractères est signalé à l’ajout (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos), [sécurité](docs/securite.md), [ADR 0007](docs/adr/0007-onvif-en-https-par-cle-memorisee.md)).
 
+Version **0.6.4** : les Réglages d’une Caméra règlent aussi l’**Image** de son Appareil (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR), partagée par toutes ses Caméras, et l’**Encodage** de son Flux (résolution, images par seconde, débit max), relus après envoi avec le même statut par champ. L’Encodage passe par le média 2 d’ONVIF, par le média 1 seulement en H.264, sinon il reste en lecture seule ; un changement d’Encodage coupe le Flux quelques secondes, après confirmation. Un lecteur du Flux en tête du panneau montre l’effet des réglages (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos), [ADR 0008](docs/adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md)).
+
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose

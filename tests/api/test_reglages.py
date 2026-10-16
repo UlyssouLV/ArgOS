@@ -309,9 +309,14 @@ def modifier(client, id_camera: int, incrustations: dict):
 
 
 def champs(reponse) -> dict[str, dict]:
-    """Résultat par champ envoyé (`incrustations.nom.texte`…), sans la clé `champ`."""
+    """Résultat par champ envoyé (`incrustations.nom.texte`…), sans la clé `champ` ; `raison` seulement s'il y en a
+    une (`sans_reponse`)."""
     assert reponse.status_code == 200, reponse.text
-    return {c.pop("champ"): c for c in reponse.json()["champs"]}
+    resultats = reponse.json()["champs"]
+    for resultat in resultats:
+        if resultat.get("raison", ...) is None:
+            del resultat["raison"]
+    return {c.pop("champ"): c for c in resultats}
 
 
 def test_modifier_sans_session_401(client):

@@ -341,7 +341,9 @@ def _routes_cameras(
     def modifier_reglages(
         id_camera: int, modification: onvif.ModificationReglages, base: Base
     ) -> onvif.ResultatModification:
-        """Envoie seulement les champs reçus, chacun séparément, puis relit la caméra : statut de chaque champ."""
+        """Envoie seulement les champs reçus, chacun séparément, puis relit la caméra : statut de chaque champ.
+
+        `422` sans rien envoyer si une valeur sort des options relues sur la caméra (bornes, modes proposés)."""
         with _erreurs_cameras():
             return cameras.modifier_reglages(base, id_camera, modification, horloge)
 
@@ -579,4 +581,8 @@ def _erreurs_cameras() -> Iterator[None]:
     except cameras.CertificatNonPresente:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "La caméra ne présente plus ce certificat : rouvrir ses Réglages."
+        ) from None
+    except onvif.HorsDesOptions as erreur:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Valeur non proposée par la caméra : {erreur.champ}."
         ) from None

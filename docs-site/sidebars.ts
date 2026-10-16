@@ -79,6 +79,11 @@ const sidebars: SidebarsConfig = {
           id: 'adr/0007-onvif-en-https-par-cle-memorisee',
           label: '0007 — ONVIF en HTTPS',
         },
+        {
+          type: 'doc',
+          id: 'adr/0008-encodage-par-media-2-media-1-seulement-en-h264',
+          label: '0008 — Encodage par le média 2',
+        },
       ],
     },
   ],

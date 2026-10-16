@@ -96,13 +96,21 @@ services:
       ONVIF_MOT_DE_PASSE: argos-simulee
       # Version TLS la plus haute servie ; les tests la baissent à 1.0 pour simuler une caméra ancienne.
       ONVIF_TLS_MAX: ${ONVIF_TLS_MAX_2:-}
+      # Service image et média 2, comme la caméra de dev ; les tests retirent le média 2 (`ONVIF_SERVICES_2=image`)
+      # pour le repli média 1 sur ce Flux H.264.
+      ONVIF_SERVICES: ${ONVIF_SERVICES_2-image,media2}
+      # Muette ce nombre de secondes après un changement d'Encodage (vide : jamais) ; les tests le règlent pour une
+      # caméra qui ne répond plus après l'envoi.
+      ONVIF_SILENCE_APRES_ENCODAGE_S: ${ONVIF_SILENCE_APRES_ENCODAGE_S_2:-}
+      # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
+      ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 
   camera-simulee-4-onvif:
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-4
     environment:
-      # HTTP seulement, sans identifiants.
+      # HTTP seulement, sans identifiants ; média 1 seul, sans service image (pas de `ONVIF_SERVICES`).
       ONVIF_PORT: "80"
       # Types d'Incrustation recréables ; les tests en retirent un pour simuler une caméra qui ne sait pas.
       ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}

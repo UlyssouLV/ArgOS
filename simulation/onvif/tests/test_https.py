@@ -251,3 +251,13 @@ def test_journal_dit_le_schema_et_le_port_de_chaque_requete(tmp_path):
 
     assert any(f"https:{https} " in ligne and "POST /onvif/device_service" in ligne for ligne in lignes), lignes
     assert any(f"http:{http} " in ligne and "POST /onvif/device_service" in ligne for ligne in lignes), lignes
+
+
+def test_journal_dit_l_operation_de_chaque_requete(tmp_path):
+    http = _port_libre()
+
+    with Lancement({"ONVIF_PORT": str(http)}, journal=True) as lancement:
+        _heure_lue(f"http://127.0.0.1:{http}")
+    lignes = lancement.journal()
+
+    assert any(ligne.endswith(" GetSystemDateAndTime") for ligne in lignes), lignes

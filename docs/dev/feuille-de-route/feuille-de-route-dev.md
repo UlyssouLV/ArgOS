@@ -23,14 +23,9 @@ Contraintes transverses :
 - **0.6.1** — HTTPS : UI, API et Live sous une seule origine HTTPS (nginx de `web`, port `443`), `80` / `8080` redirigent, ports `8000` / `8888` / `8889` fermés, cookie de session `Secure`, fin de CORS ; certificat signé par l’Autorité du Site générée au premier lancement, régénéré seul (IP, expiration), ou certificat fourni par l’Administrateur ; lanceur Mac en HTTPS et Autorité proposée au trousseau ([PR #67](https://github.com/UlyssouLV/ArgOS/pull/67), [spec](../../specs/v0.6.1-https.md), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md), [doc](../../features/reseau/installer-l-autorite-du-site.md)).
 - **0.6.2** — Authentification des Flux : WHEP et HLS relayés par nginx seulement à une session ArgOS (`auth_request`, `401` sinon), l’UI revient à la connexion quand un Flux est refusé ; RTSP `8554` n’est plus publié sur l’hôte (dev : `127.0.0.1` seulement) ; MediaMTX reste sans authentification derrière le réseau Compose ; un Live WebRTC déjà établi continue après la fin de la session (Plus tard) ([PR #74](https://github.com/UlyssouLV/ArgOS/pull/74), [spec](../../specs/v0.6.2-authentification-des-flux.md), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md)).
 - **0.6.3** — Sécurisation d’ONVIF : ONVIF en HTTPS sur `443` quand la caméra le propose, clé du Certificat de l’Appareil mémorisée au premier contact puis vérifiée (clé changée ou HTTPS disparu refusés et signalés, l’Administrateur fait confiance au nouveau certificat ou l’oublie) ; ONVIF en clair seulement sur accord de l’Administrateur, mémorisé et révocable ; TLS ancien accepté et signalé ; mot de passe de caméra court (< 12 caractères) signalé à l’ajout ; port, clé et accord gardés tant que l’hôte ne change pas ; `# NOSONAR` de la 0.6.0 justifiés pour de bon. Bug connu : modifier l’URL d’une Caméra sans retaper son mot de passe enregistre `***` ([#86](https://github.com/UlyssouLV/ArgOS/issues/86), Plus tard) ([PR #85](https://github.com/UlyssouLV/ArgOS/pull/85), [spec](../../specs/v0.6.3-securisation-d-onvif.md), [ADR 0007](../../adr/0007-onvif-en-https-par-cle-memorisee.md), [doc](../../cameras/parametrer-une-camera.md)).
+- **0.6.4** — Réglages image et vidéo par ONVIF : sections Image (filtre infrarouge jour / nuit / automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR ; de l’Appareil, partagée par ses Caméras) et Encodage du Flux (résolution, images par seconde, débit max ; codec, qualité et intervalle entre images clés en lecture seule) dans les Réglages, relues après envoi avec un statut par champ ; profil retenu d’après l’URL RTSP de la Caméra ; Encodage par le média 2, par le média 1 seulement en H.264, sinon non réglable ; confirmation avant la coupure du Flux ; lecteur du Flux dans le panneau ; Caméra simulée 2 avec service image et média 2. Bug connu : la suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées ([#95](https://github.com/UlyssouLV/ArgOS/issues/95), Plus tard) ([PR #94](https://github.com/UlyssouLV/ArgOS/pull/94), [spec](../../specs/v0.6.4-reglages-image-et-video-par-onvif.md), [ADR 0008](../../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md), [doc](../../cameras/parametrer-une-camera.md)).
 
-## Prochaine : 0.6.4 — Réglages image et vidéo par ONVIF
-
-**Objectif.** Régler depuis les Réglages de la Caméra son image (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, contre-jour…) et sa vidéo (résolution, images par seconde, débit), lus et vérifiés après envoi, comme les Incrustations en 0.6.0.
-
-**Hors périmètre :** réseau, IP, utilisateurs et ports de la caméra (jamais) ; événements ONVIF ; PTZ.
-
-## Ensuite : 0.7.0 — Serveur installable sans le dépôt
+## Prochaine : 0.7.0 — Serveur installable sans le dépôt
 
 **Objectif.** Produire des images versionnées du serveur (`api`, `web`, pont) et un compose de prod autonome, pour installer et mettre à jour un Site sans les sources, avec ses réglages dans `.env`.
 
@@ -139,3 +134,19 @@ Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux
 **Hors périmètre :** Aucun.
 
 **Suivi :** [#86](https://github.com/UlyssouLV/ArgOS/issues/86) (`bug`). Trouvé dans : 0.6.3 · Contexte : test humain · Date : 2026-10-16 · Priorité : Informations manquantes.
+
+### Bug — La suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées (#95)
+
+**Constat :** Avec des Caméras de dev déclarées sur les Caméras simulées 2 et 4 (« Caméra simulée 2 » et « Caméra simulée 4 », gardées pour le debugging), la suite complète échoue hors du code testé : 10 tests de `tests/api/` (`test_essai.py`, `test_suivi_adresse.py`) et 15 de `tests/web/` (`test_filtre_mac.py`…). L'essai répond `409` « déjà configurée » au lieu de `200`.
+
+**Reproductibilité :** Déclarer dans l'Administration une Caméra sur `camera-simulee-4` (ou `172.30.0.12` pour la 2), puis lancer `/t -a` : `test_essai.py` échoue sur `assert reponse.status_code == 200` (`409`), comme `test_suivi_adresse.py` et `test_filtre_mac.py`. Les retirer rend la suite verte.
+
+**Impact :** La suite des tests ne peut pas être verte tant que le développeur garde des Caméras de dev sur les Caméras simulées : il faut choisir entre ses Caméras de debugging et une suite verte, et les vrais échecs se noient dans ces faux.
+
+**Cause probable :** La stack des tests est la stack de dev (même base). L'essai et le rapprochement par adresse et MAC comptent toute Caméra déclarée sur l'adresse d'une Caméra simulée, désactivée comprise ; ces tests supposent que les simulées 2 et 4 ne sont pas encore déclarées.
+
+**À corriger :** La suite des tests passe quelles que soient les Caméras que le développeur a déclarées dans sa stack de dev, sans qu'il ait à les retirer.
+
+**Hors périmètre :** Aucun.
+
+**Suivi :** [#95](https://github.com/UlyssouLV/ArgOS/issues/95) (`bug`). Trouvé dans : 0.6.4 · Contexte : suite de tests (implémentation de #89) · Date : 2026-10-16 · Priorité : Informations manquantes.
