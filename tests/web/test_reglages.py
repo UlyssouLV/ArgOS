@@ -17,11 +17,24 @@ from stack_compose import (
     camera_simulee_2_muette_apres_encodage,
     camera_simulee_2_sans_https,
     camera_simulee_4_sans_recreation_de_la_date,
+    couper_puis_rendre_le_flux_simule,
     regler_camera_simulee_4_en_onvif,
     remettre_onvif_en_usine,
     url_camera_simulee,
 )
 from test_administration import administration, api, creer, ligne, noms, unique, url_simulee  # noqa: F401 (fixtures)
+from test_live import (  # noqa: F401 (fixtures)
+    DELAI_VIDEO_MS,
+    HEVC_PRETENDU,
+    NAVIGATEUR_SANS_H265,
+    RECENSER_CONNEXIONS,
+    attendre_codec,
+    attendre_que_la_video_joue,
+    connexions_ouvertes,
+    hls,
+    requetes_flux,
+    whep,
+)
 
 # La recherche du port ONVIF, puis la lecture ; une caméra éteinte se fait attendre.
 DELAI_LECTURE_MS = 30_000
@@ -790,3 +803,65 @@ def test_camera_sans_reponse_apres_l_envoi(administration: Page, api, noms, muet
     expect(statut(reglages, "images par seconde")).to_have_text(
         "pas pris — la caméra n'a pas répondu après l'envoi", timeout=DELAI_ENCODAGE_MS
     )
+
+
+# --- Lecteur du Flux ---------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def connexions_recensees(administration: Page) -> Page:
+    """Administration rechargée avec le recensement des connexions WebRTC de la page."""
+    administration.add_init_script(RECENSER_CONNEXIONS)
+    administration.reload()
+    return administration
+
+
+def test_le_flux_se_lit_dans_le_panneau_et_fermer_arrete_la_lecture(connexions_recensees: Page, api, noms):
+    nom = noms()
+    creer(connexions_recensees, api, nom, url_simulee(1))
+
+    reglages = ouvrir_reglages(connexions_recensees, nom)
+
+    attendre_que_la_video_joue(connexions_recensees)
+    assert connexions_ouvertes(connexions_recensees) == 1
+
+    reglages.get_by_role("button", name="Fermer").click()
+
+    expect(reglages).to_have_count(0)
+    expect(connexions_recensees.locator("video")).to_have_count(0)
+    assert connexions_ouvertes(connexions_recensees) == 0
+
+
+def test_le_flux_h265_se_lit_en_hls_dans_le_panneau(administration: Page, api, noms, requetes_flux):
+    nom = noms()
+    creer_en_clair_accepte(administration, api, nom)
+    attendre_codec(api, nom, "H265")
+    # Le navigateur prétend décoder le HEVC : le lecteur va jusqu'à demander la playlist, sans dépendre de la machine.
+    administration.add_init_script(HEVC_PRETENDU)
+    administration.reload()
+
+    ouvrir_reglages(administration, nom)
+
+    expect(administration.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_VIDEO_MS)
+    assert len(hls(requetes_flux)) >= 1
+    assert whep(requetes_flux) == []
+
+
+def test_le_lecteur_reprend_seul_apres_une_coupure_du_flux(connexions_recensees: Page, api, noms):
+    nom = noms()
+    creer(connexions_recensees, api, nom, url_simulee(1))
+    reglages = ouvrir_reglages(connexions_recensees, nom)
+    attendre_que_la_video_joue(connexions_recensees)
+    # Disparaît si la page se recharge.
+    connexions_recensees.evaluate("() => { window.__meme_page = true; }")
+    avant = connexions_recensees.evaluate("() => window.__connexions.length")
+
+    couper_puis_rendre_le_flux_simule(1)
+
+    connexions_recensees.wait_for_function(
+        f"() => window.__connexions.length > {avant}", timeout=DELAI_VIDEO_MS
+    )
+    attendre_que_la_video_joue(connexions_recensees)
+    assert connexions_recensees.evaluate("() => window.__meme_page") is True
+    assert connexions_ouvertes(connexions_recensees) == 1
+    expect(reglages).to_be_visible()

@@ -1,6 +1,7 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, type Camera } from "../cameras";
+import { LecteurFlux } from "../LecteurFlux";
 import {
   accepterEnClair,
   COINS,
@@ -51,7 +52,8 @@ type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
 /**
  * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure, Incrustations, Image et Encodage du
- * Flux se règlent.
+ * Flux se règlent. Le Flux se lit en tête du panneau, comme dans le Live, pour voir l'effet d'un réglage ; fermer le
+ * panneau arrête la lecture.
  * Un certificat changé, un HTTPS disparu ou une caméra sans HTTPS (ONVIF en clair non accepté) bloque les Réglages
  * jusqu'à la décision de l'Administrateur, puis relit.
  */
@@ -60,6 +62,12 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
   const [echec, setEchec] = useState<unknown>(null);
   // Incrémentée après une décision sur le certificat ou l'ONVIF en clair : relit la caméra.
   const [lecture, setLecture] = useState(0);
+  const panneau = useRef<HTMLElement>(null);
+
+  // Ouvert sous sa ligne, le panneau peut tomber hors de la vue : Chrome ne lit pas une vidéo muette hors de l'écran.
+  useEffect(() => {
+    panneau.current?.scrollIntoView({ block: "nearest" });
+  }, [camera.id]);
 
   useEffect(() => {
     let ouvert = true;
@@ -87,13 +95,17 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
   const erreur = echec === null || decision ? null : messageEchec(echec);
 
   return (
-    <section className="reglages" aria-label={`Réglages de ${camera.nom}`}>
+    <section ref={panneau} className="reglages" aria-label={`Réglages de ${camera.nom}`}>
       <div className="reglages-en-tete">
         <h3>Réglages de {camera.nom}</h3>
         <button type="button" onClick={onFermer}>
           Fermer
         </button>
       </div>
+      {/* Une clé par Flux, comme le Live : un autre Flux démonte le lecteur, qui ferme sa connexion. */}
+      {camera.chemin_flux && (
+        <LecteurFlux key={camera.chemin_flux} cheminFlux={camera.chemin_flux} codec={camera.codec} />
+      )}
       {!lus && echec === null && <p>Lecture de la caméra…</p>}
       {refus?.code === "certificat_change" && (
         <CertificatChange

@@ -228,6 +228,11 @@ def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:
     )
 
 
+def couper_puis_rendre_le_flux_simule(numero: int) -> None:
+    """Recrée camera-simulee-`numero` : son Flux se coupe le temps du redémarrage, puis revient à la même adresse."""
+    compose("up", "-d", "--force-recreate", "--wait", f"camera-simulee-{numero}")
+
+
 def requetes_onvif_recues(service: str, depuis: datetime, de: str, schema_port: str) -> list[str]:
     """Lignes du journal d'une interface ONVIF simulée : requêtes reçues depuis `depuis`, de l'IP `de`, sur
     `schema_port` (`https:443`, `http:8899`). Le healthcheck, local, n'y est pas compté.

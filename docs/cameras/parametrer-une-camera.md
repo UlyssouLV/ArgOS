@@ -89,6 +89,8 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)), l’Horloge ([fuseau et mise à l’heure](#régler-lhorloge)), l’Image ([filtre infrarouge, luminosité…](#régler-limage)) et l’Encodage du Flux ([résolution, images par seconde, débit](#régler-lencodage-du-flux)) se règlent.
 
+En tête du panneau, un petit lecteur montre le **Flux de la Caméra**, comme le Live (WebRTC, ou HLS pour un Flux H.265), avec les mêmes messages (« Flux indisponible », « Ce navigateur ne lit pas le H.265 ») : l’effet d’un réglage se voit sans quitter l’Administration. Après une coupure (changement d’Encodage, caméra qui redémarre), il reprend seul, sans recharger la page. Fermer le panneau arrête la lecture.
+
 ### Ce qu’ArgOS lit
 
 - **Horloge** (celle de l’Appareil, partagée par toutes ses Caméras) : date et heure de la caméra (UTC), **écart avec l’heure du Site** (« en retard de 26 ans », « en avance de 3 min »), fuseau, et si la caméra se règle sur un serveur de temps (NTP), avec son nom.
