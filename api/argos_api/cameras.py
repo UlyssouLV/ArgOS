@@ -466,9 +466,7 @@ def _par_onvif[T](
     echange: Callable[[str, onvif.Retenu], tuple[T, onvif.Contact]],
 ) -> tuple[T, SecuriteOnvif]:
     """Échange ONVIF avec la caméra d'une Caméra active ; retient le contact, et la clé au premier contact HTTPS."""
-    camera = _trouver(base, id_camera)
-    if not camera.active:
-        raise CameraIntrouvable
+    camera = _trouver_active(base, id_camera)
     url = camera.url_rtsp
     retenu = onvif.Retenu(
         camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif, camera.onvif_en_clair_accepte
@@ -479,7 +477,15 @@ def _par_onvif[T](
     try:
         resultat, contact = echange(url, retenu)
     except onvif.ErreurOnvif as erreur:
-        _signaler_refus(id_camera, retenu, memorisee_le, erreur)
+        _journaliser_refus(id_camera, retenu, erreur)
+        if erreur.code == "certificat_change":
+            raise CertificatChange(
+                CertificatsCompares(
+                    empreinte_memorisee=retenu.empreinte,
+                    empreinte_memorisee_le=memorisee_le,
+                    empreinte_presentee=erreur.empreinte_vue,
+                )
+            ) from erreur
         raise
     valeurs: dict[str, object] = {}
     if (contact.schema, contact.port) != (retenu.schema, retenu.port):
@@ -508,10 +514,8 @@ def _mot_de_passe_court(url: str) -> bool:
     return 0 < len(mot_de_passe) < LONGUEUR_MOT_DE_PASSE_SUR
 
 
-def _signaler_refus(
-    id_camera: int, retenu: onvif.Retenu, memorisee_le: datetime | None, erreur: onvif.ErreurOnvif
-) -> None:
-    """Journalise un refus de sécurité ; un certificat changé repart avec les deux empreintes."""
+def _journaliser_refus(id_camera: int, retenu: onvif.Retenu, erreur: onvif.ErreurOnvif) -> None:
+    """Journalise un refus de sécurité (certificat changé, HTTPS indisponible), avec les empreintes."""
     if erreur.code == "certificat_change":
         journal.warning(
             "ONVIF : Caméra %s, certificat changé (mémorisé %s, présenté %s) : refusé",
@@ -519,14 +523,7 @@ def _signaler_refus(
             retenu.empreinte,
             erreur.empreinte_vue,
         )
-        raise CertificatChange(
-            CertificatsCompares(
-                empreinte_memorisee=retenu.empreinte,
-                empreinte_memorisee_le=memorisee_le,
-                empreinte_presentee=erreur.empreinte_vue,
-            )
-        ) from erreur
-    if erreur.code == "https_indisponible":
+    elif erreur.code == "https_indisponible":
         journal.warning(
             "ONVIF : Caméra %s, HTTPS indisponible (certificat mémorisé %s) : refusé, sans repli HTTP",
             id_camera,
@@ -540,9 +537,7 @@ def faire_confiance(base: Session, id_camera: int, empreinte: str, maintenant: C
 
     Lève `CameraIntrouvable`, `CertificatNonPresente` ou `onvif.ErreurOnvif` (la caméra ne répond pas en HTTPS).
     """
-    camera = _trouver(base, id_camera)
-    if not camera.active:
-        raise CameraIntrouvable
+    camera = _trouver_active(base, id_camera)
     url, ancienne = camera.url_rtsp, camera.empreinte_onvif
     base.rollback()
     presentee = onvif.empreinte_presentee(url)
@@ -569,8 +564,11 @@ def faire_confiance(base: Session, id_camera: int, empreinte: str, maintenant: C
 
 
 def oublier_certificat(base: Session, id_camera: int) -> None:
-    """Efface clé, schéma et port ONVIF retenus : le contact suivant repart de zéro. Lève `CameraIntrouvable`."""
-    camera = _trouver(base, id_camera)
+    """Efface clé, schéma et port ONVIF retenus : le contact suivant repart de zéro.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée).
+    """
+    camera = _trouver_active(base, id_camera)
     ancienne = camera.empreinte_onvif
     _oublier_onvif(camera)
     base.commit()
@@ -578,11 +576,12 @@ def oublier_certificat(base: Session, id_camera: int) -> None:
 
 
 def accepter_en_clair(base: Session, id_camera: int, accepte: bool) -> None:
-    """« Régler quand même en clair » (`accepte`), ou retrait de l'accord. Lève `CameraIntrouvable`.
+    """« Régler quand même en clair » (`accepte`), ou retrait de l'accord. Lève `CameraIntrouvable` (inconnue ou
+    désactivée).
 
     Une Caméra en HTTPS n'est jamais réglée en clair : l'accord ne sert qu'à une caméra sans HTTPS.
     """
-    camera = _trouver(base, id_camera)
+    camera = _trouver_active(base, id_camera)
     camera.onvif_en_clair_accepte = accepte
     base.commit()
     journal.info("ONVIF : Caméra %s, ONVIF en clair %s", id_camera, "accepté" if accepte else "retiré")
@@ -611,6 +610,14 @@ def supprimer(base: Session, id_camera: int) -> None:
 def _trouver(base: Session, id_camera: int, verrouiller: bool = False) -> Camera:
     camera = base.get(Camera, id_camera, with_for_update=verrouiller)
     if camera is None:
+        raise CameraIntrouvable
+    return camera
+
+
+def _trouver_active(base: Session, id_camera: int) -> Camera:
+    """Caméra active : seules elles ont des Réglages. Inconnue ou désactivée → `CameraIntrouvable`."""
+    camera = _trouver(base, id_camera)
+    if not camera.active:
         raise CameraIntrouvable
     return camera
 

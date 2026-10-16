@@ -128,3 +128,19 @@ Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui s
 ### Couper un Live WebRTC à la fin de la session
 
 Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.
+
+### Bug — Modifier l'URL d'une Caméra sans retaper son mot de passe enregistre *** comme mot de passe (#86)
+
+**Constat :** Dans **Modifier**, le champ « URL RTSP » d'une Caméra protégée par mot de passe s'affiche masqué (`rtsp://admin:***@…`). Si l'on change autre chose dans ce champ (chemin, requête, port) sans retaper le mot de passe, ArgOS enregistre `***` comme mot de passe : la Caméra passe `offline` et ses Réglages affichent « La caméra refuse ces identifiants en ONVIF. ».
+
+**Reproductibilité :** Caméra simulée 2 déclarée avec `admin:argos-simulee` ; **Modifier** → changer seulement `subtype=0` en `subtype=1` dans l'URL masquée → **Enregistrer** : la Caméra passe `offline`, l'URL stockée porte `***`. Enregistrer l'URL masquée inchangée garde bien le mot de passe.
+
+**Impact :** L'Administrateur qui corrige le chemin ou le port d'une Caméra perd son mot de passe sans avertissement : plus de Live, plus de Réglages, jusqu'à ce qu'il retape l'URL entière. Depuis la 0.6.3, une Caméra en ONVIF en clair afficherait en plus « Mot de passe court ». Le contact ONVIF (clé, port, accord) reste gardé.
+
+**Cause probable :** `modifier()` (`api/argos_api/cameras.py:368`) ne reconnaît que l'URL masquée renvoyée à l'identique ; toute autre URL est stockée telle quelle, `***` compris.
+
+**À corriger :** Modifier le chemin, la requête ou le port d'une Caméra sans retaper son mot de passe le garde ; seul un mot de passe réellement saisi le remplace.
+
+**Hors périmètre :** Aucun.
+
+**Suivi :** [#86](https://github.com/UlyssouLV/ArgOS/issues/86) (`bug`). Trouvé dans : 0.6.3 · Contexte : test humain · Date : 2026-10-16 · Priorité : Informations manquantes.

@@ -17,7 +17,7 @@ def upgrade() -> None:
     op.add_column("cameras", sa.Column("schema_onvif", sa.String(5), nullable=True))
     op.add_column("cameras", sa.Column("empreinte_onvif", sa.String(64), nullable=True))
     op.add_column("cameras", sa.Column("empreinte_onvif_le", sa.DateTime(timezone=True), nullable=True))
-    # Les ports retenus avant la 0.6.3 l'ont tous été en HTTP ; HTTPS est de toute façon sondé d'abord.
+    # Les ports déjà retenus l'ont tous été en HTTP ; HTTPS est de toute façon sondé d'abord.
     op.execute("UPDATE cameras SET schema_onvif = 'http' WHERE port_onvif IS NOT NULL")
 
 

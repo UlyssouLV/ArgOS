@@ -362,8 +362,13 @@ def empreinte_presentee(url_rtsp: str) -> str:
     tls = _contexte_tls(None)
     sonde = _sonder(_session(tls), _adresse(Contact("https", PORT_HTTPS), hote, CHEMIN_APPAREIL))
     if sonde is not _Sonde.SOAP or tls.attendue is None:
-        raise ErreurOnvif("injoignable" if sonde is _Sonde.MUET else "https_indisponible")
+        raise _https_absent(sonde)
     return tls.attendue
+
+
+def _https_absent(sonde: _Sonde) -> ErreurOnvif:
+    """Pas d'ONVIF chiffré : une caméra muette sur 443 est plutôt éteinte, sinon HTTPS lui manque."""
+    return ErreurOnvif("injoignable" if sonde is _Sonde.MUET else "https_indisponible")
 
 
 def _trouver_contact(session: requests.Session, tls: _ContexteTls, hote: str, retenu: Retenu) -> Contact:
@@ -372,9 +377,8 @@ def _trouver_contact(session: requests.Session, tls: _ContexteTls, hote: str, re
     if sonde_https is _Sonde.SOAP:
         return Contact("https", PORT_HTTPS, tls.attendue, tls.version)
     if retenu.schema == "https":
-        # Pas de rétrogradation : un HTTPS disparu peut être filtré par qui veut lire l'échange en clair. Une
-        # caméra muette sur 443 est plutôt éteinte.
-        raise ErreurOnvif("injoignable" if sonde_https is _Sonde.MUET else "https_indisponible")
+        # Pas de rétrogradation : un HTTPS disparu peut être filtré par qui veut lire l'échange en clair.
+        raise _https_absent(sonde_https)
     http = _chercher_http(session, hote, retenu, sonde_https)
     if not retenu.en_clair_accepte:
         raise ErreurOnvif("en_clair_non_accepte")
