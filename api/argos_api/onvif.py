@@ -19,7 +19,8 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
 - Adresses de service : seul le chemin des `XAddr` annoncés sert ; schéma, hôte et port sont ceux du contact.
 - Identifiants : ceux de l'URL RTSP, en WS-Security (empreinte) ; aucun si l'URL n'en a pas.
 - Incrustations : celles de la première source vidéo (premier profil média).
-- Image : celle de la première source vidéo, par le service image (`ver20/imaging`). Un paramètre absent de
+- Image : celle de la source vidéo du profil de la Caméra (la première sans profil retrouvé), par le service image
+  (`ver20/imaging`). Un paramètre absent de
   `GetOptions` n'est ni lu ni proposé ; un niveau sans bornes annoncées non plus (mode seul). Sans service image, ou
   s'il répond en faute, l'Image est non réglable, et le reste des Réglages est lu quand même. Une valeur hors des
   options relues est refusée (`HorsDesOptions`) avant tout envoi, pour toute la modification.
@@ -57,7 +58,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
@@ -244,7 +245,7 @@ class OptionsImage(BaseModel):
 
 
 class Image(BaseModel):
-    """Image de l'Appareil (première source vidéo), partagée par toutes ses Caméras."""
+    """Image de l'Appareil (source vidéo du profil de la Caméra), partagée par toutes ses Caméras."""
 
     reglable: bool
     # `non_reglable` : pas de service image, ou il répond en faute.
@@ -289,6 +290,7 @@ class Encodage(BaseModel):
 
 
 ENCODAGE_PROFIL_INTROUVABLE = Encodage(reglable=False, raison="profil_introuvable")
+ENCODAGE_NON_REGLABLE = Encodage(reglable=False, raison="non_reglable")
 
 
 class Reglages(BaseModel):
@@ -400,7 +402,7 @@ class ResultatModification(BaseModel):
 
 
 def lire_reglages(
-    url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime], codec: str | None = None
+    url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime], codec: str | None
 ) -> tuple[Reglages, Contact]:
     """Réglages lus sur la caméra de `url_rtsp` (Flux en `codec`, s'il est connu), et contact qui a répondu.
 
@@ -416,7 +418,7 @@ def modifier_reglages(
     retenu: Retenu,
     modification: ModificationReglages,
     maintenant: Callable[[], datetime],
-    codec: str | None = None,
+    codec: str | None,
 ) -> tuple[ResultatModification, Contact]:
     """Envoie chaque champ de `modification` à la caméra, la relit, et dit si chacun a été pris.
 
@@ -662,8 +664,8 @@ class _Camera:
         hote: str,
         contact: Contact,
         identifiants: tuple[str, str] | None,
-        flux: tuple[str, str] = ("/", ""),
-        codec: str | None = None,
+        flux: tuple[str, str],
+        codec: str | None,
     ) -> None:
         self.session = session
         self.hote = hote
@@ -672,16 +674,13 @@ class _Camera:
         self.identifiants = identifiants
         self._appareil: Any = None
         self._jeton: UsernameToken | None = None
-        # Service image : `None` pas encore cherché, `False` non annoncé.
-        self._service_image_joint: Any = None
         self._media: Any = None
         self._source = ""
+        # Source vidéo de l'Image : celle du profil de la Caméra, lu par `lire` ; la première sans lui.
         self._source_video = ""
         # Chemin et requête de l'URL RTSP de la Caméra, et codec connu de son Flux.
         self.flux = flux
         self.codec = codec
-        # Média 2 : `None` pas encore cherché, `False` non annoncé.
-        self._media_2_joint: Any = None
         # Encodeur du profil de la Caméra, lu par `lire` : ce que `modifier` renvoie, champs changés.
         self._encodeur: _Encodeur | None = None
 
@@ -702,57 +701,56 @@ class _Camera:
         # Seul le chemin de l'adresse annoncée sert : une caméra jointe en HTTPS l'annonce souvent en `http://…`
         # (ou sous un autre hôte, un autre port). Schéma, hôte et port restent ceux du contact retenu, pour
         # qu'aucune requête ne reparte en clair ni ailleurs.
-        chemin_media = urlsplit(self._appareil.GetCapabilities(Category="Media").Media.XAddr).path
-        self._media = _service(
-            self.session,
+        self._jeton = jeton
+        self._media = self._service_annonce(
             "media",
             "{http://www.onvif.org/ver10/media/wsdl}MediaBinding",
-            _adresse(self.contact, self.hote, chemin_media),
-            jeton,
+            self._appareil.GetCapabilities(Category="Media").Media.XAddr,
         )
         source = self._media.GetProfiles()[0].VideoSourceConfiguration
         self._source = source.token
         self._source_video = source.SourceToken
-        self._jeton = jeton
+
+    def _service_annonce(self, wsdl: str, liaison: str, xaddr: str) -> Any:
+        """Service à l'adresse annoncée `xaddr`, joint au contact retenu (seul son chemin sert)."""
+        return _service(
+            self.session, wsdl, liaison, _adresse(self.contact, self.hote, urlsplit(xaddr).path), self._jeton
+        )
 
     def lire(self, maintenant: Callable[[], datetime]) -> Reglages:
         self._connecter()
         options = self._media.GetOSDOptions(ConfigurationToken=self._source).OSDOptions
+        # L'Encodage avant l'Image : il retrouve le profil de la Caméra, dont la source vidéo porte l'Image.
+        encodage = self._encodage()
         return Reglages(
             horloge=self._horloge(maintenant),
             incrustations=_incrustations(self._osds(), options),
             image=self._image(),
-            encodage=self._encodage(),
+            encodage=encodage,
         )
 
+    @cached_property
     def _service_media_2(self) -> Any:
         """Média 2 annoncé par `GetServices`, joint au contact retenu ; `None` sans média 2. Une fois par requête."""
-        if self._media_2_joint is None:
-            self._media_2_joint = False
-            try:
-                services = self._appareil.GetServices(IncludeCapability=False) or []
-            except Fault as faute:
-                if _identifiants_refuses(faute):
-                    raise
-                # Caméra ancienne, sans `GetServices` : sans média 2.
-                services = []
-            for service in services:
-                if service.Namespace == ESPACE_MEDIA_2 and service.XAddr:
-                    self._media_2_joint = _service(
-                        self.session,
-                        "media2/media2",
-                        "{http://www.onvif.org/ver20/media/wsdl}Media2Binding",
-                        _adresse(self.contact, self.hote, urlsplit(service.XAddr).path),
-                        self._jeton,
-                    )
-                    break
-        return self._media_2_joint or None
+        try:
+            services = self._appareil.GetServices(IncludeCapability=False) or []
+        except Fault as faute:
+            if _identifiants_refuses(faute):
+                raise
+            # Caméra ancienne, sans `GetServices` : sans média 2.
+            return None
+        for service in services:
+            if service.Namespace == ESPACE_MEDIA_2 and service.XAddr:
+                return self._service_annonce(
+                    "media2/media2", "{http://www.onvif.org/ver20/media/wsdl}Media2Binding", service.XAddr
+                )
+        return None
 
     def _encodage(self) -> Encodage:
         """Encodage du profil de l'URL RTSP ; réglable par le média 2, ou par le média 1 sur un Flux H.264."""
         self._encodeur = None
         try:
-            media_2 = self._service_media_2()
+            media_2 = self._service_media_2
             encodeur = (
                 _EncodeurMedia2.du_flux_par(media_2, self.flux)
                 if media_2 is not None
@@ -760,12 +758,14 @@ class _Camera:
             )
             if encodeur is None:
                 return ENCODAGE_PROFIL_INTROUVABLE
+            if encodeur.source_video:
+                self._source_video = encodeur.source_video
             options = encodeur.options()
         except (Fault, TransportError) as erreur:
             if _identifiants_refuses(erreur):
                 raise
             journal.info("ONVIF : Encodage non lu : %r", erreur)
-            return Encodage(reglable=False, raison="non_reglable")
+            return ENCODAGE_NON_REGLABLE
         valeurs = encodeur.valeurs()
         # Le média 1 décrit mal le H.265 (ADR 0008) : le codec connu du Flux fait foi.
         if media_2 is None and self.codec:
@@ -781,25 +781,18 @@ class _Camera:
             options=options,
         )
 
+    @cached_property
     def _service_image(self) -> Any:
         """Service image annoncé, joint au contact retenu ; `None` sans service image. Une fois par requête."""
-        if self._service_image_joint is None:
-            annonce = self._appareil.GetCapabilities(Category="Imaging").Imaging
-            self._service_image_joint = False
-            if annonce is not None and annonce.XAddr:
-                self._service_image_joint = _service(
-                    self.session,
-                    "imaging",
-                    "{http://www.onvif.org/ver20/imaging/wsdl}ImagingBinding",
-                    _adresse(self.contact, self.hote, urlsplit(annonce.XAddr).path),
-                    self._jeton,
-                )
-        return self._service_image_joint or None
+        annonce = self._appareil.GetCapabilities(Category="Imaging").Imaging
+        if annonce is None or not annonce.XAddr:
+            return None
+        return self._service_annonce("imaging", "{http://www.onvif.org/ver20/imaging/wsdl}ImagingBinding", annonce.XAddr)
 
     def _image(self) -> Image:
-        """Image de la première source vidéo ; non réglable sans service image ou s'il répond en faute."""
+        """Image de la source vidéo du profil ; non réglable sans service image ou s'il répond en faute."""
         try:
-            service = self._service_image()
+            service = self._service_image
             if service is None:
                 return IMAGE_NON_REGLABLE
             options = _options_image(service.GetOptions(VideoSourceToken=self._source_video))
@@ -874,7 +867,7 @@ class _Camera:
                 envois.append((cle, envoyes, self._modifier_incrustation(cle, envoyes, getattr(avant, cle))))
         image_refusee = self._modifier_image(image, lus.image)
         # En dernier : il coupe le Flux, et la caméra peut se taire le temps de relancer son encodeur.
-        encodage_refuse = bool(encodage) and not self._encodeur_du_flux().regler(encodage, self._envoyer)
+        encodage_refuse = bool(encodage) and not self._encodeur_du_flux.regler(encodage, self._envoyer)
         apres = self._relire_apres_encodage(maintenant) if encodage and not encodage_refuse else self.lire(maintenant)
         if apres is None:
             return ResultatModification(champs=_sans_reponse(modification), reglages=lus)
@@ -903,6 +896,7 @@ class _Camera:
             champs.append(ChampModifie(champ=f"encodage.{champ}", demande=demande, relu=relu, statut=statut))
         return ResultatModification(champs=champs, reglages=apres)
 
+    @property
     def _encodeur_du_flux(self) -> "_Encodeur":
         # `_verifier_encodage` a refusé tout Encodage non réglable : l'encodeur a été lu.
         assert self._encodeur is not None
@@ -928,7 +922,7 @@ class _Camera:
         """Un `SetImagingSettings` par paramètre (le niveau avec son mode) ; rend les champs refusés."""
         if not image:
             return set()
-        service = self._service_image()
+        service = self._service_image
         refuses: set[str] = set()
         envois: list[tuple[set[str], dict[str, Any]]] = []
         if "infrarouge" in image:
@@ -1056,11 +1050,7 @@ def _verifier_encodage(encodage: dict[str, Any], lu: Encodage) -> None:
         raise HorsDesOptions("encodage")
     for champ, demande in encodage.items():
         proposees = lu.options.resolutions if champ == "resolution" else getattr(lu.options, champ)
-        if isinstance(proposees, list):
-            dedans = demande in proposees
-        else:
-            dedans = proposees is not None and proposees.contient(demande)
-        if not dedans:
+        if not _proposee(demande, proposees):
             raise HorsDesOptions(f"encodage.{champ}")
 
 
@@ -1068,12 +1058,15 @@ def _verifier_image(image: dict[str, Any], lue: Image) -> None:
     """Lève `HorsDesOptions` pour le premier champ que la caméra ne propose pas, ou hors de ses bornes."""
     options = lue.options or OptionsImage()
     for champ, demande in image.items():
-        proposees = getattr(options, champ)
-        if proposees is None:
+        if not _proposee(demande, getattr(options, champ)):
             raise HorsDesOptions(f"image.{champ}")
-        dedans = proposees.contient(demande) if isinstance(proposees, Bornes) else demande in proposees
-        if not dedans:
-            raise HorsDesOptions(f"image.{champ}")
+
+
+def _proposee(demande: Any, proposees: Bornes | list[Any] | None) -> bool:
+    """`demande` dans les bornes, ou parmi les valeurs, que la caméra propose ; `False` si elle ne propose rien."""
+    if proposees is None:
+        return False
+    return proposees.contient(demande) if isinstance(proposees, Bornes) else demande in proposees
 
 
 def _bornes(plage: Any) -> Bornes | None:
@@ -1192,11 +1185,13 @@ def _resolution(texte: str) -> dict[str, int]:
 class _Encodeur:
     """Configuration d'encodeur du profil d'un Flux, lue par l'un des médias, et ce qu'elle propose."""
 
-    def __init__(self, service: Any, profil: Any, configuration: Any) -> None:
+    def __init__(self, service: Any, profil: Any, configuration: Any, source_video: str | None) -> None:
         self.service = service
         self.token_profil = profil.token
         self.profil: str = profil.Name or profil.token
         self.configuration = configuration
+        # Source vidéo du profil (`SourceToken`) ; `None` s'il n'en dit rien.
+        self.source_video = source_video
 
     def valeurs(self) -> ValeursEncodage:
         configuration = self.configuration
@@ -1243,7 +1238,10 @@ class _EncodeurMedia1(_Encodeur):
                 StreamSetup={"Stream": "RTP-Unicast", "Transport": {"Protocol": "RTSP"}}, ProfileToken=profil.token
             ).Uri
             if _flux(uri) == flux:
-                return _EncodeurMedia1(media, profil, profil.VideoEncoderConfiguration)
+                source = profil.VideoSourceConfiguration
+                return _EncodeurMedia1(
+                    media, profil, profil.VideoEncoderConfiguration, source.SourceToken if source else None
+                )
         return None
 
     def options(self) -> OptionsEncodage:
@@ -1275,8 +1273,8 @@ def _debit_de_l_extension(extension: Any, codec: str) -> Bornes | None:
     """
     if extension is None:
         return None
-    if (type_ := getattr(extension, codec, None)) is not None:
-        return _bornes(type_.BitrateRange)
+    if (options_codec := getattr(extension, codec, None)) is not None:
+        return _bornes(options_codec.BitrateRange)
     for brut in getattr(extension, "_value_1", None) or []:
         if getattr(brut, "tag", None) != f"{{{ESPACE_SCHEMA}}}{codec}":
             continue
@@ -1292,12 +1290,15 @@ class _EncodeurMedia2(_Encodeur):
 
     @staticmethod
     def du_flux_par(media_2: Any, flux: tuple[str, str]) -> "_EncodeurMedia2 | None":
-        for profil in media_2.GetProfiles(Type=["VideoEncoder"]):
+        for profil in media_2.GetProfiles(Type=["VideoSource", "VideoEncoder"]):
             configurations = profil.Configurations
             if configurations is None or configurations.VideoEncoder is None:
                 continue
             if _flux(media_2.GetStreamUri(Protocol="RTSP", ProfileToken=profil.token)) == flux:
-                return _EncodeurMedia2(media_2, profil, configurations.VideoEncoder)
+                source = configurations.VideoSource
+                return _EncodeurMedia2(
+                    media_2, profil, configurations.VideoEncoder, source.SourceToken if source else None
+                )
         return None
 
     def options(self) -> OptionsEncodage:

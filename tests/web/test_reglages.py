@@ -558,7 +558,8 @@ def test_mise_a_l_heure_confirmee_quand_la_camera_est_en_ntp(administration: Pag
     _, reglages = ouvrir_formulaire(administration, api, noms, 4)
     horloge = reglages.get_by_role("region", name="Horloge")
     envois: list[str] = []
-    administration.on("request", lambda r: envois.append(r.url) if r.method == "POST" else None)
+    # Seulement l'API : le lecteur du Flux, en tête du panneau, fait lui aussi des `POST` (WHEP).
+    administration.on("request", lambda r: envois.append(r.url) if r.method == "POST" and "/api/" in r.url else None)
     avertissement = (
         "La caméra se règle sur le serveur de temps NTP. La mettre à l'heure du Site coupe cette synchronisation."
     )
