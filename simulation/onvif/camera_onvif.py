@@ -11,8 +11,8 @@ par des virgules ; les deux par défaut), `ONVIF_TLS_MAX` (version TLS la plus h
 caméra ancienne), `ONVIF_SERVICES` (services en plus de l'appareil et du média 1, séparés par des virgules : `image`,
 `media2` ; aucun par défaut), `ONVIF_CHEMINS_RTSP` (chemin et requête de l'URL RTSP de chaque profil, séparés par des
 virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut). HTTP et HTTPS servent la même caméra (même
-état). Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`) : les tests y lisent ce
-que la caméra a reçu, et par où.
+état). Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
+opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
 `python camera_onvif.py sonde` lit l'heure du service local sur chaque port : healthcheck du conteneur.
 """
 
@@ -803,6 +803,15 @@ VERSIONS_TLS = {
 }
 
 
+def _nom_operation(corps: bytes) -> str:
+    """Nom de l'opération SOAP d'une requête (`SetImagingSettings`…), vide si illisible."""
+    try:
+        requete = ET.fromstring(corps).find("env:Body/*", NS)
+    except ET.ParseError:
+        return ""
+    return "" if requete is None else requete.tag.rpartition("}")[2]
+
+
 def creer_serveur(
     adresse: str,
     port: int,
@@ -818,12 +827,14 @@ def creer_serveur(
 
     class Requetes(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
+            self.operation_soap = ""
             if self.path not in camera.operations:
                 self.send_error(404)
                 return
             corps = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             hote = self.headers.get("Host") or f"{self.server.server_address[0]}:{self.server.server_address[1]}"
             statut, reponse = camera.traiter(self.path, corps, hote)
+            self.operation_soap = _nom_operation(corps)
             donnees = reponse.encode()
             self.send_response(statut)
             self.send_header("Content-Type", "application/soap+xml; charset=utf-8")
@@ -832,7 +843,12 @@ def creer_serveur(
             self.wfile.write(donnees)
 
         def log_message(self, format: str, *args) -> None:
-            sys.stderr.write(f"{self.address_string()} {schema}:{self.server.server_address[1]} {format % args}\n")
+            # Nom de l'opération SOAP en fin de ligne : les tests y lisent ce qui a été envoyé (ou pas).
+            operation = getattr(self, "operation_soap", "")  # absent : requête rejetée avant do_POST
+            sys.stderr.write(
+                f"{self.address_string()} {schema}:{self.server.server_address[1]} {format % args} {operation}".rstrip()
+                + "\n"
+            )
 
     serveur = ThreadingHTTPServer((adresse, port), Requetes)
     if certificat:

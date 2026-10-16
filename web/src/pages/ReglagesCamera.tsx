@@ -4,38 +4,49 @@ import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, type Camera } from "../cameras
 import {
   accepterEnClair,
   COINS,
+  COMPENSATION,
+  COMPENSATIONS_IMAGE,
   empreinteCourte,
   empreinteGroupee,
   estVide,
   faireConfiance,
   fuseauLu,
+  INFRAROUGE,
   lireFuseaux,
   lireReglages,
   mettreALHeure,
   modificationsEntre,
   modifierReglages,
   oublierCertificat,
+  PARAMETRES_IMAGE,
+  pasDe,
   RefusOnvif,
   saisieDepuis,
   texteDateHeure,
   texteEcart,
   textePosition,
+  type Bornes,
   type CertificatsCompares,
+  type ChampImage,
   type ChampModifie,
   type CleIncrustation,
   type Horloge,
   type IncrustationSaisie,
+  type ModeCompensation,
+  type ModeInfrarouge,
+  type ParametreImage,
   type Position,
   type Reglages,
   type ReglagesLus,
   type Saisie,
   type SecuriteOnvif,
+  type ValeursImage,
 } from "../reglages";
 
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
 /**
- * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent.
+ * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure, Incrustations et Image se règlent.
  * Un certificat changé, un HTTPS disparu ou une caméra sans HTTPS (ONVIF en clair non accepté) bloque les Réglages
  * jusqu'à la décision de l'Administrateur, puis relit.
  */
@@ -327,7 +338,7 @@ const LIBELLES: Record<
 type PropsFormulaire = Readonly<{ camera: Camera; origine: Reglages; fuseaux: string[] }>;
 
 /**
- * Formulaire des Réglages (fuseau, Incrustations) : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis
+ * Formulaire des Réglages (fuseau, Incrustations, Image) : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis
  * montre le statut de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture et
  * toujours affichées. La mise à l'heure du Site part seule, à la demande.
  */
@@ -412,6 +423,15 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
             />
           ))}
         </section>
+        <ChampsImage
+          origine={origine.image.valeurs}
+          actuels={actuels}
+          saisie={saisie.image}
+          statuts={statuts}
+          onChanger={(champs) =>
+            setSaisie((avant) => ({ ...avant, image: avant.image && { ...avant.image, ...champs } }))
+          }
+        />
       </div>
       {erreur && (
         <p className="erreur" role="alert">
@@ -659,6 +679,123 @@ function ChampsIncrustation({
   );
 }
 
+// Libellés des champs d'Image : « Luminosité », « Statut : luminosité »…
+const LIBELLES_IMAGE: Record<ChampImage, string> = {
+  infrarouge: "Filtre infrarouge",
+  luminosite: "Luminosité",
+  contraste: "Contraste",
+  saturation: "Saturation",
+  nettete: "Netteté",
+  contre_jour: "Contre-jour",
+  contre_jour_niveau: "Niveau du contre-jour",
+  wdr: "WDR",
+  wdr_niveau: "Niveau du WDR",
+};
+
+type PropsImage = Readonly<{
+  origine: ValeursImage | null;
+  actuels: Reglages;
+  saisie: ValeursImage | null;
+  statuts: Record<string, ChampModifie>;
+  onChanger: (champs: Partial<ValeursImage>) => void;
+}>;
+
+/**
+ * Image de l'Appareil, partagée par ses Caméras : seuls les paramètres que la caméra propose, curseurs bornés par
+ * elle, avec la valeur chiffrée et celle d'origine. Sans service image : « Image non réglable sur cette caméra ».
+ */
+function ChampsImage({ origine, actuels, saisie, statuts, onChanger }: PropsImage) {
+  const id = useId();
+  const options = actuels.image.options;
+  if (!actuels.image.reglable || !options || !origine || !saisie) {
+    return (
+      <section aria-label="Image">
+        <h4>Image</h4>
+        <p>Image non réglable sur cette caméra</p>
+      </section>
+    );
+  }
+  const statut = (champ: ChampImage) => (
+    <StatutChamp resultat={statuts[`image.${champ}`]} libelle={LIBELLES_IMAGE[champ].toLowerCase()} />
+  );
+  const curseur = (champ: ParametreImage | `${"contre_jour" | "wdr"}_niveau`, bornes: Bornes | null) => {
+    const valeur = saisie[champ];
+    if (!bornes || valeur === null) return null;
+    return (
+      <div key={champ}>
+        <label htmlFor={`${id}-${champ}`}>{LIBELLES_IMAGE[champ]}</label>
+        <input
+          id={`${id}-${champ}`}
+          type="range"
+          min={bornes.min}
+          max={bornes.max}
+          step={pasDe(bornes)}
+          value={valeur}
+          onChange={(e) => onChanger({ [champ]: Number(e.target.value) })}
+        />
+        {/* Pas d'`<output>` : son rôle implicite `status` le confondrait avec le statut d'un envoi. */}
+        <span className="valeur-curseur">{valeur}</span>
+        <Origine valeur={texteNombre(origine[champ])} />
+        {statut(champ)}
+      </div>
+    );
+  };
+
+  return (
+    <section aria-label="Image">
+      <h4>Image</h4>
+      <p>Partagée par les Caméras de cet Appareil : la régler ici la règle pour chacune.</p>
+      {options.infrarouge && saisie.infrarouge && (
+        <div>
+          <label htmlFor={`${id}-infrarouge`}>{LIBELLES_IMAGE.infrarouge}</label>
+          <select
+            id={`${id}-infrarouge`}
+            value={saisie.infrarouge}
+            onChange={(e) => onChanger({ infrarouge: e.target.value as ModeInfrarouge })}
+          >
+            {options.infrarouge.map((mode) => (
+              <option key={mode} value={mode}>
+                {INFRAROUGE[mode]}
+              </option>
+            ))}
+          </select>
+          <Origine valeur={origine.infrarouge ? INFRAROUGE[origine.infrarouge] : "—"} />
+          {statut("infrarouge")}
+        </div>
+      )}
+      {PARAMETRES_IMAGE.map((champ) => curseur(champ, options[champ]))}
+      {COMPENSATIONS_IMAGE.map((champ) => {
+        const modes = options[champ];
+        const mode = saisie[champ];
+        if (!modes || !mode) return null;
+        return (
+          <div key={champ}>
+            <label htmlFor={`${id}-${champ}`}>{LIBELLES_IMAGE[champ]}</label>
+            <select
+              id={`${id}-${champ}`}
+              value={mode}
+              onChange={(e) => onChanger({ [champ]: e.target.value as ModeCompensation })}
+            >
+              {modes.map((m) => (
+                <option key={m} value={m}>
+                  {COMPENSATION[m]}
+                </option>
+              ))}
+            </select>
+            <Origine valeur={origine[champ] ? COMPENSATION[origine[champ]] : "—"} />
+            {statut(champ)}
+            {curseur(`${champ}_niveau`, options[`${champ}_niveau`])}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function texteNombre(valeur: number | null): string {
+  return valeur === null ? "—" : String(valeur);
+}
+
 function Origine({ valeur }: Readonly<{ valeur: string }>) {
   return <span className="origine">d'origine : {valeur}</span>;
 }
@@ -682,5 +819,8 @@ function StatutChamp({
 function texteValeur(champ: string, valeur: ChampModifie["relu"]): string {
   if (valeur === null) return "—";
   if (typeof valeur === "boolean") return valeur ? "affichée" : "cachée";
+  if (typeof valeur === "number") return String(valeur);
+  if (champ === "image.infrarouge") return INFRAROUGE[valeur as ModeInfrarouge];
+  if (champ === "image.contre_jour" || champ === "image.wdr") return COMPENSATION[valeur as ModeCompensation];
   return champ.endsWith(".position") ? textePosition(valeur as Position) : valeur;
 }

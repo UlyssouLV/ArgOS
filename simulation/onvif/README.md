@@ -38,7 +38,7 @@ Le service écoute en HTTP sur `ONVIF_PORT`, en HTTPS sur `ONVIF_PORT_HTTPS`, ou
 
 Pour la Caméra simulée 2, compose lit aussi `ONVIF_PORT_HTTPS_2` (vide : HTTP seulement, une caméra dont HTTPS a disparu) et `ONVIF_CERTIFICAT_2` / `ONVIF_CLE_2` (hors du volume : une autre clé à la même adresse, comme après une remise en usine). `remettre_onvif_en_usine` (`tests/stack_compose.py`) lui rend HTTPS et son certificat habituel.
 
-Chaque requête reçue est journalisée (sortie d'erreur, `docker compose logs`) avec l'IP du client, le schéma et le port (`172.30.0.2 https:443 "POST /onvif/device_service HTTP/1.1" 200 -`) : les tests y lisent ce que la caméra a reçu, et par où.
+Chaque requête reçue est journalisée (sortie d'erreur, `docker compose logs`) avec l'IP du client, le schéma et le port, puis l'opération SOAP (`172.30.0.2 https:443 "POST /onvif/device_service HTTP/1.1" 200 - GetSystemDateAndTime`) : les tests y lisent ce que la caméra a reçu, et par où.
 
 `GetCapabilities` annonce toujours ses adresses en `http://`, à l'hôte sous lequel on la joint, même jointe en HTTPS : comme beaucoup de vraies caméras. Le client ne doit en garder que le chemin.
 

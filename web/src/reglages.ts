@@ -31,10 +31,59 @@ export type IncrustationDateHeure = {
   peut_etre_reaffichee: boolean;
 };
 
+/** `IrCutFilter` ONVIF : `ON` = filtre posé (jour), `OFF` = filtre retiré (nuit), `AUTO` = automatique. */
+export type ModeInfrarouge = "ON" | "OFF" | "AUTO";
+export type ModeCompensation = "OFF" | "ON";
+export type Bornes = { min: number; max: number };
+
+/** Paramètres d'image bornés : réglés par un curseur. */
+export type ParametreImage = "luminosite" | "contraste" | "saturation" | "nettete";
+export const PARAMETRES_IMAGE: ParametreImage[] = ["luminosite", "contraste", "saturation", "nettete"];
+/** Compensations à mode (coupé, activé) et, quand la caméra le borne, niveau. */
+export type CompensationImage = "contre_jour" | "wdr";
+export const COMPENSATIONS_IMAGE: CompensationImage[] = ["contre_jour", "wdr"];
+
+/** Image relue ; `null` : paramètre que la caméra ne propose pas. */
+export type ValeursImage = {
+  infrarouge: ModeInfrarouge | null;
+  luminosite: number | null;
+  contraste: number | null;
+  saturation: number | null;
+  nettete: number | null;
+  contre_jour: ModeCompensation | null;
+  contre_jour_niveau: number | null;
+  wdr: ModeCompensation | null;
+  wdr_niveau: number | null;
+};
+export type ChampImage = keyof ValeursImage;
+
+/** Ce que la caméra propose : modes, ou bornes ; `null` : non proposé. */
+export type OptionsImage = {
+  infrarouge: ModeInfrarouge[] | null;
+  luminosite: Bornes | null;
+  contraste: Bornes | null;
+  saturation: Bornes | null;
+  nettete: Bornes | null;
+  contre_jour: ModeCompensation[] | null;
+  contre_jour_niveau: Bornes | null;
+  wdr: ModeCompensation[] | null;
+  wdr_niveau: Bornes | null;
+};
+
+/** Image de l'Appareil (première source vidéo), partagée par toutes ses Caméras. */
+export type Image = {
+  reglable: boolean;
+  /** `non_reglable` : pas de service image, ou il répond en faute. */
+  raison: "non_reglable" | null;
+  valeurs: ValeursImage | null;
+  options: OptionsImage | null;
+};
+
 /** Réglages de la Caméra, lus sur la caméra par ONVIF à chaque ouverture. */
 export type Reglages = {
   horloge: Horloge;
   incrustations: { nom: IncrustationNom; date_heure: IncrustationDateHeure };
+  image: Image;
 };
 
 /** Sécurité de l'échange ONVIF avec la caméra (docs/adr/0007-onvif-en-https-par-cle-memorisee.md). */
@@ -158,6 +207,14 @@ export function textePosition(position: Position | null): string {
   return position === null ? "—" : POSITIONS[position];
 }
 
+export const INFRAROUGE: Record<ModeInfrarouge, string> = { ON: "jour", OFF: "nuit", AUTO: "automatique" };
+export const COMPENSATION: Record<ModeCompensation, string> = { OFF: "coupé", ON: "activé" };
+
+/** Pas d'un curseur : au centième sur une plage étroite (0 à 1…), à l'unité sinon. */
+export function pasDe(bornes: Bornes): number {
+  return bornes.max - bornes.min <= 10 ? 0.01 : 1;
+}
+
 const UNITES: [number, string, string][] = [
   [365.25 * 24 * 3600, "an", "ans"],
   [24 * 3600, "jour", "jours"],
@@ -198,19 +255,26 @@ export type CleIncrustation = "nom" | "date_heure";
 /** Champs modifiés d'une Incrustation : seuls ceux présents sont envoyés à la caméra. */
 export type ModificationIncrustation = { affichee?: boolean; texte?: string; position?: Coin };
 
-/** `horloge` absent : fuseau inchangé. */
+/** Champs d'Image modifiés : seuls ceux présents sont envoyés à la caméra. */
+export type ModificationImage = Partial<{ [C in ChampImage]: NonNullable<ValeursImage[C]> }>;
+
+/** `horloge` absent : fuseau inchangé ; `image` absente : Image inchangée. */
 export type Modification = {
   horloge?: { fuseau: string };
   incrustations: Partial<Record<CleIncrustation, ModificationIncrustation>>;
+  image?: ModificationImage;
 };
 
 export type StatutChamp = "pris" | "pas_pris" | "refuse";
 
-/** Résultat d'un champ envoyé : `champ` vaut `horloge.fuseau`, `incrustations.nom.texte`… ; fuseau relu en POSIX. */
+/**
+ * Résultat d'un champ envoyé : `champ` vaut `horloge.fuseau`, `incrustations.nom.texte`, `image.luminosite`… ;
+ * fuseau relu en POSIX.
+ */
 export type ChampModifie = {
   champ: string;
-  demande: string | boolean;
-  relu: string | boolean | null;
+  demande: string | boolean | number;
+  relu: string | boolean | number | null;
   statut: StatutChamp;
 };
 
@@ -219,8 +283,15 @@ export type ResultatModification = { champs: ChampModifie[]; reglages: Reglages 
 /** Valeurs du formulaire d'une Incrustation ; `texte` ne sert qu'au nom. */
 export type IncrustationSaisie = { affichee: boolean; texte: string; position: Position };
 
-/** `fuseau` : nom IANA, ou fuseau inconnu de la caméra tel quel tant qu'il n'est pas changé. */
-export type Saisie = { fuseau: string; incrustations: Record<CleIncrustation, IncrustationSaisie> };
+/**
+ * `fuseau` : nom IANA, ou fuseau inconnu de la caméra tel quel tant qu'il n'est pas changé.
+ * `image` : `null` si l'Image n'est pas réglable.
+ */
+export type Saisie = {
+  fuseau: string;
+  incrustations: Record<CleIncrustation, IncrustationSaisie>;
+  image: ValeursImage | null;
+};
 
 // Coin proposé pour une Incrustation cachée qu'on réaffiche : celui de la caméra « sortie d'usine ».
 const COINS_PAR_DEFAUT: Record<CleIncrustation, Coin> = { nom: "UpperLeft", date_heure: "LowerLeft" };
@@ -237,7 +308,19 @@ export function saisieDepuis(reglages: Reglages): Saisie {
         position: date_heure.position ?? COINS_PAR_DEFAUT.date_heure,
       },
     },
+    image: reglages.image.valeurs && { ...reglages.image.valeurs },
   };
+}
+
+/** Champs d'Image saisis qui diffèrent de la caméra ; un paramètre non proposé (`null`) n'est jamais envoyé. */
+function modificationImage(actuelle: ValeursImage | null, saisie: ValeursImage | null): ModificationImage {
+  const image: Record<string, unknown> = {};
+  if (!actuelle || !saisie) return image;
+  for (const champ of Object.keys(saisie) as ChampImage[]) {
+    const valeur = saisie[champ];
+    if (valeur !== null && valeur !== actuelle[champ]) image[champ] = valeur;
+  }
+  return image as ModificationImage;
 }
 
 /**
@@ -262,10 +345,13 @@ export function modificationsEntre(actuels: Reglages, saisie: Saisie): Modificat
     }
     if (Object.keys(champs).length > 0) incrustations[cle] = champs;
   }
-  if (saisie.fuseau === fuseauLu(actuels.horloge)) return { incrustations };
-  return { horloge: { fuseau: saisie.fuseau }, incrustations };
+  const modification: Modification = { incrustations };
+  if (saisie.fuseau !== fuseauLu(actuels.horloge)) modification.horloge = { fuseau: saisie.fuseau };
+  const image = modificationImage(actuels.image.valeurs, saisie.image);
+  if (Object.keys(image).length > 0) modification.image = image;
+  return modification;
 }
 
 export function estVide(modification: Modification): boolean {
-  return !modification.horloge && Object.keys(modification.incrustations).length === 0;
+  return !modification.horloge && !modification.image && Object.keys(modification.incrustations).length === 0;
 }

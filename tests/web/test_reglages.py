@@ -563,3 +563,83 @@ def test_mise_a_l_heure_confirmee_quand_la_camera_est_en_ntp(administration: Pag
         "non utilisé (serveur : NTP)", timeout=DELAI_LECTURE_MS
     )
     expect(valeur(horloge, "Écart avec le Site")).not_to_contain_text("ans")
+
+
+# --- Image ------------------------------------------------------------------------------------------------------
+
+
+def image(reglages: Locator) -> Locator:
+    return reglages.get_by_role("region", name="Image")
+
+
+def test_image_usine_curseurs_bornes_et_valeurs_d_origine(administration: Page, api, noms):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    section = image(reglages)
+
+    expect(section).to_contain_text("Partagée par les Caméras de cet Appareil")
+    infrarouge = section.get_by_label("Filtre infrarouge", exact=True)
+    expect(infrarouge).to_have_value("AUTO")
+    expect(infrarouge.locator("option")).to_have_text(["jour", "nuit", "automatique"])
+    for libelle in ("Luminosité", "Contraste", "Saturation", "Netteté", "Niveau du WDR"):
+        curseur = section.get_by_label(libelle, exact=True)
+        expect(curseur).to_have_attribute("type", "range")
+        expect(curseur).to_have_attribute("min", "0")
+        expect(curseur).to_have_attribute("max", "100")
+        expect(curseur).to_have_value("50")
+    expect(section.get_by_label("Contre-jour", exact=True)).to_have_value("OFF")
+    expect(section.get_by_label("WDR", exact=True)).to_have_value("OFF")
+    # La simulée 2 ne borne pas le niveau du contre-jour : non proposé.
+    expect(section.get_by_label("Niveau du contre-jour", exact=True)).to_have_count(0)
+    expect(section).to_contain_text("d'origine : automatique")
+    expect(section).to_contain_text("d'origine : 50")
+
+
+def test_image_enregistree_statuts_pris_et_wdr_pas_pris(administration: Page, api, noms, remise_en_usine):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    section = image(reglages)
+
+    section.get_by_label("Filtre infrarouge", exact=True).select_option("OFF")
+    section.get_by_label("Luminosité", exact=True).fill("70")
+    expect(section.locator(".valeur-curseur").first).to_have_text("70")
+    section.get_by_label("Contre-jour", exact=True).select_option("ON")
+    section.get_by_label("WDR", exact=True).select_option("ON")
+    envoye = enregistrer(administration, reglages)
+
+    assert envoye == {
+        "incrustations": {},
+        "image": {"infrarouge": "OFF", "luminosite": 70, "contre_jour": "ON", "wdr": "ON"},
+    }
+    expect(statut(reglages, "filtre infrarouge")).to_have_text(
+        "pris (demandé : nuit, relu : nuit)", timeout=DELAI_LECTURE_MS
+    )
+    expect(statut(reglages, "luminosité")).to_have_text("pris (demandé : 70, relu : 70)")
+    expect(statut(reglages, "contre-jour")).to_have_text("pris (demandé : activé, relu : activé)")
+    expect(statut(reglages, "wdr")).to_have_text("pas pris (demandé : activé, relu : coupé)")
+    expect(statut(reglages, "contraste")).to_have_count(0)
+
+
+def test_image_annuler_sans_rien_envoyer(administration: Page, api, noms):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    section = image(reglages)
+    envois: list[str] = []
+    administration.on("request", lambda r: envois.append(r.url) if r.method == "PATCH" else None)
+
+    section.get_by_label("Luminosité", exact=True).fill("20")
+    section.get_by_label("Filtre infrarouge", exact=True).select_option("ON")
+    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_enabled()
+    reglages.get_by_role("button", name="Annuler").click()
+
+    expect(section.get_by_label("Luminosité", exact=True)).to_have_value("50")
+    expect(section.get_by_label("Filtre infrarouge", exact=True)).to_have_value("AUTO")
+    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+    assert envois == []
+
+
+def test_image_non_reglable_sans_service_image_le_reste_reglable(administration: Page, api, noms):
+    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
+
+    section = image(reglages)
+    expect(section).to_contain_text("Image non réglable sur cette caméra")
+    expect(section.get_by_role("slider")).to_have_count(0)
+    expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_enabled()
+    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible()

@@ -87,7 +87,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ## 6. Les Réglages de la Caméra dans ArgOS
 
-Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)) et l’Horloge ([fuseau et mise à l’heure](#régler-lhorloge)) se règlent.
+Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)), l’Horloge ([fuseau et mise à l’heure](#régler-lhorloge)) et l’Image ([filtre infrarouge, luminosité…](#régler-limage)) se règlent.
 
 ### Ce qu’ArgOS lit
 
@@ -97,6 +97,7 @@ Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pa
   - le **nom** : texte, position, affiché ou caché ;
   - la **date et heure** : format (non modifiable), position, affichée ou cachée.
   - Une position hors des quatre coins s’affiche « position personnalisée ».
+- **Image** (celle de l’Appareil, partagée par toutes ses Caméras) de la **première source vidéo**, par le service image ONVIF : seulement les paramètres que la caméra annonce (`GetOptions`), avec leurs bornes.
 
 ### Régler les Incrustations
 
@@ -120,6 +121,19 @@ L’Horloge est celle de l’Appareil : la régler depuis une Caméra la règle 
 **Pourquoi pas de NTP ?** Les Caméras n’ont pas accès à internet (bloqué dans la box, [sécurité](../securite.md), § 1) : un serveur de temps public comme `pool.ntp.org` ne leur répondrait pas, et le leur ouvrir irait contre la page sécurité. ArgOS ne règle donc pas le NTP de la caméra : il le montre seulement (en lecture). Plus tard, le Site deviendra lui-même serveur de temps des Caméras, sur le réseau local (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
 
 Par l’API : le fuseau passe par `PATCH /api/cameras/{id}/reglages` (`{"horloge": {"fuseau": "Europe/Paris"}}`, champ `horloge.fuseau` dans la réponse, valeur relue en POSIX ; un nom IANA inconnu → `422`). La mise à l’heure : `POST /api/cameras/{id}/reglages/mise-a-l-heure`, sans corps, qui renvoie l’Horloge relue (écart avec le Site compris). Mêmes erreurs que la lecture (`404`, `502`).
+
+### Régler l’Image
+
+L’Image est celle de l’Appareil : la section le rappelle (« Partagée par les Caméras de cet Appareil : la régler ici la règle pour chacune. »). Chaque paramètre n’apparaît que si la caméra l’annonce :
+
+- **Filtre infrarouge** : jour (filtre posé, image en couleurs ; `ON` en ONVIF), nuit (filtre retiré, vision de nuit ; `OFF`) ou automatique (`AUTO`), parmi les modes que la caméra propose.
+- **Luminosité**, **contraste**, **saturation**, **netteté** : des curseurs bornés par la caméra (souvent 0 à 100), avec la valeur chiffrée et la valeur d’origine.
+- **Contre-jour** et **WDR** : coupé ou activé, et leur **niveau** (curseur) seulement si la caméra le borne ; sinon le mode seul.
+- Exposition, balance des blancs, mise au point : ni lues, ni envoyées.
+
+Sans service image, ou s’il répond en faute, la section dit « Image non réglable sur cette caméra » : le reste du panneau (Horloge, Incrustations) se lit et se règle normalement. L’Image s’envoie avec « Enregistrer » (un `SetImagingSettings` par paramètre, le niveau avec son mode), puis la caméra est relue une fois : mêmes statuts que les Incrustations. Certaines caméras acceptent le WDR sans l’appliquer : il est alors « pas pris ».
+
+Par l’API : la lecture renvoie `image` (`reglable`, `raison` = `non_reglable` sinon `null`, `valeurs`, `options`), avec les champs `infrarouge`, `luminosite`, `contraste`, `saturation`, `nettete`, `contre_jour`, `contre_jour_niveau`, `wdr`, `wdr_niveau` (`null` : non proposé). La modification : `{"image": {"infrarouge": "OFF", "luminosite": 70}}`, champs `image.infrarouge`… dans la réponse. Une valeur hors des bornes relues, un mode ou un paramètre que la caméra ne propose pas → `422`, **rien n’est envoyé** (pas même les autres champs).
 
 ### Envoyer et vérifier
 
@@ -202,5 +216,6 @@ docker compose logs api | grep ONVIF
 | « Le certificat de cette caméra a changé. » | La caméra présente une autre clé que celle mémorisée ([Certificat changé](#certificat-changé)). |
 | « Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair. » | Caméra déjà réglée en HTTPS qui ne répond plus qu’en HTTP ([HTTPS indisponible](#https-indisponible)). |
 | « Cette caméra ne propose pas HTTPS : ONVIF en clair non accepté. » | Caméra sans HTTPS, pas encore d’accord de l’Administrateur ([ONVIF en clair](#onvif-en-clair)). |
+| « Image non réglable sur cette caméra » | La caméra n’annonce pas de service image, ou il répond en faute ; le reste des Réglages fonctionne ([Régler l’Image](#régler-limage)). |
 
-Pour développer sans matériel, les Caméras simulées 2 et 4 répondent en ONVIF, « sortie d’usine » comme la caméra de dev : la 2 en HTTPS sur `443` (certificat auto-signé, gardé d’un démarrage à l’autre) et en HTTP sur `8899`, avec identifiants, et ArgOS doit choisir HTTPS ; la 4 en HTTP seulement sur `80`, sans identifiants : elle demande l’accord ONVIF en clair. Voir `simulation/onvif/README.md` dans le dépôt.
+Pour développer sans matériel, les Caméras simulées 2 et 4 répondent en ONVIF, « sortie d’usine » comme la caméra de dev : la 2 en HTTPS sur `443` (certificat auto-signé, gardé d’un démarrage à l’autre) et en HTTP sur `8899`, avec identifiants, et ArgOS doit choisir HTTPS ; la 4 en HTTP seulement sur `80`, sans identifiants : elle demande l’accord ONVIF en clair. La 2 a un service image (WDR accepté sans être appliqué : « pas pris ») ; la 4 n’en a pas (« Image non réglable sur cette caméra »). Voir `simulation/onvif/README.md` dans le dépôt.

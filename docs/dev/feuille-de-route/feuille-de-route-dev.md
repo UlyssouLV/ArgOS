@@ -139,3 +139,19 @@ Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux
 **Hors périmètre :** Aucun.
 
 **Suivi :** [#86](https://github.com/UlyssouLV/ArgOS/issues/86) (`bug`). Trouvé dans : 0.6.3 · Contexte : test humain · Date : 2026-10-16 · Priorité : Informations manquantes.
+
+### Bug — La suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées (#95)
+
+**Constat :** Avec des Caméras de dev déclarées sur les Caméras simulées 2 et 4 (« Caméra simulée 2 » et « Caméra simulée 4 », gardées pour le debugging), la suite complète échoue hors du code testé : 10 tests de `tests/api/` (`test_essai.py`, `test_suivi_adresse.py`) et 15 de `tests/web/` (`test_filtre_mac.py`…). L'essai répond `409` « déjà configurée » au lieu de `200`.
+
+**Reproductibilité :** Déclarer dans l'Administration une Caméra sur `camera-simulee-4` (ou `172.30.0.12` pour la 2), puis lancer `/t -a` : `test_essai.py` échoue sur `assert reponse.status_code == 200` (`409`), comme `test_suivi_adresse.py` et `test_filtre_mac.py`. Les retirer rend la suite verte.
+
+**Impact :** La suite des tests ne peut pas être verte tant que le développeur garde des Caméras de dev sur les Caméras simulées : il faut choisir entre ses Caméras de debugging et une suite verte, et les vrais échecs se noient dans ces faux.
+
+**Cause probable :** La stack des tests est la stack de dev (même base). L'essai et le rapprochement par adresse et MAC comptent toute Caméra déclarée sur l'adresse d'une Caméra simulée, désactivée comprise ; ces tests supposent que les simulées 2 et 4 ne sont pas encore déclarées.
+
+**À corriger :** La suite des tests passe quelles que soient les Caméras que le développeur a déclarées dans sa stack de dev, sans qu'il ait à les retirer.
+
+**Hors périmètre :** Aucun.
+
+**Suivi :** [#95](https://github.com/UlyssouLV/ArgOS/issues/95) (`bug`). Trouvé dans : 0.6.4 · Contexte : suite de tests (implémentation de #89) · Date : 2026-10-16 · Priorité : Informations manquantes.

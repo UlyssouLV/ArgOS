@@ -1,4 +1,4 @@
-"""Client ONVIF du Site : lit et modifie les Réglages de la Caméra (Horloge de son Appareil, Incrustations).
+"""Client ONVIF du Site : lit et modifie les Réglages de la Caméra (Horloge et Image de son Appareil, Incrustations).
 
 L'appelant donne l'URL RTSP de la Caméra et le contact retenu (schéma, port, empreinte de la clé mémorisée) ; il
 reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après une mise à l'heure,
@@ -17,10 +17,15 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
 - Adresses de service : seul le chemin des `XAddr` annoncés sert ; schéma, hôte et port sont ceux du contact.
 - Identifiants : ceux de l'URL RTSP, en WS-Security (empreinte) ; aucun si l'URL n'en a pas.
 - Incrustations : celles de la première source vidéo (premier profil média).
+- Image : celle de la première source vidéo, par le service image (`ver20/imaging`). Un paramètre absent de
+  `GetOptions` n'est ni lu ni proposé ; un niveau sans bornes annoncées non plus (mode seul). Sans service image, ou
+  s'il répond en faute, l'Image est non réglable, et le reste des Réglages est lu quand même. Une valeur hors des
+  options relues est refusée (`HorsDesOptions`) avant tout envoi, pour toute la modification.
 - Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
   caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Jamais de NTP réglé, jamais d'écriture
   sans une demande de l'Administrateur.
-- Modification : chaque `Set…` part seul (un refus n'empêche pas les autres), puis la caméra est relue : un champ
+- Modification : chaque `Set…` part seul (un refus n'empêche pas les autres ; un paramètre d'image par
+  `SetImagingSettings`, le niveau avec son mode), puis la caméra est relue une fois : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
   elle n'annonce pas savoir recréer une Incrustation) l'a refusé.
 
@@ -91,9 +96,30 @@ Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
 Position = Coin | Literal["Custom"]
 CleIncrustation = Literal["nom", "date_heure"]
 StatutChamp = Literal["pris", "pas_pris", "refuse"]
+# `IrCutFilter` ONVIF : `ON` = filtre posé (jour), `OFF` = filtre retiré (nuit), `AUTO`.
+ModeInfrarouge = Literal["ON", "OFF", "AUTO"]
+ModeCompensation = Literal["OFF", "ON"]
+# Paramètres d'image bornés : champ ArgOS → élément ONVIF (`ImagingSettings20`, `ImagingOptions20`).
+PARAMETRES_IMAGE = {
+    "luminosite": "Brightness",
+    "contraste": "Contrast",
+    "saturation": "ColorSaturation",
+    "nettete": "Sharpness",
+}
+# Compensations à mode et niveau : champ ArgOS → élément ONVIF.
+COMPENSATIONS_IMAGE = {"contre_jour": "BacklightCompensation", "wdr": "WideDynamicRange"}
 # Type de texte ONVIF de chaque Incrustation, et son coin quand ArgOS la réaffiche sans coin demandé.
 TYPES_TEXTE: dict[CleIncrustation, str] = {"nom": "Plain", "date_heure": "DateAndTime"}
 COINS_PAR_DEFAUT: dict[CleIncrustation, Coin] = {"nom": "UpperLeft", "date_heure": "LowerLeft"}
+
+
+class HorsDesOptions(Exception):
+    """Valeur que la caméra n'annonce pas (hors bornes, mode ou paramètre non proposé) : rien n'a été envoyé."""
+
+    def __init__(self, champ: str) -> None:
+        super().__init__(champ)
+        # Chemin du champ refusé : `image.luminosite`…
+        self.champ = champ
 
 
 class ErreurOnvif(Exception):
@@ -161,9 +187,59 @@ class Incrustations(BaseModel):
     date_heure: IncrustationDateHeure
 
 
+class Bornes(BaseModel):
+    min: float
+    max: float
+
+    def contient(self, valeur: float) -> bool:
+        return self.min <= valeur <= self.max
+
+
+class ValeursImage(BaseModel):
+    """Image relue ; `None` : paramètre que la caméra ne propose pas."""
+
+    infrarouge: ModeInfrarouge | None = None
+    luminosite: float | None = None
+    contraste: float | None = None
+    saturation: float | None = None
+    nettete: float | None = None
+    contre_jour: ModeCompensation | None = None
+    contre_jour_niveau: float | None = None
+    wdr: ModeCompensation | None = None
+    wdr_niveau: float | None = None
+
+
+class OptionsImage(BaseModel):
+    """Ce que la caméra propose : modes, ou bornes ; `None` : non proposé."""
+
+    infrarouge: list[ModeInfrarouge] | None = None
+    luminosite: Bornes | None = None
+    contraste: Bornes | None = None
+    saturation: Bornes | None = None
+    nettete: Bornes | None = None
+    contre_jour: list[ModeCompensation] | None = None
+    contre_jour_niveau: Bornes | None = None
+    wdr: list[ModeCompensation] | None = None
+    wdr_niveau: Bornes | None = None
+
+
+class Image(BaseModel):
+    """Image de l'Appareil (première source vidéo), partagée par toutes ses Caméras."""
+
+    reglable: bool
+    # `non_reglable` : pas de service image, ou il répond en faute.
+    raison: Literal["non_reglable"] | None = None
+    valeurs: ValeursImage | None = None
+    options: OptionsImage | None = None
+
+
+IMAGE_NON_REGLABLE = Image(reglable=False, raison="non_reglable")
+
+
 class Reglages(BaseModel):
     horloge: Horloge
     incrustations: Incrustations
+    image: Image
 
 
 class _ModificationIncrustation(BaseModel):
@@ -211,6 +287,22 @@ class ModificationHorloge(BaseModel):
         return fuseau
 
 
+class ModificationImage(BaseModel):
+    """Champs d'Image modifiés ; un champ absent (ou `null`) n'est pas envoyé. Bornes : celles relues sur la caméra."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    infrarouge: ModeInfrarouge | None = None
+    luminosite: float | None = None
+    contraste: float | None = None
+    saturation: float | None = None
+    nettete: float | None = None
+    contre_jour: ModeCompensation | None = None
+    contre_jour_niveau: float | None = None
+    wdr: ModeCompensation | None = None
+    wdr_niveau: float | None = None
+
+
 class ModificationReglages(BaseModel):
     """Seulement les champs que l'Administrateur a modifiés."""
 
@@ -218,15 +310,16 @@ class ModificationReglages(BaseModel):
 
     horloge: ModificationHorloge = ModificationHorloge()
     incrustations: ModificationIncrustations = ModificationIncrustations()
+    image: ModificationImage = ModificationImage()
 
 
 class ChampModifie(BaseModel):
-    # Chemin du champ envoyé : `horloge.fuseau`, `incrustations.nom.texte`…
+    # Chemin du champ envoyé : `horloge.fuseau`, `incrustations.nom.texte`, `image.luminosite`…
     champ: str
-    demande: str | bool
+    demande: str | bool | float
     # Valeur relue sur la caméra après l'envoi (fuseau : sa chaîne POSIX) ; `None` : sans valeur (Incrustation
     # cachée, caméra sans fuseau).
-    relu: str | bool | None
+    relu: str | bool | float | None
     statut: StatutChamp
 
 
@@ -249,7 +342,10 @@ def lire_reglages(
 def modifier_reglages(
     url_rtsp: str, retenu: Retenu, modification: ModificationReglages, maintenant: Callable[[], datetime]
 ) -> tuple[ResultatModification, Contact]:
-    """Envoie chaque champ de `modification` à la caméra, la relit, et dit si chacun a été pris. Lève `ErreurOnvif`."""
+    """Envoie chaque champ de `modification` à la caméra, la relit, et dit si chacun a été pris.
+
+    Lève `ErreurOnvif`, ou `HorsDesOptions` sans rien envoyer.
+    """
     camera, contact = _joindre(url_rtsp, retenu)
     with _erreurs_onvif():
         return camera.modifier(modification, maintenant), contact
@@ -487,8 +583,12 @@ class _Camera:
         self.adresse = _adresse(contact, hote, CHEMIN_APPAREIL)
         self.identifiants = identifiants
         self._appareil: Any = None
+        self._jeton: UsernameToken | None = None
+        # Service image : `None` pas encore cherché, `False` non annoncé.
+        self._service_image_joint: Any = None
         self._media: Any = None
         self._source = ""
+        self._source_video = ""
 
     def _connecter(self) -> None:
         """Services appareil et média, jeton daté à l'heure de la caméra, source vidéo : une fois par requête."""
@@ -515,12 +615,49 @@ class _Camera:
             _adresse(self.contact, self.hote, chemin_media),
             jeton,
         )
-        self._source = self._media.GetProfiles()[0].VideoSourceConfiguration.token
+        source = self._media.GetProfiles()[0].VideoSourceConfiguration
+        self._source = source.token
+        self._source_video = source.SourceToken
+        self._jeton = jeton
 
     def lire(self, maintenant: Callable[[], datetime]) -> Reglages:
         self._connecter()
         options = self._media.GetOSDOptions(ConfigurationToken=self._source).OSDOptions
-        return Reglages(horloge=self._horloge(maintenant), incrustations=_incrustations(self._osds(), options))
+        return Reglages(
+            horloge=self._horloge(maintenant),
+            incrustations=_incrustations(self._osds(), options),
+            image=self._image(),
+        )
+
+    def _service_image(self) -> Any:
+        """Service image annoncé, joint au contact retenu ; `None` sans service image. Une fois par requête."""
+        if self._service_image_joint is None:
+            annonce = self._appareil.GetCapabilities(Category="Imaging").Imaging
+            self._service_image_joint = False
+            if annonce is not None and annonce.XAddr:
+                self._service_image_joint = _service(
+                    self.session,
+                    "imaging",
+                    "{http://www.onvif.org/ver20/imaging/wsdl}ImagingBinding",
+                    _adresse(self.contact, self.hote, urlsplit(annonce.XAddr).path),
+                    self._jeton,
+                )
+        return self._service_image_joint or None
+
+    def _image(self) -> Image:
+        """Image de la première source vidéo ; non réglable sans service image ou s'il répond en faute."""
+        try:
+            service = self._service_image()
+            if service is None:
+                return IMAGE_NON_REGLABLE
+            options = _options_image(service.GetOptions(VideoSourceToken=self._source_video))
+            reglages = service.GetImagingSettings(VideoSourceToken=self._source_video)
+        except (Fault, TransportError) as erreur:
+            if _identifiants_refuses(erreur):
+                raise
+            journal.info("ONVIF : Image non lue : %r", erreur)
+            return IMAGE_NON_REGLABLE
+        return Image(reglable=True, valeurs=_valeurs_image(reglages, options), options=options)
 
     def _horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
         heure = self._appareil.GetSystemDateAndTime()
@@ -566,7 +703,11 @@ class _Camera:
         return self._envoyer(self._appareil.SetSystemDateAndTime, **arguments)
 
     def modifier(self, modification: ModificationReglages, maintenant: Callable[[], datetime]) -> ResultatModification:
-        avant = self.lire(maintenant).incrustations
+        lus = self.lire(maintenant)
+        avant = lus.incrustations
+        image = modification.image.model_dump(exclude_none=True)
+        # Avant tout envoi : une valeur hors des options n'envoie rien, pas même les autres champs.
+        _verifier_image(image, lus.image)
         fuseau = modification.horloge.fuseau
         fuseau_refuse = fuseau is not None and not self._regler_horloge(fuseau_posix=fuseaux.posix(fuseau))
         envois: list[tuple[CleIncrustation, dict[str, Any], set[str]]] = []
@@ -577,6 +718,7 @@ class _Camera:
             envoyes = changement.model_dump(exclude_none=True)
             if envoyes:
                 envois.append((cle, envoyes, self._modifier_incrustation(cle, envoyes, getattr(avant, cle))))
+        image_refusee = self._modifier_image(image, lus.image)
         apres = self.lire(maintenant)
         champs = []
         if fuseau is not None:
@@ -591,7 +733,42 @@ class _Camera:
                 champs.append(
                     ChampModifie(champ=f"incrustations.{cle}.{champ}", demande=demande, relu=relu, statut=statut)
                 )
+        valeurs_relues = apres.image.valeurs or ValeursImage()
+        for champ, demande in image.items():
+            relu = getattr(valeurs_relues, champ)
+            statut = _statut(champ in image_refusee, relu, demande)
+            champs.append(ChampModifie(champ=f"image.{champ}", demande=demande, relu=relu, statut=statut))
         return ResultatModification(champs=champs, reglages=apres)
+
+    def _modifier_image(self, image: dict[str, Any], lue: Image) -> set[str]:
+        """Un `SetImagingSettings` par paramètre (le niveau avec son mode) ; rend les champs refusés."""
+        if not image:
+            return set()
+        service = self._service_image()
+        refuses: set[str] = set()
+        envois: list[tuple[set[str], dict[str, Any]]] = []
+        if "infrarouge" in image:
+            envois.append(({"infrarouge"}, {"IrCutFilter": image["infrarouge"]}))
+        for champ, element in PARAMETRES_IMAGE.items():
+            if champ in image:
+                envois.append(({champ}, {element: image[champ]}))
+        valeurs = lue.valeurs or ValeursImage()
+        for champ, element in COMPENSATIONS_IMAGE.items():
+            niveau = f"{champ}_niveau"
+            envoyes = {champ, niveau} & set(image)
+            if not envoyes:
+                continue
+            # Le mode est exigé par ONVIF : celui relu quand seul le niveau change.
+            compensation: dict[str, Any] = {"Mode": image.get(champ, getattr(valeurs, champ))}
+            if niveau in image:
+                compensation["Level"] = image[niveau]
+            envois.append((envoyes, {element: compensation}))
+        for champs_envoyes, reglages in envois:
+            if not self._envoyer(
+                service.SetImagingSettings, VideoSourceToken=self._source_video, ImagingSettings=reglages
+            ):
+                refuses |= champs_envoyes
+        return refuses
 
     def _modifier_incrustation(
         self, cle: CleIncrustation, envoyes: dict[str, Any], lue: IncrustationNom | IncrustationDateHeure
@@ -667,6 +844,59 @@ def _statut(refuse: bool, relu: object, demande: object) -> StatutChamp:
     if refuse:
         return "refuse"
     return "pris" if relu == demande else "pas_pris"
+
+
+def _verifier_image(image: dict[str, Any], lue: Image) -> None:
+    """Lève `HorsDesOptions` pour le premier champ que la caméra ne propose pas, ou hors de ses bornes."""
+    options = lue.options or OptionsImage()
+    for champ, demande in image.items():
+        proposees = getattr(options, champ)
+        if proposees is None:
+            raise HorsDesOptions(f"image.{champ}")
+        dedans = proposees.contient(demande) if isinstance(proposees, Bornes) else demande in proposees
+        if not dedans:
+            raise HorsDesOptions(f"image.{champ}")
+
+
+def _bornes(plage: Any) -> Bornes | None:
+    if plage is None or plage.Min is None or plage.Max is None:
+        return None
+    return Bornes(min=plage.Min, max=plage.Max)
+
+
+def _modes[M](modes: Any, connus: tuple[M, ...]) -> list[M] | None:
+    """Modes annoncés qu'ArgOS connaît, dans l'ordre de la caméra ; `None` si aucun."""
+    retenus = [mode for mode in (modes or []) if mode in connus]
+    return retenus or None
+
+
+def _options_image(options: Any) -> OptionsImage:
+    """`GetOptions` du service image : seulement ce que la caméra annonce."""
+    proposees: dict[str, Any] = {
+        "infrarouge": _modes(options.IrCutFilterModes, ("ON", "OFF", "AUTO")),
+        **{champ: _bornes(getattr(options, element, None)) for champ, element in PARAMETRES_IMAGE.items()},
+    }
+    for champ, element in COMPENSATIONS_IMAGE.items():
+        compensation = getattr(options, element, None)
+        modes = _modes(compensation.Mode, ("OFF", "ON")) if compensation is not None else None
+        proposees[champ] = modes
+        # Un niveau sans mode n'aurait rien à régler.
+        proposees[f"{champ}_niveau"] = _bornes(compensation.Level) if compensation is not None and modes else None
+    return OptionsImage(**proposees)
+
+
+def _valeurs_image(reglages: Any, options: OptionsImage) -> ValeursImage:
+    """`GetImagingSettings` : seulement les paramètres proposés par `options`."""
+    lues: dict[str, Any] = {
+        "infrarouge": reglages.IrCutFilter,
+        **{champ: getattr(reglages, element, None) for champ, element in PARAMETRES_IMAGE.items()},
+    }
+    for champ, element in COMPENSATIONS_IMAGE.items():
+        compensation = getattr(reglages, element, None)
+        lues[champ] = compensation.Mode if compensation is not None else None
+        lues[f"{champ}_niveau"] = compensation.Level if compensation is not None else None
+    proposees = options.model_dump()
+    return ValeursImage(**{champ: valeur for champ, valeur in lues.items() if proposees[champ] is not None})
 
 
 def _date_heure_utc(heure: Any) -> datetime:
