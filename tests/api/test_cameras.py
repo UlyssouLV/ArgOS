@@ -93,6 +93,9 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "codec": None,
         # Cherché à la première ouverture des Réglages de la Caméra, jamais saisi.
         "port_onvif": None,
+        "schema_onvif": None,
+        # Accordé seulement depuis les Réglages, pour une caméra sans HTTPS.
+        "onvif_en_clair_accepte": False,
     }
 
 

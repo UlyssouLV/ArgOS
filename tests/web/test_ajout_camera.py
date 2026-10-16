@@ -1,5 +1,6 @@
 """Ajout d'une Caméra depuis un Candidat, de bout en bout dans Chromium : l'Aperçu arrive vraiment en WebRTC."""
 
+import json
 import re
 
 import pytest
@@ -15,6 +16,8 @@ DELAI_APERCU_MS = 45_000
 
 # media/simulated/README.md
 MOT_DE_PASSE_SIMULEE_2 = "argos-simulee"
+# Mot de passe de moins de 12 caractères : signalé, sans bloquer l'ajout.
+AVERTISSEMENT_COURT = "Mot de passe court"
 # Adresse privée du sous-réseau de simulation où aucun conteneur ne répond.
 IP_SANS_CAMERA = "172.30.0.250"
 
@@ -131,12 +134,60 @@ def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page
     apercu = panneau.locator("video")
     attendre_la_lecture(administration, apercu)
     expect(panneau.get_by_label("Mot de passe")).to_have_count(0)
+    expect(panneau.get_by_text(AVERTISSEMENT_COURT)).to_have_count(0)
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
     ligne = administration.get_by_role("row").filter(has_text=nom).first
     expect(ligne).to_be_visible()
     expect(ligne).not_to_contain_text(MOT_DE_PASSE_SIMULEE_2)
+    expect(panneau).to_have_count(0)
+
+
+def test_mot_de_passe_court_signale_sans_bloquer(administration: Page, noms, sans_essai):
+    (ip,) = adresses_ip("camera-simulee-2")
+    nom = noms("Ajout")
+
+    def avec_le_bon_mot_de_passe(route: Route):
+        # La 2 n'accepte que son mot de passe de dev (13 caractères) : la caméra reçoit celui-ci, la page en
+        # a saisi un court.
+        demande = route.request.post_data_json
+        if demande.get("mot_de_passe"):
+            demande["mot_de_passe"] = MOT_DE_PASSE_SIMULEE_2
+        route.continue_(post_data=json.dumps(demande))
+
+    section = administration.get_by_role("region", name="Détecter des Caméras")
+    section.get_by_role("button", name="Détecter des Caméras").click()
+    candidats = section.get_by_role("table", name="Candidats")
+    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    expect(panneau.get_by_text("Cette caméra demande un mot de passe")).to_be_visible(timeout=DELAI_APERCU_MS)
+    expect(panneau.get_by_text(AVERTISSEMENT_COURT)).to_have_count(0)
+
+    # À côté des identifiants, dès la saisie : 11 caractères, puis 12.
+    panneau.get_by_label("Mot de passe").fill("x" * 11)
+    avertissement = panneau.get_by_text(AVERTISSEMENT_COURT)
+    expect(avertissement).to_be_visible()
+    expect(avertissement).to_contain_text("moins de 12 caractères")
+    expect(avertissement).to_contain_text("hors ligne")
+    panneau.get_by_label("Mot de passe").fill("x" * 12)
+    expect(panneau.get_by_text(AVERTISSEMENT_COURT)).to_have_count(0)
+
+    # Au résultat de l'essai : l'Aperçu, l'avertissement, et l'ajout reste permis.
+    administration.route(
+        "**/api/essai",
+        lambda route: avec_le_bon_mot_de_passe(route) if route.request.method == "POST" else route.continue_(),
+    )
+    panneau.get_by_label("Mot de passe").fill("court")
+    panneau.get_by_role("button", name="Valider").click()
+
+    attendre_la_lecture(administration, panneau.locator("video"))
+    expect(panneau.get_by_text(AVERTISSEMENT_COURT)).to_be_visible()
+    panneau.get_by_label("Nom").fill(nom)
+    panneau.get_by_role("button", name="Ajouter la Caméra").click()
+
+    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
     expect(panneau).to_have_count(0)
 
 

@@ -38,6 +38,8 @@ La plupart des caméras protégées répondent `401 Unauthorized` à **n’impor
 - **Valider** relance les chemins courants avec ces identifiants.
 - Un nouveau `401` → **Identifiant ou mot de passe refusé par la caméra.** On corrige et on valide à nouveau.
 
+**Mot de passe court** : dès que le mot de passe saisi a moins de **12 caractères**, un avertissement s’affiche sous les champs, puis reste au résultat de l’essai (Aperçu compris) : « Mot de passe court (moins de 12 caractères) : en ONVIF, la caméra le reçoit en empreinte (SHA-1, imposé par la norme), qui se casse hors ligne s’il est faible. L’ajout reste permis ; mieux vaut un mot de passe d’au moins 12 caractères. » Il ne bloque rien : le mot de passe est celui de la caméra, à changer sur elle (son interface, son application) puis dans l’URL de la Caméra (**Modifier**). Le risque n’est réel que si ses Réglages passent un jour en **ONVIF en clair** (caméra sans HTTPS) : ils le rappellent alors ([Paramétrer une Caméra](parametrer-une-camera.md#onvif-en-clair)).
+
 **Un seul essai d’identifiants par clic** : ArgOS s’arrête au premier refus, sans essayer d’autre chemin, sans réessai automatique, sans tester de mots de passe par défaut. Beaucoup de caméras se verrouillent (ou bloquent l’adresse d’ArgOS) après quelques échecs.
 
 Le mot de passe saisi ne revient jamais dans le navigateur : l’API compose l’URL `rtsp://identifiant:motdepasse@ip:port/chemin` (caractères spéciaux encodés), la garde côté serveur pendant l’essai, et crée la Caméra à partir d’elle. Ensuite, il est masqué (`***`) partout, comme pour toute Caméra.

@@ -1,6 +1,6 @@
 # Paramétrer une Caméra : ONVIF
 
-Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit et règle** par ONVIF les Réglages de la Caméra : Incrustations, fuseau de l’Horloge et mise à l’heure du Site. Voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos).
+Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit et règle** par ONVIF les Réglages de la Caméra : Incrustations, fuseau de l’Horloge et mise à l’heure du Site. Depuis la 0.6.3, il le fait en **HTTPS** quand la caméra le propose, et en clair seulement avec l’accord de l’Administrateur. Voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos).
 
 Pour aller plus loin : [Ajouter une Caméra](ajouter-une-camera.md), [Réseau du Site et Détection des Caméras](reseau-et-detection.md), [sécurité](../securite.md).
 
@@ -24,7 +24,7 @@ Restent l’application mobile du fabricant (souvent XMEye ou iCSee pour ces cam
 
 ### Trouver le port ONVIF
 
-Le service d’entrée est `http://<ip>:<port>/onvif/device_service`. Le port **varie selon le fabricant** : `80` chez beaucoup, **`8899`** sur les caméras XiongMai, `2000` ou `8000` ailleurs. Une page web qui répond `200` sur `/onvif/device_service` ne prouve rien : il faut une réponse SOAP. Demander l’heure ne demande aucun identifiant :
+Le service d’entrée est `https://<ip>/onvif/device_service` quand la caméra propose ONVIF en HTTPS (port `443`, certificat auto-signé), sinon `http://<ip>:<port>/onvif/device_service`. En HTTP, le port **varie selon le fabricant** : `80` chez beaucoup, **`8899`** sur les caméras XiongMai, `2000` ou `8000` ailleurs. Une page web qui répond `200` sur `/onvif/device_service` ne prouve rien : il faut une réponse SOAP. Demander l’heure ne demande aucun identifiant :
 
 ```bash
 B='<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetSystemDateAndTime xmlns="http://www.onvif.org/ver10/device/wsdl"/></s:Body></s:Envelope>'
@@ -32,6 +32,8 @@ for p in 80 8899 2000 8000 8080; do
   echo "$p: $(curl -s -m 3 -X POST -H 'Content-Type: application/soap+xml' -d "$B" http://192.168.1.103:$p/onvif/device_service | head -c 80)"
 done
 # 8899: <?xml version="1.0" encoding="UTF-8"?><s:Envelope ...   ← le bon port
+# HTTPS (certificat auto-signé : -k n'en vérifie pas l'autorité)
+echo "443: $(curl -sk -m 3 -X POST -H 'Content-Type: application/soap+xml' -d "$B" https://192.168.1.103/onvif/device_service | head -c 80)"
 ```
 
 ### Lire la caméra
@@ -81,7 +83,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 - **Lire, modifier, relire** : noter la valeur d’origine (pour revenir en arrière), envoyer le `Set…`, puis relire pour vérifier que la caméra l’a bien pris.
 - **Ne jamais changer** son IP, son mot de passe ni ses ports sans plan de repli : une erreur la rend injoignable, et il ne reste que le bouton de réinitialisation.
 - Un changement de **résolution ou de codec** change le Flux : la sonde d’ArgOS suit le codec seule, mais l’Aperçu et le Live peuvent couper quelques secondes.
-- Tant qu’il n’y a pas HTTPS, le mot de passe de la caméra passe déjà en clair ou en Digest sur le réseau des caméras (RTSP) ; ONVIF l’envoie en WS-Security (empreinte, pas en clair).
+- Le mot de passe de la caméra passe déjà en clair ou en Digest sur le réseau des caméras (RTSP). ONVIF l’envoie en WS-Security (empreinte SHA-1, pas en clair) : à l’abri en HTTPS, lisible et cassable hors ligne s’il est faible en HTTP ([§ 6](#sécurité-de-léchange)).
 
 ## 6. Les Réglages de la Caméra dans ArgOS
 
@@ -133,11 +135,62 @@ Par l’API : le fuseau passe par `PATCH /api/cameras/{id}/reglages` (`{"horloge
 
 Par l’API : `PATCH /api/cameras/{id}/reglages` avec seulement les champs modifiés (`{"incrustations": {"nom": {"texte": "Entrée"}}}`) ; la réponse donne, pour chaque champ envoyé, la valeur demandée, la valeur relue et le statut (`pris`, `pas_pris`, `refuse`), puis les Réglages relus. Mêmes erreurs que la lecture (`404`, `502`).
 
+### Sécurité de l’échange
+
+ArgOS règle la caméra en **HTTPS** quand elle le propose, et ne la règle en clair qu’avec l’accord de l’Administrateur ([ADR 0007](../adr/0007-onvif-en-https-par-cle-memorisee.md), [sécurité](../securite.md#onvif--réglages-chiffrés-clé-de-lappareil-mémorisée)). Le Live, l’état et le reste de l’Administration n’en dépendent jamais : seuls les Réglages de cette Caméra peuvent être bloqués.
+
+#### Échange chiffré
+
+À la première ouverture des Réglages d’une caméra qui répond en HTTPS, ArgOS mémorise la **clé** de son certificat, le **Certificat de l’Appareil** (empreinte SHA-256 de la clé publique), sans rien demander : c’est le premier contact. Un bandeau le rappelle ensuite à chaque ouverture :
+
+> Échange chiffré (HTTPS). Certificat de l’Appareil `3f2a 9c41 07be d5e8`, mémorisé le 16/10/2026.
+
+L’empreinte est abrégée (16 premiers chiffres) ; elle s’affiche en entier au survol. Une caméra qui renouvelle son certificat en gardant sa clé ne change rien.
+
+Une caméra qui ne propose que **TLS 1.0 ou 1.1** reste réglée en HTTPS, avec un avertissement dans le bandeau : « TLS ancien : la caméra ne propose que TLS 1.0 ou 1.1, des versions dépassées. L’échange reste chiffré, avec la clé mémorisée. » Mettre à jour son firmware, si le fabricant en propose un.
+
+#### Certificat changé
+
+Si la caméra présente une **autre clé** que celle mémorisée, ArgOS s’arrête avant d’envoyer quoi que ce soit avec ses identifiants, et les Réglages affichent, à la place du formulaire :
+
+- « Le certificat de cette caméra a changé. » ;
+- **Certificat mémorisé** (empreinte entière et date) et **Certificat présenté** (empreinte entière), par groupes de 4 chiffres pour les comparer ;
+- les causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse.
+
+**Faire confiance au nouveau certificat**, si l’on sait pourquoi il a changé, demande une confirmation (« ArgOS réglera cette caméra avec le certificat `…` et refusera l’ancien. Ne le faites que si vous savez pourquoi il a changé. ») : **Confirmer la confiance** mémorise la nouvelle clé et relit la caméra ; **Annuler** ne change rien. ArgOS vérifie que la caméra présente encore le certificat montré : sinon, « La caméra ne présente plus ce certificat : rouvrir ses Réglages. » Sans savoir pourquoi, ne pas faire confiance : vérifier d’abord l’appareil à cette adresse (MAC, interface de la caméra).
+
+#### HTTPS indisponible
+
+Une Caméra déjà réglée en HTTPS qui ne répond plus qu’en HTTP n’est **jamais** réglée en clair : « Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair. » Causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse, ou quelqu’un qui bloque HTTPS pour lire l’échange en clair. **Oublier le certificat de cette caméra** efface la clé et le contact retenus, puis relit : la caméra repart de zéro, comme à son premier contact (HTTPS s’il revient, sinon l’accord ci-dessous).
+
+#### ONVIF en clair
+
+Une caméra qui ne propose **pas** HTTPS n’est réglée en HTTP qu’avec l’accord de l’Administrateur. Avant, seule la recherche du port lui est parvenue (l’heure, demandée sans identifiants), et les Réglages affichent : « Cette caméra ne propose pas HTTPS : ONVIF en clair non accepté. », avec ce que la régler quand même ferait passer en clair (mot de passe en empreinte, cassable hors ligne s’il est faible, et réglages, lisibles et modifiables au passage).
+
+- **Régler quand même en clair** : l’accord est mémorisé pour cette Caméra, et les Réglages s’ouvrent. Il n’est plus redemandé.
+- Un bandeau le rappelle à chaque ouverture : « ONVIF en clair : cette caméra ne propose pas HTTPS. Le mot de passe (en empreinte) et les réglages passent en clair sur le réseau des caméras. »
+- **Mot de passe court** : si le mot de passe de l’URL RTSP a moins de 12 caractères, le bandeau l’ajoute : « Mot de passe court (moins de 12 caractères) : son empreinte (SHA-1, imposé par la norme), qui passe ici en clair, se casse hors ligne. Mieux vaut un mot de passe d’au moins 12 caractères, sur la caméra puis dans l’URL de la Caméra. » Rien de tel en HTTPS, ni pour une caméra sans identifiants.
+- **Retirer l’accord ONVIF en clair** : la Caméra redemande l’accord à l’ouverture suivante.
+- Si la caméra se met un jour à proposer HTTPS (nouveau firmware), ArgOS y passe de lui-même et mémorise sa clé : le bandeau devient celui de l’échange chiffré.
+
 ### Port et identifiants
 
-- **Port ONVIF** : rien à saisir. À la première ouverture, ArgOS demande l’heure (`GetSystemDateAndTime`, sans identifiants) sur `http://<hôte de l’URL RTSP>:<port>/onvif/device_service`, ports `80`, `8899`, `2000`, `8000`, `8080`, et retient le premier qui répond **en SOAP** (une page web ne compte pas). Ce port est gardé sur la Caméra ; s’il ne répond plus, ArgOS cherche à nouveau. Changer l’URL RTSP de la Caméra l’oublie.
+- **Contact ONVIF** : rien à saisir. À chaque ouverture (et à chaque envoi), ArgOS demande l’heure (`GetSystemDateAndTime`, sans identifiants) en HTTPS, sur `https://<hôte de l’URL RTSP>/onvif/device_service` (port `443`). Sans réponse SOAP en HTTPS, il essaie le port HTTP retenu, puis les ports `80`, `8899`, `2000`, `8000`, `8080`, et retient le premier qui répond **en SOAP** (une page web ne compte pas). Une Caméra retenue en HTTP passe en HTTPS dès que sa caméra le propose.
+- **Adresses des services** : la caméra annonce l’adresse de son service média, souvent en `http://…` même jointe en HTTPS. ArgOS n’en garde que le chemin, et la joint avec le schéma, l’hôte et le port retenus : rien ne repart en clair.
+- **Ce qui est gardé** sur la Caméra : schéma et port, clé du Certificat de l’Appareil et sa date, accord ONVIF en clair. Gardés quand on ne change que le mot de passe ou le chemin de l’URL RTSP, et quand la Caméra change d’IP, retrouvée par sa MAC ; **oubliés** quand on change l’hôte de l’URL à la main (tout repart du premier contact).
 - **Identifiants** : ceux de l’URL RTSP de la Caméra, envoyés en WS-Security (empreinte du mot de passe, jamais en clair). Une URL sans identifiants : requêtes sans authentification.
 - Délais courts : quelques secondes par requête.
+
+Par l’API (session exigée) : la lecture (`GET /api/cameras/{id}/reglages`) renvoie aussi `securite` (`chiffre`, `empreinte`, `empreinte_memorisee_le`, `tls_ancien`, `mot_de_passe_court`). Un refus est un `502` avec son `code` (`certificat_change`, `https_indisponible`, `en_clair_non_accepte`) ; `certificat_change` porte `certificat` (`empreinte_memorisee`, `empreinte_memorisee_le`, `empreinte_presentee`). Les décisions : `POST /api/cameras/{id}/reglages/certificat` (`{"empreinte": "<empreinte présentée>"}`, `409` si la caméra ne la présente plus), `DELETE /api/cameras/{id}/reglages/certificat` (oublier), `PUT` et `DELETE /api/cameras/{id}/reglages/onvif-en-clair` (accord, retrait).
+
+Chaque refus (certificat changé, HTTPS indisponible) et chaque décision (confiance, oubli, accord, retrait) laisse une ligne dans les journaux de l’API, avec l’id de la Caméra et les empreintes, jamais d’identifiant ni d’URL :
+
+```bash
+docker compose logs api | grep ONVIF
+# (empreintes abrégées ici ; les journaux les donnent entières)
+# WARNING:  ONVIF : Caméra 3, certificat changé (mémorisé 3f2a…, présenté 81c0…) : refusé
+# INFO:     ONVIF : Caméra 3, confiance au nouveau certificat 81c0… (remplace 3f2a…)
+```
 
 ### Messages
 
@@ -146,5 +199,8 @@ Par l’API : `PATCH /api/cameras/{id}/reglages` avec seulement les champs modif
 | « Cette caméra ne répond pas en ONVIF » | L’appareil répond sur le réseau, mais aucun port courant ne répond en SOAP (ou sa réponse n’est pas celle qu’ArgOS attend). |
 | « La caméra refuse ces identifiants en ONVIF » | Les identifiants de l’URL RTSP sont refusés, ou l’URL n’en a pas et la caméra en exige. |
 | « Caméra injoignable » | Rien ne répond à l’adresse de la caméra, même si son état était `online`. |
+| « Le certificat de cette caméra a changé. » | La caméra présente une autre clé que celle mémorisée ([Certificat changé](#certificat-changé)). |
+| « Cette caméra ne répond plus en HTTPS : ArgOS refuse de la régler en clair. » | Caméra déjà réglée en HTTPS qui ne répond plus qu’en HTTP ([HTTPS indisponible](#https-indisponible)). |
+| « Cette caméra ne propose pas HTTPS : ONVIF en clair non accepté. » | Caméra sans HTTPS, pas encore d’accord de l’Administrateur ([ONVIF en clair](#onvif-en-clair)). |
 
-Pour développer sans matériel, les Caméras simulées 2 (port `8899`, identifiants) et 4 (port `80`, sans identifiants) répondent en ONVIF, « sortie d’usine » comme la caméra de dev : voir `simulation/onvif/README.md` dans le dépôt.
+Pour développer sans matériel, les Caméras simulées 2 et 4 répondent en ONVIF, « sortie d’usine » comme la caméra de dev : la 2 en HTTPS sur `443` (certificat auto-signé, gardé d’un démarrage à l’autre) et en HTTP sur `8899`, avec identifiants, et ArgOS doit choisir HTTPS ; la 4 en HTTP seulement sur `80`, sans identifiants : elle demande l’accord ONVIF en clair. Voir `simulation/onvif/README.md` dans le dépôt.

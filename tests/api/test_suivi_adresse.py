@@ -15,6 +15,7 @@ from test_detection import DELAI_DETECTION_S, candidats_simules
 from test_essai import MOT_DE_PASSE_SIMULEE_2, essai  # noqa: F401 (fixture)
 from test_etat_cameras import attendre_etat
 from test_mediamtx_en_pont import attendre_lisible
+from test_reglages import lire as lire_reglages
 
 # Adresses libres du sous-réseau de simulation, hors de la plage dynamique (compose.simulation.yaml).
 NOUVELLES_IPS = {1: "172.30.0.21", 2: "172.30.0.22", 3: "172.30.0.23"}
@@ -80,6 +81,24 @@ def test_camera_deplacee_suivie_hote_seulement_relayee_et_online(connecte, essai
     assert suivie["mac"] == MACS_SIMULEES[2]
     attendre_etat(connecte, camera["id"], "online")
     attendre_lisible(suivie["chemin_flux"], True)
+
+
+def test_camera_deplacee_garde_port_schema_cle_et_accord_onvif(connecte, essai, deplacer):
+    camera = ajouter(essai, 2)
+    assert connecte.put(f"/api/cameras/{camera['id']}/reglages/onvif-en-clair").status_code == 204
+    reponse = lire_reglages(connecte, camera["id"])
+    assert reponse.status_code == 200
+    securite = reponse.json()["securite"]
+    deplacer({2: NOUVELLES_IPS[2]})
+
+    detecter_jusqu_a(connecte, {NOUVELLES_IPS[2]: MACS_SIMULEES[2]})
+
+    suivie = lire(connecte, camera)
+    assert (suivie["port_onvif"], suivie["schema_onvif"], suivie["onvif_en_clair_accepte"]) == (443, "https", True)
+    # Même clé à la nouvelle IP : acceptée sans être mémorisée de nouveau (une autre serait un certificat changé).
+    reponse = lire_reglages(connecte, camera["id"])
+    assert reponse.status_code == 200
+    assert reponse.json()["securite"] == securite
 
 
 def test_deux_cameras_qui_echangent_leurs_ip_suivies_par_une_detection(connecte, essai, deplacer):

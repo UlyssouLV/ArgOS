@@ -1,45 +1,74 @@
 import { useEffect, useId, useState } from "react";
 
-import { messageEchec, type Camera } from "../cameras";
+import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, type Camera } from "../cameras";
 import {
+  accepterEnClair,
   COINS,
+  empreinteCourte,
+  empreinteGroupee,
   estVide,
+  faireConfiance,
   fuseauLu,
   lireFuseaux,
   lireReglages,
   mettreALHeure,
   modificationsEntre,
   modifierReglages,
+  oublierCertificat,
+  RefusOnvif,
   saisieDepuis,
   texteDateHeure,
   texteEcart,
   textePosition,
+  type CertificatsCompares,
   type ChampModifie,
   type CleIncrustation,
   type Horloge,
   type IncrustationSaisie,
   type Position,
   type Reglages,
+  type ReglagesLus,
   type Saisie,
+  type SecuriteOnvif,
 } from "../reglages";
 
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
-/** Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent. */
+/**
+ * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure et Incrustations se règlent.
+ * Un certificat changé, un HTTPS disparu ou une caméra sans HTTPS (ONVIF en clair non accepté) bloque les Réglages
+ * jusqu'à la décision de l'Administrateur, puis relit.
+ */
 export function ReglagesCamera({ camera, onFermer }: Props) {
-  const [lus, setLus] = useState<{ origine: Reglages; fuseaux: string[] } | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [lus, setLus] = useState<{ origine: ReglagesLus; fuseaux: string[] } | null>(null);
+  const [echec, setEchec] = useState<unknown>(null);
+  // Incrémentée après une décision sur le certificat ou l'ONVIF en clair : relit la caméra.
+  const [lecture, setLecture] = useState(0);
 
   useEffect(() => {
     let ouvert = true;
     Promise.all([lireReglages(camera.id), lireFuseaux()]).then(
       ([origine, fuseaux]) => ouvert && setLus({ origine, fuseaux }),
-      (e: unknown) => ouvert && setErreur(messageEchec(e)),
+      (e: unknown) => ouvert && setEchec(e ?? new Error()),
     );
     return () => {
       ouvert = false;
     };
-  }, [camera.id]);
+  }, [camera.id, lecture]);
+
+  function relire() {
+    setLus(null);
+    setEchec(null);
+    setLecture((n) => n + 1);
+  }
+
+  const refus = echec instanceof RefusOnvif ? echec : null;
+  // Certificat changé, HTTPS indisponible et ONVIF en clair non accepté ont leur écran ; les autres échecs, leur message.
+  const decision =
+    refus?.code === "certificat_change" ||
+    refus?.code === "https_indisponible" ||
+    refus?.code === "en_clair_non_accepte";
+  const erreur = echec === null || decision ? null : messageEchec(echec);
 
   return (
     <section className="reglages" aria-label={`Réglages de ${camera.nom}`}>
@@ -49,13 +78,235 @@ export function ReglagesCamera({ camera, onFermer }: Props) {
           Fermer
         </button>
       </div>
-      {!lus && !erreur && <p>Lecture de la caméra…</p>}
+      {!lus && echec === null && <p>Lecture de la caméra…</p>}
+      {refus?.code === "certificat_change" && (
+        <CertificatChange
+          camera={camera}
+          message={refus.message}
+          certificat={refus.certificat}
+          onDecide={relire}
+        />
+      )}
+      {refus?.code === "https_indisponible" && (
+        <HttpsIndisponible camera={camera} message={refus.message} onDecide={relire} />
+      )}
+      {refus?.code === "en_clair_non_accepte" && (
+        <AccordEnClair camera={camera} message={refus.message} onDecide={relire} />
+      )}
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}
         </p>
       )}
+      {lus && <BandeauSecurite camera={camera} securite={lus.origine.securite} onDecide={relire} />}
       {lus && <FormulaireReglages camera={camera} origine={lus.origine} fuseaux={lus.fuseaux} />}
+    </section>
+  );
+}
+
+/**
+ * Échange chiffré : empreinte courte du Certificat de l'Appareil (entière au survol) et sa date ; « TLS ancien ».
+ * ONVIF en clair : rappel, et retrait de l'accord.
+ */
+function BandeauSecurite({
+  camera,
+  securite,
+  onDecide,
+}: Readonly<{ camera: Camera; securite: SecuriteOnvif; onDecide: () => void }>) {
+  if (!securite.chiffre)
+    return <BandeauEnClair camera={camera} motDePasseCourt={securite.mot_de_passe_court} onDecide={onDecide} />;
+  if (!securite.empreinte) return null;
+  return (
+    <section className="reglages-securite" aria-label="Sécurité de l'échange">
+      <p>
+        Échange chiffré (HTTPS). Certificat de l'Appareil <code title={securite.empreinte}>{empreinteCourte(securite.empreinte)}</code>
+        {securite.empreinte_memorisee_le &&
+          `, mémorisé le ${new Date(securite.empreinte_memorisee_le).toLocaleDateString("fr-FR")}`}
+        .
+      </p>
+      {securite.tls_ancien && (
+        <p className="avertissement">
+          TLS ancien : la caméra ne propose que TLS 1.0 ou 1.1, des versions dépassées. L'échange reste chiffré, avec
+          la clé mémorisée.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Décision de l'Administrateur envoyée à l'API, puis relecture ; l'échec reste affiché sur place. */
+function useDecision(onDecide: () => void) {
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function decider(action: () => Promise<void>) {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await action();
+      onDecide();
+    } catch (e) {
+      setErreur(messageEchec(e));
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return { envoi, erreur, decider };
+}
+
+/**
+ * Réglages en ONVIF en clair, accepté par l'Administrateur : rappelé à chaque ouverture, et révocable.
+ * Mot de passe court : rappelé aussi, puisque son empreinte passe en clair.
+ */
+function BandeauEnClair({
+  camera,
+  motDePasseCourt,
+  onDecide,
+}: Readonly<{ camera: Camera; motDePasseCourt: boolean; onDecide: () => void }>) {
+  const { envoi, erreur, decider } = useDecision(onDecide);
+  return (
+    <section className="reglages-securite reglages-en-clair" aria-label="Sécurité de l'échange">
+      <p className="avertissement">
+        ONVIF en clair : cette caméra ne propose pas HTTPS. Le mot de passe (en empreinte) et les réglages passent en
+        clair sur le réseau des caméras.
+      </p>
+      {motDePasseCourt && (
+        <p className="avertissement">
+          Mot de passe court (moins de {LONGUEUR_MOT_DE_PASSE_SUR} caractères) : son empreinte (SHA-1, imposé par la
+          norme), qui passe ici en clair, se casse hors ligne. Mieux vaut un mot de passe d'au moins{" "}
+          {LONGUEUR_MOT_DE_PASSE_SUR} caractères, sur la caméra puis dans l'URL de la Caméra.
+        </p>
+      )}
+      <button type="button" disabled={envoi} onClick={() => void decider(() => accepterEnClair(camera.id, false))}>
+        Retirer l'accord ONVIF en clair
+      </button>
+      {erreur && <p className="erreur">{erreur}</p>}
+    </section>
+  );
+}
+
+type PropsRefus = Readonly<{ camera: Camera; message: string; onDecide: () => void }>;
+
+/**
+ * La caméra ne propose pas HTTPS : seule la recherche du port lui est parvenue. « Régler quand même en clair »
+ * mémorise l'accord pour cette Caméra, révocable depuis le bandeau.
+ */
+function AccordEnClair({ camera, message, onDecide }: PropsRefus) {
+  const { envoi, erreur, decider } = useDecision(onDecide);
+  return (
+    <section className="reglages-refus" aria-label="ONVIF en clair">
+      <p className="erreur" role="alert">
+        {message}
+      </p>
+      <p>
+        La régler quand même ferait passer son mot de passe (en empreinte, cassable hors ligne s'il est faible) et ses
+        réglages en clair sur le réseau des caméras : qui l'écoute peut les lire ou les modifier au passage. Rien n'a
+        été envoyé avec ses identifiants.
+      </p>
+      <button type="button" disabled={envoi} onClick={() => void decider(() => accepterEnClair(camera.id, true))}>
+        Régler quand même en clair
+      </button>
+      {erreur && <p className="erreur">{erreur}</p>}
+    </section>
+  );
+}
+
+function texteEmpreinte(empreinte: string | null): string {
+  return empreinte ? empreinteGroupee(empreinte) : "inconnu";
+}
+
+/**
+ * La caméra présente une autre clé que celle mémorisée : rien d'authentifié n'est parti. Les deux empreintes et les
+ * causes possibles ; « Faire confiance au nouveau certificat », confirmé, n'accepte que l'empreinte montrée ici.
+ */
+function CertificatChange({
+  camera,
+  message,
+  certificat,
+  onDecide,
+}: PropsRefus & Readonly<{ certificat: CertificatsCompares | null }>) {
+  const [confirmation, setConfirmation] = useState(false);
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const presentee = certificat?.empreinte_presentee ?? null;
+
+  async function confier(empreinte: string) {
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      await faireConfiance(camera.id, empreinte);
+      onDecide();
+    } catch (e) {
+      setErreur(messageEchec(e));
+      setConfirmation(false);
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <section className="reglages-refus" aria-label="Certificat changé">
+      <p className="erreur" role="alert">
+        {message}
+      </p>
+      <dl>
+        <dt>Certificat mémorisé</dt>
+        <dd>
+          <code>{texteEmpreinte(certificat?.empreinte_memorisee ?? null)}</code>
+          {certificat?.empreinte_memorisee_le &&
+            `, le ${new Date(certificat.empreinte_memorisee_le).toLocaleDateString("fr-FR")}`}
+        </dd>
+        <dt>Certificat présenté</dt>
+        <dd>
+          <code>{texteEmpreinte(presentee)}</code>
+        </dd>
+      </dl>
+      <p>
+        Causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse. Rien n'est envoyé à la
+        caméra avec ses identifiants tant que vous n'avez pas tranché.
+      </p>
+      {presentee && !confirmation && (
+        <button type="button" disabled={envoi} onClick={() => setConfirmation(true)}>
+          Faire confiance au nouveau certificat
+        </button>
+      )}
+      {presentee && confirmation && (
+        <p className="confirmation">
+          <span>
+            ArgOS réglera cette caméra avec le certificat <code>{empreinteCourte(presentee)}</code> et refusera
+            l'ancien. Ne le faites que si vous savez pourquoi il a changé.
+          </span>
+          <button type="button" className="danger" disabled={envoi} onClick={() => void confier(presentee)}>
+            Confirmer la confiance
+          </button>
+          <button type="button" disabled={envoi} onClick={() => setConfirmation(false)}>
+            Annuler
+          </button>
+        </p>
+      )}
+      {erreur && <p className="erreur">{erreur}</p>}
+    </section>
+  );
+}
+
+/** La Caméra répondait en HTTPS et ne le fait plus : pas de repli en clair ; « Oublier le certificat » repart de zéro. */
+function HttpsIndisponible({ camera, message, onDecide }: PropsRefus) {
+  const { envoi, erreur, decider } = useDecision(onDecide);
+
+  return (
+    <section className="reglages-refus" aria-label="HTTPS indisponible">
+      <p className="erreur" role="alert">
+        {message}
+      </p>
+      <p>
+        Causes possibles : remise en usine, nouveau firmware, autre appareil à cette adresse, ou quelqu'un qui bloque
+        HTTPS pour lire l'échange en clair. Oublier le certificat fait repartir le contact suivant de zéro.
+      </p>
+      <button type="button" disabled={envoi} onClick={() => void decider(() => oublierCertificat(camera.id))}>
+        Oublier le certificat de cette caméra
+      </button>
+      {erreur && <p className="erreur">{erreur}</p>}
     </section>
   );
 }

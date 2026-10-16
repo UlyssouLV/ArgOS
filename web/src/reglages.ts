@@ -37,7 +37,81 @@ export type Reglages = {
   incrustations: { nom: IncrustationNom; date_heure: IncrustationDateHeure };
 };
 
-export async function lireReglages(idCamera: number): Promise<Reglages> {
+/** Sécurité de l'échange ONVIF avec la caméra (docs/adr/0007-onvif-en-https-par-cle-memorisee.md). */
+export type SecuriteOnvif = {
+  chiffre: boolean;
+  /** Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil ; `null` hors HTTPS. */
+  empreinte: string | null;
+  empreinte_memorisee_le: string | null;
+  /** TLS 1.0 ou 1.1 : accepté, mais signalé. */
+  tls_ancien: boolean;
+  /** ONVIF en clair avec un mot de passe court : seulement « court » ou non, jamais le mot de passe. */
+  mot_de_passe_court: boolean;
+};
+
+/** Réglages lus à l'ouverture, avec la sécurité de l'échange. */
+export type ReglagesLus = Reglages & { securite: SecuriteOnvif };
+
+/** Empreinte du Certificat de l'Appareil par groupes de 4 chiffres, pour la comparer à l'œil. */
+export function empreinteGroupee(empreinte: string): string {
+  return (empreinte.match(/.{1,4}/g) ?? []).join(" ");
+}
+
+/** Empreinte courte du Certificat de l'Appareil : ses 16 premiers chiffres, par groupes de 4. */
+export function empreinteCourte(empreinte: string): string {
+  return empreinteGroupee(empreinte.slice(0, 16));
+}
+
+/** Clé mémorisée (et sa date) et clé que la caméra présente, renvoyées avec `certificat_change`. */
+export type CertificatsCompares = {
+  empreinte_memorisee: string | null;
+  empreinte_memorisee_le: string | null;
+  empreinte_presentee: string | null;
+};
+
+export type CodeOnvif =
+  | "sans_onvif"
+  | "identifiants_refuses"
+  | "injoignable"
+  | "certificat_change"
+  | "https_indisponible"
+  | "en_clair_non_accepte";
+
+/** `502` des Réglages : `code` dit lequel ; `certificat_change` porte les deux empreintes. */
+export class RefusOnvif extends Refus {
+  constructor(
+    message: string,
+    readonly code: CodeOnvif,
+    readonly certificat: CertificatsCompares | null,
+  ) {
+    super(message);
+  }
+}
+
+/** « Faire confiance au nouveau certificat » : l'API refuse si la caméra ne présente plus cette empreinte. */
+export async function faireConfiance(idCamera: number, empreinte: string): Promise<void> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages/certificat`, {
+    method: "POST",
+    body: JSON.stringify({ empreinte }),
+  });
+  if (!reponse.ok) return lever(reponse);
+}
+
+/** « Oublier le certificat de cette caméra » : le contact suivant repart de zéro. */
+export async function oublierCertificat(idCamera: number): Promise<void> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages/certificat`, { method: "DELETE" });
+  if (!reponse.ok) return lever(reponse);
+}
+
+/** « Régler quand même en clair » (`accepte`), ou retrait de l'accord ONVIF en clair. */
+export async function accepterEnClair(idCamera: number, accepte: boolean): Promise<void> {
+  const reponse = await appeler(`/api/cameras/${idCamera}/reglages/onvif-en-clair`, {
+    method: accepte ? "PUT" : "DELETE",
+  });
+  if (!reponse.ok) return lever(reponse);
+}
+
+export async function lireReglages(idCamera: number): Promise<ReglagesLus> {
   const reponse = await appeler(`/api/cameras/${idCamera}/reglages`);
   if (reponse.ok) return reponse.json();
   return lever(reponse);
@@ -60,10 +134,16 @@ export async function modifierReglages(idCamera: number, modification: Modificat
   return lever(reponse);
 }
 
-/** `detail` de l'API affiché tel quel, `502` compris (caméra sans ONVIF, identifiants refusés, injoignable). */
+/** `detail` de l'API affiché tel quel ; un `502` (refus ONVIF) garde aussi son code et ses empreintes. */
 async function lever(reponse: Response): Promise<never> {
-  const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
-  throw new Refus(typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`);
+  const corps = (await reponse.json().catch(() => ({}))) as {
+    detail?: unknown;
+    code?: CodeOnvif;
+    certificat?: CertificatsCompares | null;
+  };
+  const message = typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`;
+  if (reponse.status === 502 && corps.code) throw new RefusOnvif(message, corps.code, corps.certificat ?? null);
+  throw new Refus(message);
 }
 
 const POSITIONS: Record<Position, string> = {

@@ -14,3 +14,4 @@ Ce n’est ni une spec produit, ni un tutoriel. C’est le journal des choix str
 | [0004](./0004-hls-pour-les-flux-h265.md) | HLS pour les Flux H.265 |
 | [0005](./0005-https-par-une-origine-unique-et-une-autorite-du-site.md) | HTTPS, origine unique et Autorité du Site |
 | [0006](./0006-flux-authentifies-par-nginx.md) | Flux authentifiés par nginx, MediaMTX derrière le réseau Compose |
+| [0007](./0007-onvif-en-https-par-cle-memorisee.md) | ONVIF en HTTPS par clé mémorisée, repli HTTP consenti |

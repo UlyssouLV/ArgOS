@@ -32,6 +32,7 @@ Used by `creer-un-bug` (`/cub`). A **bug** is not a version child (`/ct`):
 - Title: `Bug — <short description>`.
 - Label: **`bug`** only (not `ready-for-agent` until the bug is scheduled into a version and turned into implement work).
 - Body: fixed `##` headings — Constat, Reproductibilité, Impact, Cause probable, À corriger, Hors périmètre, Métadonnées — see `docs/dev/feuille-de-route/README.md` (*Bugs*). Same fields go under **Plus tard** on the feuille de route.
+- **Captures:** save under `docs/img/bugs/`, then **`gh issue create` / `gh issue edit` with `--attach 'path#alt'`** so GitHub stores real issue attachments (visible on the ticket). Reference `![alt](./file)` in **Constat** so `gh` rewrites to the uploaded asset. Do **not** stop at repo-relative Markdown alone — that is not an attachment and often invisible on the issue. Requires a recent `gh` (see `gh issue create --help` → `--attach`).
 - Missing facts: exact token `Informations manquantes` (do not invent). Derived states **complet** / **incomplet** — same README.
 - Scheduling into a version: `/afr` removes the `### Bug — … (#n)` block from **Plus tard** (objectif de version). Do not close the issue yet.
 - Closing / fixing: version PR includes `Fixes #<n>` ; **`finaliser-la-version`** deletes any leftover Plus tard block and `gh issue close <n>` with `Corrigé en VX.Y.Z.` — not `/cub`.

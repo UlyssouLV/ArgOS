@@ -8,7 +8,7 @@ Contraintes transverses :
 - README type repos Ulysse : sections claires (**quoi**, **prérequis**, **comment lancer**, structure) — enrichi dès qu’une version devient lançable ; avant ça, pas de fausse « souche » runnable.
 - Preuve 0.1.0 : flux RTSP simulés **joignables**, y compris un accès **navigateur** (ex. page HLS/WebRTC MediaMTX), plus tests auto (`ffprobe` / équivalent) via `/t`.
 - Auth 1.0.0 : compte **local** suffit. États caméra minimaux : `unknown` / `online` / `offline`.
-- **Pas d’installation sur de vraies caméras avant authentification des Flux et sécurisation d’ONVIF** (HTTPS livré en 0.6.1, Flux authentifiés en 0.6.2). Limites et dettes : [sécurité](../../securite.md).
+- **Pas d’installation sur de vraies caméras avant authentification des Flux et sécurisation d’ONVIF** (HTTPS livré en 0.6.1, Flux authentifiés en 0.6.2, ONVIF sécurisé en 0.6.3). Limites et dettes : [sécurité](../../securite.md).
 
 ## Déjà livré
 
@@ -22,14 +22,9 @@ Contraintes transverses :
 - **0.6.0** — Paramétrage des Caméras par ONVIF : Réglages d’une Caméra active dans l’Administration, lus par ONVIF (port trouvé seul, identifiants du Flux) ; Incrustations (texte, coin, affichage du nom et de la date et heure) et Horloge (fuseau, mise à l’heure manuelle du Site, NTP en lecture seule), relues après envoi avec un statut par champ ; Caméras simulées 2 et 4 en ONVIF ; ONVIF en HTTP jusqu’à la 0.6.3 ([PR #58](https://github.com/UlyssouLV/ArgOS/pull/58), [spec](../../specs/v0.6.0-parametrage-des-cameras-par-onvif.md), [doc](../../cameras/parametrer-une-camera.md)).
 - **0.6.1** — HTTPS : UI, API et Live sous une seule origine HTTPS (nginx de `web`, port `443`), `80` / `8080` redirigent, ports `8000` / `8888` / `8889` fermés, cookie de session `Secure`, fin de CORS ; certificat signé par l’Autorité du Site générée au premier lancement, régénéré seul (IP, expiration), ou certificat fourni par l’Administrateur ; lanceur Mac en HTTPS et Autorité proposée au trousseau ([PR #67](https://github.com/UlyssouLV/ArgOS/pull/67), [spec](../../specs/v0.6.1-https.md), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md), [doc](../../features/reseau/installer-l-autorite-du-site.md)).
 - **0.6.2** — Authentification des Flux : WHEP et HLS relayés par nginx seulement à une session ArgOS (`auth_request`, `401` sinon), l’UI revient à la connexion quand un Flux est refusé ; RTSP `8554` n’est plus publié sur l’hôte (dev : `127.0.0.1` seulement) ; MediaMTX reste sans authentification derrière le réseau Compose ; un Live WebRTC déjà établi continue après la fin de la session (Plus tard) ([PR #74](https://github.com/UlyssouLV/ArgOS/pull/74), [spec](../../specs/v0.6.2-authentification-des-flux.md), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md)).
+- **0.6.3** — Sécurisation d’ONVIF : ONVIF en HTTPS sur `443` quand la caméra le propose, clé du Certificat de l’Appareil mémorisée au premier contact puis vérifiée (clé changée ou HTTPS disparu refusés et signalés, l’Administrateur fait confiance au nouveau certificat ou l’oublie) ; ONVIF en clair seulement sur accord de l’Administrateur, mémorisé et révocable ; TLS ancien accepté et signalé ; mot de passe de caméra court (< 12 caractères) signalé à l’ajout ; port, clé et accord gardés tant que l’hôte ne change pas ; `# NOSONAR` de la 0.6.0 justifiés pour de bon. Bug connu : modifier l’URL d’une Caméra sans retaper son mot de passe enregistre `***` ([#86](https://github.com/UlyssouLV/ArgOS/issues/86), Plus tard) ([PR #85](https://github.com/UlyssouLV/ArgOS/pull/85), [spec](../../specs/v0.6.3-securisation-d-onvif.md), [ADR 0007](../../adr/0007-onvif-en-https-par-cle-memorisee.md), [doc](../../cameras/parametrer-une-camera.md)).
 
-## Prochaine : 0.6.3 — Sécurisation d’ONVIF
-
-**Objectif.** Que régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras : ArgOS parle ONVIF en HTTPS quand la caméra le propose, en mémorisant son certificat au premier contact (un certificat qui change ensuite est refusé et signalé), et ne retombe en HTTP que pour une caméra qui ne le propose pas, signalée dans ses Réglages. Un mot de passe de caméra trop court est signalé à l’ajout, puisque l’empreinte WS-Security (SHA-1, imposé par la norme) se casse hors ligne s’il est faible. Règle les vulnérabilités Sonar laissées en 0.6.0 (`# NOSONAR` qui renvoient à cette version, à retirer).
-
-**Hors périmètre :** isolement du réseau des caméras (VLAN, sans internet), dans la procédure d’installation (0.7.2) ; identifiants ONVIF distincts (Plus tard). Préalable, avec 0.6.2, à toute installation sur de vraies caméras.
-
-## Ensuite : 0.6.4 — Réglages image et vidéo par ONVIF
+## Prochaine : 0.6.4 — Réglages image et vidéo par ONVIF
 
 **Objectif.** Régler depuis les Réglages de la Caméra son image (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, contre-jour…) et sa vidéo (résolution, images par seconde, débit), lus et vérifiés après envoi, comme les Incrustations en 0.6.0.
 
@@ -128,3 +123,19 @@ Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui s
 ### Couper un Live WebRTC à la fin de la session
 
 Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.
+
+### Bug — Modifier l'URL d'une Caméra sans retaper son mot de passe enregistre *** comme mot de passe (#86)
+
+**Constat :** Dans **Modifier**, le champ « URL RTSP » d'une Caméra protégée par mot de passe s'affiche masqué (`rtsp://admin:***@…`). Si l'on change autre chose dans ce champ (chemin, requête, port) sans retaper le mot de passe, ArgOS enregistre `***` comme mot de passe : la Caméra passe `offline` et ses Réglages affichent « La caméra refuse ces identifiants en ONVIF. ».
+
+**Reproductibilité :** Caméra simulée 2 déclarée avec `admin:argos-simulee` ; **Modifier** → changer seulement `subtype=0` en `subtype=1` dans l'URL masquée → **Enregistrer** : la Caméra passe `offline`, l'URL stockée porte `***`. Enregistrer l'URL masquée inchangée garde bien le mot de passe.
+
+**Impact :** L'Administrateur qui corrige le chemin ou le port d'une Caméra perd son mot de passe sans avertissement : plus de Live, plus de Réglages, jusqu'à ce qu'il retape l'URL entière. Depuis la 0.6.3, une Caméra en ONVIF en clair afficherait en plus « Mot de passe court ». Le contact ONVIF (clé, port, accord) reste gardé.
+
+**Cause probable :** `modifier()` (`api/argos_api/cameras.py:368`) ne reconnaît que l'URL masquée renvoyée à l'identique ; toute autre URL est stockée telle quelle, `***` compris.
+
+**À corriger :** Modifier le chemin, la requête ou le port d'une Caméra sans retaper son mot de passe le garde ; seul un mot de passe réellement saisi le remplace.
+
+**Hors périmètre :** Aucun.
+
+**Suivi :** [#86](https://github.com/UlyssouLV/ArgOS/issues/86) (`bug`). Trouvé dans : 0.6.3 · Contexte : test humain · Date : 2026-10-16 · Priorité : Informations manquantes.

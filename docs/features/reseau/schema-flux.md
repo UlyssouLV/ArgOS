@@ -1,6 +1,6 @@
 # Schéma du réseau et des Flux
 
-Tout ce qui circule dans un Site ArgOS 0.6.2, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md) (Flux authentifiés par nginx). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
+Tout ce qui circule dans un Site ArgOS 0.6.3, des Caméras jusqu’au navigateur : protocoles, ports, réseaux et conteneurs, et pour chaque flux s’il est **chiffré** ou **en clair**. Source de vérité : `compose.yaml` (prod), `compose.simulation.yaml` (Caméras simulées, dev seulement), `compose.reseau-cameras.yaml` (réseau des caméras, prod Linux), `web/nginx.conf.template` (l’origine HTTPS), `media/mediamtx.yml`, [ADR 0001](../../adr/0001-mediamtx-en-pont.md) (MediaMTX en pont), [ADR 0004](../../adr/0004-hls-pour-les-flux-h265.md) (HLS pour les Flux H.265), [ADR 0005](../../adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md) (HTTPS par une origine unique), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md) (Flux authentifiés par nginx), [ADR 0007](../../adr/0007-onvif-en-https-par-cle-memorisee.md) (ONVIF en HTTPS par clé mémorisée). Installer l’Autorité du Site sur un poste : [Installer l’Autorité du Site](installer-l-autorite-du-site.md). Limites de sécurité : [sécurité](../../securite.md).
 
 ## En bref
 
@@ -8,7 +8,7 @@ Tout ce qui circule dans un Site ArgOS 0.6.2, des Caméras jusqu’au navigateur
 - Les ports HTTP `80` et `8080` ne font que **rediriger** vers HTTPS, et servir la partie publique de l’Autorité du Site (`/argos-ca.crt`).
 - Hors de l’origine HTTPS, la machine hôte ne publie plus que la vidéo WebRTC (`8189/udp`, chiffrée). **RTSP `8554`** est fermé sur l’hôte depuis la 0.6.2 : seuls les conteneurs du réseau Compose lisent le pont en RTSP.
 - Le service ponctuel `certificats` crée l’Autorité du Site et le certificat serveur avant `web`, puis s’arrête.
-- Côté Caméras, rien ne change : RTSP et ONVIF restent **en clair** sur le réseau des caméras.
+- Côté Caméras, RTSP reste **en clair** sur le réseau des caméras. ONVIF (les Réglages) part en **HTTPS sur `443`** quand la caméra le propose, sa clé mémorisée au premier contact ; en HTTP (**ONVIF en clair**) seulement après l’accord de l’Administrateur ([ONVIF](#onvif--https-dabord)).
 
 ## Schéma
 
@@ -17,12 +17,12 @@ Lecture : trait plein = flux continu ou à la demande ; trait épais = vidéo ve
 ```mermaid
 flowchart LR
     subgraph LANC["Réseau local du Site · côté Caméras"]
-        CAMR["Caméra réelle<br/>RTSP :554 · ONVIF HTTP :80 / :8899 / …<br/>H.264 ou H.265"]
+        CAMR["Caméra réelle<br/>RTSP :554 · ONVIF HTTPS :443<br/>ou HTTP :80 / :8899 / …<br/>H.264 ou H.265"]
     end
 
     subgraph HOTE["Machine hôte · Docker · ports publiés sur toutes ses interfaces : 443, 80, 8080, 8189/udp · 8554 fermé"]
         subgraph SIMU["Réseau Compose cameras-simulees · 172.30.0.0/24 · dev seulement"]
-            SIM["camera-simulee-1 · -2 · -3 · -4<br/>ffmpeg en boucle, RTSP :554<br/>ONVIF sur -2 et -4<br/>non publiées"]
+            SIM["camera-simulee-1 · -2 · -3 · -4<br/>ffmpeg en boucle, RTSP :554<br/>ONVIF : -2 HTTPS :443 + HTTP :8899, -4 HTTP :80<br/>non publiées"]
         end
         subgraph COMPOSE["Réseau Compose argos_default · DNS = noms de service · rien de publié sauf web et le WebRTC de mediamtx"]
             CERT["certificats · ponctuel<br/>crée l'Autorité du Site<br/>et le certificat serveur, puis s'arrête"]
@@ -61,8 +61,8 @@ flowchart LR
     CTRL -. configure .-> PONT
     API <-- "SQL :5432 · en clair, interne" --> DB
     API <-. "sonde RTSP :554 · en clair · 10 s<br/>Détection TCP + OPTIONS · essai à l'ajout" .-> CAMR
-    API <-. "ONVIF HTTP · en clair<br/>Réglages, à la demande" .-> CAMR
-    API <-. "sonde, Détection, essai, ONVIF<br/>en clair" .-> SIM
+    API <-. "ONVIF HTTPS :443 · chiffré, clé mémorisée<br/>HTTP en clair seulement sur accord<br/>Réglages, à la demande" .-> CAMR
+    API <-. "sonde, Détection, essai · en clair<br/>ONVIF : HTTPS (-2), en clair sur accord (-4)" .-> SIM
 ```
 
 Le schéma ne montre pas la Détection qui frappe à l’hôte du Site lui-même (HTTPS `:443`, voir [Détection](#détection)), ni le réseau des caméras en macvlan de la prod Linux ([ADR 0003](../../adr/0003-macvlan-sur-la-prise-des-cameras.md)) : `api` y parle aux mêmes caméras, sans NAT, et n’y sert aucune requête.
@@ -105,7 +105,8 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 | `api` → chaque adresse des sous-réseaux autorisés | TCP · ports caméra (`554,8554` par défaut), puis RTSP `OPTIONS` | en clair | à chaque Détection (clic dans l’Administration), une dizaine de secondes | connexion, puis `OPTIONS` sans chemin ni identifiants ; une ligne de statut RTSP en retour → Candidat |
 | `api` → chaque Candidat | HTTPS · `:443` (`ARGOS_PORT_HTTPS`) `GET /api/instance` | **chiffré** (TLS) | à chaque Détection, Candidats seulement | jeton d’instance, et certificat présenté comparé à celui du Site : l’hôte d’ArgOS est écarté |
 | `api` → un Candidat (ou une IP saisie) | RTSP/TCP · son port (`554` par défaut) | en clair (identifiants en Digest ou en Basic, selon la caméra) | à chaque essai d’ajout, un à la fois | `OPTIONS`, puis `DESCRIBE` sur les chemins courants jusqu’au premier `200`, puis la sonde ([Ajouter une Caméra](../../cameras/ajouter-une-camera.md)) |
-| `api` → une Caméra active | HTTP · port ONVIF (`80`, `8899`, `2000`, `8000`, `8080` essayés) | en clair (mot de passe en empreinte WS-Security) | à l’ouverture et à l’enregistrement des Réglages | lecture et réglage des Incrustations et de l’Horloge ([Paramétrer une Caméra](../../cameras/parametrer-une-camera.md)) |
+| `api` → une Caméra active | HTTPS · `:443` | **chiffré** (TLS 1.0 à 1.3, clé du Certificat de l’Appareil mémorisée au premier contact, vérifiée à chaque connexion) | à l’ouverture et à l’enregistrement des Réglages, et à la mise à l’heure | lecture et réglage des Incrustations et de l’Horloge, mot de passe en empreinte WS-Security ([Paramétrer une Caméra](../../cameras/parametrer-une-camera.md)) |
+| `api` → une Caméra active sans HTTPS | HTTP · port ONVIF (`80`, `8899`, `2000`, `8000`, `8080` essayés) | en clair | même moment, mais seulement si la caméra ne répond pas en HTTPS ; au-delà de la sonde, **seulement après l’accord** de l’Administrateur (ONVIF en clair) | sonde : `GetSystemDateAndTime` sans identifiants ; après l’accord : les mêmes requêtes qu’en HTTPS, mot de passe en empreinte WS-Security (SHA-1) |
 | `mediamtx` (`camera-<id>`) → source de la Caméra | RTSP/TCP | en clair | seulement pendant qu’un poste regarde | le Flux de la Caméra, relayé sans réencodage |
 | `mediamtx` (`apercu-<jeton>`) → Candidat | RTSP/TCP | en clair | pendant qu’un ajout montre l’Aperçu | le Flux du Candidat, identifiants de l’essai compris |
 | ffmpeg → Caméra simulée (son chemin) | RTSP · `127.0.0.1:554`, dans chaque conteneur `camera-simulee-N` | en clair, dans le conteneur | en continu (dev) | la vidéo de dev, sans réencodage |
@@ -130,9 +131,26 @@ Sur les ports HTTP (`80` et `8080` de l’hôte, `8080` dans le conteneur), ngin
 
 ## Ce qui reste en clair
 
-- **Vers les caméras** : RTSP (Flux, sonde, Détection, essai) et ONVIF partent en clair sur le réseau des caméras, jusqu’à la sécurisation d’ONVIF (0.6.3).
+- **Vers les caméras** : RTSP (Flux, sonde, Détection, essai) part en clair sur le réseau des caméras. ONVIF aussi, mais seulement pour une Caméra en **ONVIF en clair** (caméra sans HTTPS, accord de l’Administrateur), et pour la recherche du port (`GetSystemDateAndTime` sans identifiants) d’une caméra qui ne répond pas en HTTPS.
 - **Dans la machine hôte** : `web` relaie en HTTP vers `api` et `mediamtx`, sur le réseau Compose, et le pont y sert RTSP `8554` sans authentification ; rien de ce trafic ne sort sur le réseau local.
 - **`/argos-ca.crt` en HTTP** : un poste du réseau pourrait le remplacer en route ; d’où l’empreinte à comparer avant de l’installer ([Installer l’Autorité du Site](installer-l-autorite-du-site.md#3-comparer-lempreinte)).
+
+## ONVIF : HTTPS d’abord
+
+Les Réglages d’une Caméra passent par ONVIF, de `api` vers la caméra, seulement quand l’Administrateur ouvre ses Réglages, enregistre ou met la caméra à l’heure ([ADR 0007](../../adr/0007-onvif-en-https-par-cle-memorisee.md), [sécurité](../../securite.md#onvif--réglages-chiffrés-clé-de-lappareil-mémorisée)) :
+
+```
+api ──HTTPS :443 GetSystemDateAndTime (sans identifiants)──▶ caméra
+    ├─ réponse SOAP en TLS → ONVIF chiffré : clé comparée (mémorisée au premier contact), puis Réglages en HTTPS
+    ├─ pas de HTTPS, Caméra déjà en HTTPS → refus « HTTPS indisponible », rien d'autre ne part
+    └─ pas de HTTPS sinon → recherche du port HTTP (80, 8899, 2000, 8000, 8080 ; sans identifiants)
+         ├─ sans l'accord de l'Administrateur → refus « ONVIF en clair non accepté », rien d'autre ne part
+         └─ avec l'accord → Réglages en HTTP (ONVIF en clair)
+```
+
+- **Clé vérifiée sur chaque connexion TLS** de l’échange, pas seulement à la sonde : une autre clé arrête tout avant la première requête authentifiée (« Le certificat de cette caméra a changé. »).
+- **Adresses de service reconstruites** : la caméra annonce l’adresse de ses services (média…) dans `GetCapabilities` (`XAddr`), souvent en `http://…` même jointe en HTTPS, parfois sous un autre hôte ou port. ArgOS n’en garde que le **chemin** : schéma, hôte et port sont ceux du contact retenu (`https://<hôte>:443/onvif/media_service`). Aucune requête ne repart donc en clair, ni vers une autre adresse.
+- **Ce qui est retenu** sur la Caméra, en base : schéma et port, empreinte de la clé et sa date, accord ONVIF en clair. Jamais les réglages eux-mêmes. Le tout suit l’hôte de l’URL RTSP (gardé au changement d’IP par la MAC, effacé si l’Administrateur change l’hôte).
 
 ## Détection
 

@@ -25,6 +25,18 @@ export type Camera = {
   chemin_flux: string | null;
 };
 
+/**
+ * En dessous, un mot de passe de caméra est signalé comme court : en ONVIF, il part en empreinte WS-Security
+ * (SHA-1, imposé par la norme), qui se casse hors ligne s'il est faible.
+ */
+export const LONGUEUR_MOT_DE_PASSE_SUR = 12;
+
+/** De 1 à `LONGUEUR_MOT_DE_PASSE_SUR` - 1 caractères ; sans mot de passe : non. */
+export function motDePasseCourt(motDePasse: string): boolean {
+  const longueur = [...motDePasse].length;
+  return longueur > 0 && longueur < LONGUEUR_MOT_DE_PASSE_SUR;
+}
+
 export type SaisieCamera = { nom: string; url_rtsp: string; emplacement: string | null };
 
 /** MAC à afficher ; « — » si inconnue (réseau routé, Caméra d'avant la 0.4.2). */

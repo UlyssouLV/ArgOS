@@ -44,6 +44,8 @@ Version **0.6.1** : le Site n’est plus servi qu’en **HTTPS**, sous une seule
 
 Version **0.6.2** : regarder une Caméra passe par la **connexion** d’ArgOS. Le Live et l’Aperçu (WebRTC et HLS) ne sont relayés qu’à une **session** valide (`401` sinon), et l’UI revient à la connexion quand un Flux est refusé. Le RTSP du pont (`8554`) n’est plus publié sur l’hôte : il n’est plus lisible depuis le réseau local (en dev, la simulation le republie sur `127.0.0.1:8554` seulement). Un Live WebRTC déjà ouvert continue après la déconnexion (voir [sécurité](docs/securite.md), [ADR 0006](docs/adr/0006-flux-authentifies-par-nginx.md)).
 
+Version **0.6.3** : régler une Caméra ne livre plus son mot de passe ni ses réglages à qui écoute le réseau des caméras. ArgOS parle **ONVIF en HTTPS** sur `443` quand la caméra le propose, en mémorisant la clé de son certificat (le **Certificat de l’Appareil**) au premier contact ; une clé qui change ensuite, ou un HTTPS qui disparaît, est refusé et signalé, et l’Administrateur tranche dans les Réglages. Une caméra sans HTTPS n’est réglée en clair qu’après son accord (**ONVIF en clair**). Un mot de passe de caméra de moins de 12 caractères est signalé à l’ajout (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos), [sécurité](docs/securite.md), [ADR 0007](docs/adr/0007-onvif-en-https-par-cle-memorisee.md)).
+
 ## Prérequis
 
 - Docker (Docker Desktop sur Mac) avec Docker Compose

@@ -3,16 +3,22 @@
 Seulement les opérations dont ArgOS se sert pour les Réglages de la Caméra (README.md). Lancé dans le réseau
 d'une Caméra simulée (compose.simulation.yaml), il lui donne une interface ONVIF : même IP, même MAC.
 
-Configuration par variables d'environnement : `ONVIF_PORT` (80 par défaut), `ONVIF_IDENTIFIANT` et
-`ONVIF_MOT_DE_PASSE` (WS-Security exigé seulement s'ils sont tous deux renseignés), `ONVIF_TYPES_CREABLES`
-(types d'Incrustation que la caméra sait recréer, séparés par des virgules ; les deux par défaut).
-`python camera_onvif.py sonde` lit l'heure du service local : healthcheck du conteneur.
+Configuration par variables d'environnement : `ONVIF_PORT` (HTTP) et `ONVIF_PORT_HTTPS` (HTTPS), l'un, l'autre
+ou les deux (HTTP sur 80 si aucun) ; en HTTPS, `ONVIF_CERTIFICAT` et `ONVIF_CLE` (chemins du certificat et de sa clé,
+créés auto-signés s'ils n'existent pas) ; `ONVIF_IDENTIFIANT` et `ONVIF_MOT_DE_PASSE` (WS-Security exigé seulement
+s'ils sont tous deux renseignés), `ONVIF_TYPES_CREABLES` (types d'Incrustation que la caméra sait recréer, séparés
+par des virgules ; les deux par défaut), `ONVIF_TLS_MAX` (version TLS la plus haute servie, `1.0` à `1.3` : une
+caméra ancienne). HTTP et HTTPS servent la même caméra (même état). Chaque requête est journalisée avec son schéma
+et son port (`https:443`, `http:8899`) : les tests y lisent ce que la caméra a reçu, et par où.
+`python camera_onvif.py sonde` lit l'heure du service local sur chaque port : healthcheck du conteneur.
 """
 
 import base64
 import hashlib
 import hmac
 import os
+import ssl
+import subprocess
 import sys
 import threading
 import urllib.request
@@ -24,6 +30,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 CHEMIN_APPAREIL = "/onvif/device_service"
 CHEMIN_MEDIA = "/onvif/media_service"
+OPENSSL = "/usr/bin/openssl"
 
 # Espaces de noms XML : des noms imposés par SOAP et ONVIF, jamais appelés (NOSONAR définitif).
 ENV = "http://www.w3.org/2003/05/soap-envelope"  # NOSONAR
@@ -119,7 +126,7 @@ def _verifier_identifiants(entete: ET.Element | None, identifiants: tuple[str, s
     except ValueError:
         raise Faute("ter:NotAuthorized", "Nonce illisible") from None
     attendue = base64.b64encode(
-        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()  # NOSONAR : SHA-1 imposé par WS-Security, risque traité en 0.6.3
+        hashlib.sha1(nonce + _texte(jeton, "wsu:Created").encode() + mot_de_passe.encode()).digest()  # NOSONAR : SHA-1 imposé par WS-Security
     ).decode()
     bon_identifiant = hmac.compare_digest(_texte(jeton, "wsse:Username"), identifiant)
     bonne_empreinte = hmac.compare_digest(_texte(jeton, "wsse:Password"), attendue)
@@ -367,14 +374,41 @@ class Camera:
 # --- Serveur HTTP -----------------------------------------------------------------------------------------------
 
 
-def creer_serveur(
-    adresse: str, port: int, identifiants: tuple[str, str] | None = None, types_creables: tuple[str, ...] = TYPES_TEXTE
-) -> ThreadingHTTPServer:
-    """Serveur d'une Caméra simulée neuve (« sortie d'usine ») ; `identifiants` : WS-Security exigé.
+def assurer_certificat(certificat: str, cle: str) -> None:
+    """Crée un certificat auto-signé et sa clé s'ils n'existent pas ; sinon les garde, pour une clé stable."""
+    if os.path.exists(certificat) and os.path.exists(cle):
+        return
+    subprocess.run(
+        [
+            OPENSSL, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
+            "-subj", "/CN=camera-simulee-onvif", "-keyout", cle, "-out", certificat,
+        ],
+        check=True,
+        capture_output=True,
+    )
 
-    `types_creables` : types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte.
+
+# Versions de `ONVIF_TLS_MAX`.
+VERSIONS_TLS = {
+    "1.0": ssl.TLSVersion.TLSv1,
+    "1.1": ssl.TLSVersion.TLSv1_1,
+    "1.2": ssl.TLSVersion.TLSv1_2,
+    "1.3": ssl.TLSVersion.TLSv1_3,
+}
+
+
+def creer_serveur(
+    adresse: str,
+    port: int,
+    camera: Camera,
+    certificat: tuple[str, str] | None = None,
+    tls_max: ssl.TLSVersion | None = None,
+) -> ThreadingHTTPServer:
+    """Serveur de `camera` en HTTP, ou en HTTPS avec `certificat` (chemins du certificat et de sa clé).
+
+    `tls_max` : version TLS la plus haute servie ; sous TLS 1.2, celle d'une caméra ancienne.
     """
-    camera = Camera(identifiants, types_creables)
+    schema = "https" if certificat else "http"
 
     class Requetes(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -392,34 +426,85 @@ def creer_serveur(
             self.wfile.write(donnees)
 
         def log_message(self, format: str, *args) -> None:
-            sys.stderr.write(f"{self.address_string()} {format % args}\n")
+            sys.stderr.write(f"{self.address_string()} {schema}:{self.server.server_address[1]} {format % args}\n")
 
-    return ThreadingHTTPServer((adresse, port), Requetes)
+    serveur = ThreadingHTTPServer((adresse, port), Requetes)
+    if certificat:
+        contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        contexte.minimum_version = ssl.TLSVersion.TLSv1_2
+        if tls_max is not None:
+            if tls_max < ssl.TLSVersion.TLSv1_2:
+                # Caméra ancienne simulée : OpenSSL 3 n'accepte TLS 1.0 et 1.1 qu'au niveau de sécurité 0.
+                contexte.minimum_version = tls_max  # NOSONAR : simulation d'une caméra ancienne, jamais en prod
+                contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : simulation d'une caméra ancienne
+            contexte.maximum_version = tls_max
+        contexte.load_cert_chain(*certificat)
+        # Poignée de main dans le fil de chaque requête, pas dans celui qui accepte les connexions.
+        serveur.socket = contexte.wrap_socket(serveur.socket, server_side=True, do_handshake_on_connect=False)
+    return serveur
 
 
-def sonder(port: int) -> None:
+def sonder(port: int, https: bool) -> None:
     """Healthcheck : le service local répond à GetSystemDateAndTime."""
+    contexte = None
+    if https:
+        # Sonde locale du certificat auto-signé de la simulation : rien à vérifier.
+        contexte = ssl.create_default_context()  # NOSONAR : sonde locale d'un certificat auto-signé de dev
+        contexte.check_hostname = False  # NOSONAR : sonde locale d'un certificat auto-signé de dev
+        contexte.verify_mode = ssl.CERT_NONE  # NOSONAR : sonde locale d'un certificat auto-signé de dev
+        # Toute version servie, `ONVIF_TLS_MAX` compris : OpenSSL 3 n'accepte TLS 1.0 et 1.1 qu'au niveau 0.
+        contexte.minimum_version = ssl.TLSVersion.TLSv1  # NOSONAR : sonde locale d'une caméra ancienne simulée
+        contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : sonde locale d'une caméra ancienne simulée
     requete = urllib.request.Request(
-        f"http://127.0.0.1:{port}{CHEMIN_APPAREIL}",
+        f"{'https' if https else 'http'}://127.0.0.1:{port}{CHEMIN_APPAREIL}",
         data=_enveloppe("<tds:GetSystemDateAndTime/>").encode(),
         headers={"Content-Type": "application/soap+xml; charset=utf-8"},
     )
-    with urllib.request.urlopen(requete, timeout=3) as reponse:
+    with urllib.request.urlopen(requete, timeout=3, context=contexte) as reponse:
         if b"GetSystemDateAndTimeResponse" not in reponse.read():
             raise SystemExit(1)
 
 
+def _ports() -> dict[bool, int]:
+    """Ports servis, par `https` : ceux qui sont renseignés, ou HTTP sur 80 si aucun."""
+    ports = {
+        https: int(valeur)
+        for https, valeur in ((False, os.environ.get("ONVIF_PORT")), (True, os.environ.get("ONVIF_PORT_HTTPS")))
+        if valeur
+    }
+    return ports or {False: 80}
+
+
 def main() -> None:
-    port = int(os.environ.get("ONVIF_PORT") or 80)
+    ports = _ports()
     if sys.argv[1:] == ["sonde"]:
-        sonder(port)
+        for https, port in ports.items():
+            sonder(port, https)
         return
+    certificat = None
+    if True in ports:
+        certificat = (os.environ.get("ONVIF_CERTIFICAT", ""), os.environ.get("ONVIF_CLE", ""))
+        if not all(certificat):
+            raise SystemExit("HTTPS : ONVIF_CERTIFICAT et ONVIF_CLE exigés")
+        assurer_certificat(*certificat)
     identifiant, mot_de_passe = os.environ.get("ONVIF_IDENTIFIANT", ""), os.environ.get("ONVIF_MOT_DE_PASSE", "")
     identifiants = (identifiant, mot_de_passe) if identifiant and mot_de_passe else None
     types = tuple(t.strip() for t in (os.environ.get("ONVIF_TYPES_CREABLES") or ",".join(TYPES_TEXTE)).split(",") if t.strip())
-    serveur = creer_serveur("0.0.0.0", port, identifiants, types)
-    print(f"Caméra simulée ONVIF sur le port {port}, {'avec' if identifiants else 'sans'} identifiants", flush=True)
-    serveur.serve_forever()
+    camera = Camera(identifiants, types)
+    tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
+    fils = []
+    for https, port in ports.items():
+        serveur = creer_serveur("0.0.0.0", port, camera, certificat if https else None, tls_max)
+        fils.append(threading.Thread(target=serveur.serve_forever))
+        print(
+            f"Caméra simulée ONVIF en {'HTTPS' if https else 'HTTP'} sur le port {port}, "
+            f"{'avec' if identifiants else 'sans'} identifiants",
+            flush=True,
+        )
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join()
 
 
 if __name__ == "__main__":

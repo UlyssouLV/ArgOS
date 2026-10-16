@@ -1,14 +1,20 @@
-"""Fixtures : une Caméra simulée ONVIF lancée dans le processus des tests, interrogée en SOAP par HTTP.
+"""Fixtures : une Caméra simulée ONVIF lancée dans le processus des tests, interrogée en SOAP par HTTP ou HTTPS.
 
 `camera` répond sans identifiants (comme la Caméra simulée 4) ; `camera_protegee` exige ceux de la
-Caméra simulée 2 ; `camera_sans_recreation_de_la_date` ne sait recréer que le nom. Chaque test part d'une caméra neuve, « sortie d'usine ».
+Caméra simulée 2 ; `camera_sans_recreation_de_la_date` ne sait recréer que le nom ; `camera_https_et_http` est
+une seule caméra avec identifiants, jointe en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans
+un dossier temporaire. Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
 import base64
+import contextlib
 import hashlib
 import os
+import socket
+import ssl
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -17,7 +23,8 @@ from xml.sax.saxutils import escape
 
 import pytest
 
-from camera_onvif import creer_serveur
+import camera_onvif
+from camera_onvif import assurer_certificat, creer_serveur
 
 IDENTIFIANTS = ("admin", "argos-simulee")
 CHEMIN_APPAREIL = "/onvif/device_service"
@@ -72,10 +79,26 @@ def entete_securite(identifiant: str, mot_de_passe: str) -> str:
     )
 
 
+def contexte_sans_verification() -> ssl.SSLContext:
+    """Client TLS qui accepte le certificat auto-signé de la simulation : il est comparé à part, quand il compte."""
+    contexte = ssl.create_default_context()
+    contexte.check_hostname = False
+    contexte.verify_mode = ssl.CERT_NONE
+    return contexte
+
+
+def certificat_presente(adresse: tuple[str, int]) -> bytes:
+    """Certificat (DER) que présente un service HTTPS."""
+    with socket.create_connection(adresse, timeout=5) as brut:
+        with contexte_sans_verification().wrap_socket(brut) as tls:
+            return tls.getpeercert(binary_form=True)
+
+
 class Camera:
     def __init__(self, url: str, identifiants: tuple[str, str] | None) -> None:
         self.url = url
         self.identifiants = identifiants
+        self.contexte = contexte_sans_verification() if url.startswith("https://") else None
 
     def appeler(self, corps: str, chemin: str = CHEMIN_APPAREIL, identifiants: tuple[str, str] | None = ...) -> Reponse:
         """Envoie une opération SOAP 1.2 (`corps` : l'élément de l'opération, préfixes tds/trt/tt déclarés)."""
@@ -91,29 +114,40 @@ class Camera:
             headers={"Content-Type": "application/soap+xml; charset=utf-8"},
         )
         try:
-            with urllib.request.urlopen(requete, timeout=5) as reponse:
+            with urllib.request.urlopen(requete, timeout=5, context=self.contexte) as reponse:
                 return Reponse(reponse.status, ET.fromstring(reponse.read()))
         except urllib.error.HTTPError as erreur:
             return Reponse(erreur.code, ET.fromstring(erreur.read()))
 
-    def chemin_media(self) -> str:
-        """Chemin du service média, tel que la caméra l'annonce (GetCapabilities)."""
-        adresse = self.appeler('<tds:GetCapabilities><tds:Category>Media</tds:Category></tds:GetCapabilities>').texte(
+    def adresse_media(self) -> str:
+        """Adresse du service média, telle que la caméra l'annonce (GetCapabilities)."""
+        return self.appeler('<tds:GetCapabilities><tds:Category>Media</tds:Category></tds:GetCapabilities>').texte(
             ".//tt:Media/tt:XAddr"
         )
-        assert adresse.startswith(self.url), adresse
-        return adresse.removeprefix(self.url)
+
+    def chemin_media(self) -> str:
+        """Chemin du service média annoncé : seul le chemin sert, comme chez ArgOS (une caméra jointe en HTTPS
+        annonce souvent `http://…`)."""
+        return urllib.parse.urlsplit(self.adresse_media()).path
 
     def media(self, corps: str) -> Reponse:
         return self.appeler(corps, chemin=self.chemin_media())
 
 
 def _lancer(identifiants: tuple[str, str] | None, types_creables: tuple[str, ...] | None = None):
-    serveur = creer_serveur("127.0.0.1", 0, identifiants, *([types_creables] if types_creables else []))
+    camera = camera_onvif.Camera(identifiants, *([types_creables] if types_creables else []))
+    with _servir(camera) as url:
+        yield Camera(url, identifiants)
+
+
+@contextlib.contextmanager
+def _servir(camera: camera_onvif.Camera, certificat: tuple[str, str] | None = None):
+    """Sert `camera` sur un port libre, en HTTPS avec `certificat` ; donne son URL de base."""
+    serveur = creer_serveur("127.0.0.1", 0, camera, certificat)
     fil = threading.Thread(target=serveur.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     fil.start()
     try:
-        yield Camera(f"http://127.0.0.1:{serveur.server_address[1]}", identifiants)
+        yield f"{'https' if certificat else 'http'}://127.0.0.1:{serveur.server_address[1]}"
     finally:
         serveur.shutdown()
         serveur.server_close()
@@ -133,3 +167,19 @@ def camera_protegee():
 def camera_sans_recreation_de_la_date():
     """Comme `camera`, mais n'annonce ni ne sait recréer l'Incrustation de la date et de l'heure."""
     yield from _lancer(None, ("Plain",))
+
+
+@dataclass
+class CameraHttpsEtHttp:
+    https: Camera
+    http: Camera
+    certificat: str
+
+
+@pytest.fixture
+def camera_https_et_http(tmp_path):
+    certificat = (str(tmp_path / "certificat.pem"), str(tmp_path / "cle.pem"))
+    assurer_certificat(*certificat)
+    camera = camera_onvif.Camera(IDENTIFIANTS)
+    with _servir(camera, certificat) as url_https, _servir(camera) as url_http:
+        yield CameraHttpsEtHttp(Camera(url_https, IDENTIFIANTS), Camera(url_http, IDENTIFIANTS), certificat[0])

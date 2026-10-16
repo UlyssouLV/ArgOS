@@ -1,11 +1,20 @@
 """Client ONVIF du Site : lit et modifie les Réglages de la Caméra (Horloge de son Appareil, Incrustations).
 
-L'appelant donne l'URL RTSP de la Caméra et le port ONVIF retenu ; il reçoit les Réglages lus (ou, après une
-modification, le résultat de chaque champ envoyé ; après une mise à l'heure, l'Horloge relue) et le port qui a
-répondu, ou une `ErreurOnvif` avec son code.
-SOAP, recherche du port, profils et tokens restent ici.
+L'appelant donne l'URL RTSP de la Caméra et le contact retenu (schéma, port, empreinte de la clé mémorisée) ; il
+reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après une mise à l'heure,
+l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
+SOAP, recherche du port, TLS, profils et tokens restent ici.
 
-- Port : celui retenu s'il répond encore en SOAP, sinon recherche sur les ports courants, dans leur ordre.
+- Contact (docs/adr/0007-onvif-en-https-par-cle-memorisee.md) : HTTPS sur `443` d'abord, à chaque échange (une
+  Caméra retenue en HTTP y passe dès que la caméra le propose) ; sinon le port HTTP retenu s'il répond encore en
+  SOAP, sinon recherche sur les ports HTTP courants, dans leur ordre. Une Caméra retenue en HTTPS n'est jamais
+  cherchée en HTTP : sans HTTPS, refus (`https_indisponible`).
+- ONVIF en clair : en HTTP, seule la sonde (`GetSystemDateAndTime` sans identifiants) part sans l'accord de
+  l'Administrateur ; sans lui, refus (`en_clair_non_accepte`).
+- TLS : ni autorité, ni nom, ni expiration (certificats auto-signés, adressés par IP) ; la clé publique (SPKI) du
+  Certificat de l'Appareil est comparée sur chaque connexion à celle mémorisée, ou, au premier contact, à la
+  première vue dans l'échange. TLS 1.0 minimum, pour ce seul client.
+- Adresses de service : seul le chemin des `XAddr` annoncés sert ; schéma, hôte et port sont ceux du contact.
 - Identifiants : ceux de l'URL RTSP, en WS-Security (empreinte) ; aucun si l'URL n'en a pas.
 - Incrustations : celles de la première source vidéo (premier profil média).
 - Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
@@ -19,11 +28,15 @@ WSDL ONVIF d'`onvif-zeep` (licence MIT, `wsdl/LICENSE`), lus par `zeep` : `onvif
 sources, et l'image de l'API n'installe que des roues.
 """
 
+import hashlib
 import logging
+import ssl
+import warnings
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from functools import cache
@@ -33,7 +46,11 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 import zeep
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from requests.adapters import HTTPAdapter
+from urllib3.exceptions import InsecureRequestWarning
 from zeep.exceptions import Error as ErreurZeep
 from zeep.exceptions import Fault, TransportError
 from zeep.transports import Transport
@@ -42,8 +59,12 @@ from zeep.wsse.username import UsernameToken
 
 from argos_api import fuseaux
 
-# Ports ONVIF courants, dans l'ordre de recherche : 8899 est celui des caméras XiongMai.
+# HTTPS sondé d'abord, sur ce seul port.
+PORT_HTTPS = 443
+# Ports ONVIF HTTP courants, dans l'ordre de recherche : 8899 est celui des caméras XiongMai.
 PORTS_ONVIF = (80, 8899, 2000, 8000, 8080)
+# Versions TLS acceptées vers les caméras mais signalées « TLS ancien » (`ssl.SSLSocket.version()`).
+VERSIONS_TLS_ANCIENNES = ("TLSv1", "TLSv1.1")
 CHEMIN_APPAREIL = "/onvif/device_service"
 # Délais courts : une caméra du réseau local répond vite, ou ne répondra pas.
 DELAI_CONNEXION_S = 2
@@ -58,8 +79,14 @@ DEMANDE_HEURE = (
 ).encode()
 
 journal = logging.getLogger("argos_api.onvif")
+# Seul client sans vérification d'autorité, voulu (la clé est comparée à part) : urllib3 le signalerait à chaque
+# requête.
+warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
-CodeErreur = Literal["sans_onvif", "identifiants_refuses", "injoignable"]
+CodeErreur = Literal[
+    "sans_onvif", "identifiants_refuses", "injoignable", "certificat_change", "https_indisponible", "en_clair_non_accepte"
+]
+Schema = Literal["https", "http"]
 Coin = Literal["UpperLeft", "UpperRight", "LowerLeft", "LowerRight"]
 Position = Coin | Literal["Custom"]
 CleIncrustation = Literal["nom", "date_heure"]
@@ -70,9 +97,37 @@ COINS_PAR_DEFAUT: dict[CleIncrustation, Coin] = {"nom": "UpperLeft", "date_heure
 
 
 class ErreurOnvif(Exception):
-    def __init__(self, code: CodeErreur) -> None:
+    def __init__(self, code: CodeErreur, empreinte_vue: str | None = None) -> None:
         super().__init__(code)
         self.code = code
+        # `certificat_change` : empreinte de la clé que la caméra présente.
+        self.empreinte_vue = empreinte_vue
+
+
+@dataclass(frozen=True)
+class Retenu:
+    """Ce que le Site a retenu de la caméra ; `None` : rien encore."""
+
+    schema: Schema | None = None
+    port: int | None = None
+    # Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil, mémorisée au premier contact.
+    empreinte: str | None = None
+    # L'Administrateur accepte l'ONVIF en clair, pour une caméra sans HTTPS.
+    en_clair_accepte: bool = False
+
+
+@dataclass(frozen=True)
+class Contact:
+    """Schéma et port qui ont répondu ; en HTTPS, l'empreinte de la clé présentée et la version TLS négociée."""
+
+    schema: Schema
+    port: int
+    empreinte: str | None = None
+    version_tls: str | None = None
+
+    @property
+    def tls_ancien(self) -> bool:
+        return self.version_tls in VERSIONS_TLS_ANCIENNES
 
 
 class Horloge(BaseModel):
@@ -183,71 +238,180 @@ class ResultatModification(BaseModel):
 
 
 def lire_reglages(
-    url_rtsp: str, port_retenu: int | None, maintenant: Callable[[], datetime]
-) -> tuple[Reglages, int]:
-    """Réglages lus sur la caméra de `url_rtsp`, et port ONVIF qui a répondu. Lève `ErreurOnvif`."""
-    camera, port = _joindre(url_rtsp, port_retenu)
+    url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]
+) -> tuple[Reglages, Contact]:
+    """Réglages lus sur la caméra de `url_rtsp`, et contact qui a répondu. Lève `ErreurOnvif`."""
+    camera, contact = _joindre(url_rtsp, retenu)
     with _erreurs_onvif():
-        return camera.lire(maintenant), port
+        return camera.lire(maintenant), contact
 
 
 def modifier_reglages(
-    url_rtsp: str, port_retenu: int | None, modification: ModificationReglages, maintenant: Callable[[], datetime]
-) -> tuple[ResultatModification, int]:
+    url_rtsp: str, retenu: Retenu, modification: ModificationReglages, maintenant: Callable[[], datetime]
+) -> tuple[ResultatModification, Contact]:
     """Envoie chaque champ de `modification` à la caméra, la relit, et dit si chacun a été pris. Lève `ErreurOnvif`."""
-    camera, port = _joindre(url_rtsp, port_retenu)
+    camera, contact = _joindre(url_rtsp, retenu)
     with _erreurs_onvif():
-        return camera.modifier(modification, maintenant), port
+        return camera.modifier(modification, maintenant), contact
 
 
 def mettre_a_l_heure(
-    url_rtsp: str, port_retenu: int | None, maintenant: Callable[[], datetime]
-) -> tuple[Horloge, int]:
+    url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]
+) -> tuple[Horloge, Contact]:
     """Met la caméra à l'heure du Site (mode manuel, fuseau gardé), puis relit son Horloge. Lève `ErreurOnvif`."""
-    camera, port = _joindre(url_rtsp, port_retenu)
+    camera, contact = _joindre(url_rtsp, retenu)
     with _erreurs_onvif():
-        return camera.mettre_a_l_heure(maintenant), port
+        return camera.mettre_a_l_heure(maintenant), contact
 
 
-def _joindre(url_rtsp: str, port_retenu: int | None) -> tuple["_Camera", int]:
+def _joindre(url_rtsp: str, retenu: Retenu) -> tuple["_Camera", Contact]:
     morceaux = urlsplit(url_rtsp)
     hote = morceaux.hostname or ""
     identifiants = (unquote(morceaux.username), unquote(morceaux.password or "")) if morceaux.username else None
-    port = _trouver_port(hote, port_retenu)
-    return _Camera(hote, port, identifiants), port
+    tls = _contexte_tls(retenu.empreinte)
+    session = _session(tls)
+    contact = _trouver_contact(session, tls, hote, retenu)
+    return _Camera(session, hote, contact, identifiants), contact
 
 
-# --- Recherche du port ------------------------------------------------------------------------------------------
+def _adresse(contact: Contact, hote: str, chemin: str) -> str:
+    return f"{contact.schema}://{hote}:{contact.port}{chemin}"
+
+
+# --- TLS --------------------------------------------------------------------------------------------------------
+
+
+class _ContexteTls(ssl.SSLContext):
+    """Contexte TLS d'un échange avec une caméra : chaque connexion doit présenter la clé attendue.
+
+    Attendue : celle mémorisée ; au premier contact, la première vue dans l'échange.
+    """
+
+    attendue: str | None
+    # Version TLS de la dernière connexion (`TLSv1.3`…).
+    version: str | None
+
+    def wrap_socket(self, sock: Any, *args: Any, **kwargs: Any) -> ssl.SSLSocket:
+        tls = super().wrap_socket(sock, *args, **kwargs)
+        empreinte = empreinte_spki(tls.getpeercert(binary_form=True) or b"")
+        if self.attendue is None:
+            self.attendue = empreinte
+        if empreinte != self.attendue:
+            tls.close()
+            # Hors des erreurs réseau : ni urllib3 ni zeep ne la retraduisent, rien d'autre ne part.
+            raise ErreurOnvif("certificat_change", empreinte_vue=empreinte)
+        self.version = tls.version()
+        return tls
+
+
+def _contexte_tls(attendue: str | None) -> _ContexteTls:
+    contexte = _ContexteTls(ssl.PROTOCOL_TLS_CLIENT)
+    # Ni autorité, ni nom, ni expiration : les caméras signent elles-mêmes, pour une IP. La clé est comparée à
+    # chaque connexion (wrap_socket), docs/adr/0007-onvif-en-https-par-cle-memorisee.md.
+    contexte.check_hostname = False
+    contexte.verify_mode = ssl.CERT_NONE  # NOSONAR : clé du Certificat de l'Appareil comparée à chaque connexion
+    # TLS 1.0 minimum pour ce seul client : un TLS ancien avec une clé mémorisée vaut mieux que du clair. OpenSSL 3
+    # ne l'accepte qu'au niveau de sécurité 0.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        contexte.minimum_version = ssl.TLSVersion.TLSv1  # NOSONAR : caméras anciennes, signalées « TLS ancien »
+    contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : TLS 1.0 des caméras anciennes, ADR 0007
+    contexte.attendue = attendue
+    contexte.version = None
+    return contexte
+
+
+def empreinte_spki(certificat_der: bytes) -> str:
+    """SHA-256 (hexadécimal) de la clé publique (SPKI) d'un certificat : stable quand la caméra le renouvelle."""
+    cle = x509.load_der_x509_certificate(certificat_der).public_key()
+    return hashlib.sha256(cle.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)).hexdigest()
+
+
+class _AdaptateurTls(HTTPAdapter):
+    def __init__(self, contexte: ssl.SSLContext) -> None:
+        self.contexte = contexte
+        super().__init__()
+
+    def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
+        super().init_poolmanager(*args, **kwargs, ssl_context=self.contexte)
+
+
+def _session(contexte: _ContexteTls) -> requests.Session:
+    """Session HTTP de l'échange : sonde et SOAP passent par le même contexte TLS."""
+    session = requests.Session()
+    session.mount("https://", _AdaptateurTls(contexte))
+    # Sans autorité : le contexte compare la clé (urllib3 imposerait sinon la vérification par une autorité).
+    session.verify = False  # NOSONAR : clé du Certificat de l'Appareil comparée à chaque connexion
+    return session
+
+
+# --- Recherche du contact ---------------------------------------------------------------------------------------
 
 
 class _Sonde(Enum):
     SOAP = "soap"
-    # L'hôte répond (connexion refusée, page web…) mais pas en SOAP.
+    # L'hôte répond (connexion refusée, page web, TLS refusé…) mais pas en SOAP.
     AUTRE = "autre"
     MUET = "muet"
 
 
-def _trouver_port(hote: str, port_retenu: int | None) -> int:
-    if port_retenu is not None and _sonder(hote, port_retenu) is _Sonde.SOAP:
-        return port_retenu
-    with ThreadPoolExecutor(len(PORTS_ONVIF)) as sondes:
-        resultats = list(sondes.map(lambda port: _sonder(hote, port), PORTS_ONVIF))
-    for port, resultat in zip(PORTS_ONVIF, resultats, strict=True):
+def empreinte_presentee(url_rtsp: str) -> str:
+    """Empreinte de la clé publique du Certificat que la caméra de `url_rtsp` présente en ONVIF chiffré, sans rien
+    envoyer d'authentifié. Lève `ErreurOnvif` si elle ne répond pas en ONVIF chiffré."""
+    hote = urlsplit(url_rtsp).hostname or ""
+    tls = _contexte_tls(None)
+    sonde = _sonder(_session(tls), _adresse(Contact("https", PORT_HTTPS), hote, CHEMIN_APPAREIL))
+    if sonde is not _Sonde.SOAP or tls.attendue is None:
+        raise _https_absent(sonde)
+    return tls.attendue
+
+
+def _https_absent(sonde: _Sonde) -> ErreurOnvif:
+    """Pas d'ONVIF chiffré : une caméra muette sur 443 est plutôt éteinte, sinon HTTPS lui manque."""
+    return ErreurOnvif("injoignable" if sonde is _Sonde.MUET else "https_indisponible")
+
+
+def _trouver_contact(session: requests.Session, tls: _ContexteTls, hote: str, retenu: Retenu) -> Contact:
+    https = Contact("https", PORT_HTTPS)
+    sonde_https = _sonder(session, _adresse(https, hote, CHEMIN_APPAREIL))
+    if sonde_https is _Sonde.SOAP:
+        return Contact("https", PORT_HTTPS, tls.attendue, tls.version)
+    if retenu.schema == "https":
+        # Pas de rétrogradation : un HTTPS disparu peut être filtré par qui veut lire l'échange en clair.
+        raise _https_absent(sonde_https)
+    http = _chercher_http(session, hote, retenu, sonde_https)
+    if not retenu.en_clair_accepte:
+        raise ErreurOnvif("en_clair_non_accepte")
+    return http  # NOSONAR : HTTP seulement après accord de l'Administrateur, caméra sans HTTPS
+
+
+def _chercher_http(session: requests.Session, hote: str, retenu: Retenu, sonde_https: _Sonde) -> Contact:
+    """Port HTTP qui répond en SOAP : le retenu d'abord, sinon les ports courants. Rien que la sonde."""
+    if retenu.schema == "http" and retenu.port is not None:
+        http = Contact("http", retenu.port)
+        if _sonder(session, _adresse(http, hote, CHEMIN_APPAREIL)) is _Sonde.SOAP:
+            return http
+    candidats = [Contact("http", port) for port in PORTS_ONVIF]
+    with ThreadPoolExecutor(len(candidats)) as sondes:
+        resultats = list(sondes.map(lambda c: _sonder(session, _adresse(c, hote, CHEMIN_APPAREIL)), candidats))
+    for candidat, resultat in zip(candidats, resultats, strict=True):
         if resultat is _Sonde.SOAP:
-            return port
-    raise ErreurOnvif("sans_onvif" if _Sonde.AUTRE in resultats else "injoignable")
+            return candidat
+    raise ErreurOnvif("sans_onvif" if _Sonde.AUTRE in (sonde_https, *resultats) else "injoignable")
 
 
-def _sonder(hote: str, port: int) -> _Sonde:
+def _sonder(session: requests.Session, adresse: str) -> _Sonde:
     """`GetSystemDateAndTime` sans identifiants : seule une enveloppe SOAP prouve ONVIF, pas un `200` HTML."""
     try:
-        reponse = requests.post(
-            f"http://{hote}:{port}{CHEMIN_APPAREIL}",  # NOSONAR : HTTPS vers la caméra en 0.6.3
+        reponse = session.post(
+            adresse,
             data=DEMANDE_HEURE,
             headers={"Content-Type": "application/soap+xml; charset=utf-8"},
             timeout=(DELAI_CONNEXION_S, DELAI_REPONSE_S),
             allow_redirects=False,
         )
+    except requests.exceptions.SSLError:
+        return _Sonde.AUTRE
     except requests.ConnectionError as erreur:
         return _Sonde.AUTRE if _connexion_refusee(erreur) else _Sonde.MUET
     except requests.Timeout:
@@ -303,15 +467,24 @@ def _reglages_zeep() -> zeep.Settings:
     return zeep.Settings(strict=False, xml_huge_tree=True)
 
 
-def _service(wsdl: str, liaison: str, adresse: str, jeton: UsernameToken | None) -> Any:
-    transport = Transport(timeout=DELAI_REPONSE_S, operation_timeout=(DELAI_CONNEXION_S, DELAI_REPONSE_S))
+def _service(
+    session: requests.Session, wsdl: str, liaison: str, adresse: str, jeton: UsernameToken | None
+) -> Any:
+    transport = Transport(
+        session=session, timeout=DELAI_REPONSE_S, operation_timeout=(DELAI_CONNEXION_S, DELAI_REPONSE_S)
+    )
     client = zeep.Client(_wsdl(wsdl), wsse=jeton, transport=transport, settings=_reglages_zeep())
     return client.create_service(liaison, adresse)
 
 
 class _Camera:
-    def __init__(self, hote: str, port: int, identifiants: tuple[str, str] | None) -> None:
-        self.adresse = f"http://{hote}:{port}{CHEMIN_APPAREIL}"  # NOSONAR : HTTPS vers la caméra en 0.6.3
+    def __init__(
+        self, session: requests.Session, hote: str, contact: Contact, identifiants: tuple[str, str] | None
+    ) -> None:
+        self.session = session
+        self.hote = hote
+        self.contact = contact
+        self.adresse = _adresse(contact, hote, CHEMIN_APPAREIL)
         self.identifiants = identifiants
         self._appareil: Any = None
         self._media: Any = None
@@ -321,16 +494,27 @@ class _Camera:
         """Services appareil et média, jeton daté à l'heure de la caméra, source vidéo : une fois par requête."""
         if self._media is not None:
             return
-        appareil = _service("devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, None)
+        appareil = _service(
+            self.session, "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, None
+        )
         jeton = None
         if self.identifiants is not None:
             decalage = _date_heure_utc(appareil.GetSystemDateAndTime()) - datetime.now(UTC)
             jeton = _JetonDecale(*self.identifiants, decalage=decalage)
         self._appareil = _service(
-            "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, jeton
+            self.session, "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, jeton
         )
-        adresse_media = self._appareil.GetCapabilities(Category="Media").Media.XAddr
-        self._media = _service("media", "{http://www.onvif.org/ver10/media/wsdl}MediaBinding", adresse_media, jeton)
+        # Seul le chemin de l'adresse annoncée sert : une caméra jointe en HTTPS l'annonce souvent en `http://…`
+        # (ou sous un autre hôte, un autre port). Schéma, hôte et port restent ceux du contact retenu, pour
+        # qu'aucune requête ne reparte en clair ni ailleurs.
+        chemin_media = urlsplit(self._appareil.GetCapabilities(Category="Media").Media.XAddr).path
+        self._media = _service(
+            self.session,
+            "media",
+            "{http://www.onvif.org/ver10/media/wsdl}MediaBinding",
+            _adresse(self.contact, self.hote, chemin_media),
+            jeton,
+        )
         self._source = self._media.GetProfiles()[0].VideoSourceConfiguration.token
 
     def lire(self, maintenant: Callable[[], datetime]) -> Reglages:

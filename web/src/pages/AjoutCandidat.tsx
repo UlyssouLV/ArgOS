@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { messageEchec, texteMac, type Camera } from "../cameras";
+import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, motDePasseCourt, texteMac, type Camera } from "../cameras";
 import {
   ajouterDepuisEssai,
   essayer,
@@ -36,6 +36,8 @@ function messageCodec(codec: string | null): string {
   return `Cette caméra émet ${nom}, que le navigateur ne sait pas lire. La Caméra peut être ajoutée ; la lecture viendra dans une version future.`;
 }
 
+const MOT_DE_PASSE_COURT = `Mot de passe court (moins de ${LONGUEUR_MOT_DE_PASSE_SUR} caractères) : en ONVIF, la caméra le reçoit en empreinte (SHA-1, imposé par la norme), qui se casse hors ligne s'il est faible. L'ajout reste permis ; mieux vaut un mot de passe d'au moins ${LONGUEUR_MOT_DE_PASSE_SUR} caractères.`;
+
 const APERCU_RETIRE = "L'Aperçu a été retiré (délai dépassé) : annuler puis recommencer.";
 
 type PropsAjout = Readonly<{
@@ -53,6 +55,7 @@ type PropsAjout = Readonly<{
  * L'Aperçu se lit comme le Live, d'après le codec de l'essai (H.265 en HLS, le reste en WebRTC).
  * Codec ni H.264 ni H.265 : message nommant le codec ; l'ajout reste permis.
  * Appareil qui porte déjà une Caméra (même MAC, autre chemin) : avertissement ; l'ajout reste permis.
+ * Mot de passe court : avertissement à la saisie, puis au résultat de l'essai ; l'ajout reste permis.
  * L'Aperçu est renouvelé tant que le panneau est ouvert ; « Annuler » retire l'essai et son Aperçu,
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
@@ -67,6 +70,8 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   const [motDePasse, setMotDePasse] = useState("");
   // Vrai dès que des identifiants ont été envoyés : ils accompagnent ensuite chaque essai.
   const [avecIdentifiants, setAvecIdentifiants] = useState(false);
+  // Le dernier essai a envoyé un mot de passe court : le champ est vidé une fois le Flux trouvé.
+  const [essaiAvecMotDePasseCourt, setEssaiAvecMotDePasseCourt] = useState(false);
   const [chemin, setChemin] = useState("");
 
   const dejaEssaye = premierEssai !== undefined;
@@ -90,6 +95,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
       setAvecIdentifiants(envoieIdentifiants);
       const demande: DemandeEssai = envoieIdentifiants ? { identifiant, mot_de_passe: motDePasse } : {};
       if (chemin.trim()) demande.chemin = chemin.trim();
+      setEssaiAvecMotDePasseCourt(envoieIdentifiants && motDePasseCourt(motDePasse));
       const resultat = await essayer(candidat.ip, candidat.port, demande);
       if (resultat.issue === "flux_trouve") setMotDePasse("");
       setEssai(resultat);
@@ -121,6 +127,10 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   const expirationS = essai?.expiration_s;
   const codec = essai?.codec ?? null;
   const codecIllisible = apercu !== null && !CODECS_LUS.includes(codec);
+  // À la saisie tant que les identifiants sont demandés, sinon au résultat de l'essai.
+  const signalerMotDePasseCourt = identifiantsDemandes
+    ? motDePasseCourt(motDePasse)
+    : essai !== null && essaiAvecMotDePasseCourt;
 
   useEffect(() => {
     if (!apercu || !expirationS) return;
@@ -166,6 +176,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
           </label>
         </>
       )}
+      {signalerMotDePasseCourt && <p className="avertissement">{MOT_DE_PASSE_COURT}</p>}
       {cheminDemande && (
         <label>
           <span>Chemin RTSP</span>

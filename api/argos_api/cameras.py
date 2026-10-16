@@ -1,11 +1,12 @@
 """Caméras du Site : URL RTSP (validation, masquage, hôte et port) et règles de gestion."""
 
+import logging
 import socket
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from ipaddress import IPv4Address
 from typing import Annotated, Literal
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, unquote, urlsplit
 
 from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import or_, select, update
@@ -19,8 +20,13 @@ from argos_api.pont import chemin_flux
 
 PORT_RTSP = 554
 MASQUE = "***"
+# En dessous, le mot de passe d'une caméra est signalé comme court (à l'ajout, et en ONVIF en clair).
+LONGUEUR_MOT_DE_PASSE_SUR = 12
 
 Etat = Literal["unknown", "online", "offline"]
+
+# Refus et décisions sur le Certificat de l'Appareil : id de Caméra et empreintes, jamais d'identifiant ni d'URL.
+journal = logging.getLogger("argos_api.cameras")
 
 
 class CameraIntrouvable(Exception):
@@ -33,6 +39,10 @@ class Doublon(Exception):
 
 class CameraActive(Exception):
     """Seule une Caméra désactivée peut être supprimée."""
+
+
+class CertificatNonPresente(Exception):
+    """La caméra ne présente pas (ou plus) le Certificat de l'Appareil auquel l'Administrateur veut faire confiance."""
 
 
 def _decouper(url: str) -> SplitResult:
@@ -95,6 +105,10 @@ class CameraLue(BaseModel):
     codec: str | None
     # Port ONVIF trouvé par ArgOS à l'ouverture des Réglages ; `None` : jamais cherché. Jamais modifiable.
     port_onvif: int | None
+    # Schéma de ce port, cherché avec lui.
+    schema_onvif: onvif.Schema | None
+    # L'Administrateur accepte l'ONVIF en clair (caméra sans HTTPS) ; depuis ses Réglages.
+    onvif_en_clair_accepte: bool
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -114,6 +128,8 @@ class CameraLue(BaseModel):
             mac=camera.mac,
             codec=camera.codec,
             port_onvif=camera.port_onvif,
+            schema_onvif=camera.schema_onvif,
+            onvif_en_clair_accepte=camera.onvif_en_clair_accepte,
         )
 
 
@@ -350,8 +366,10 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     url = champs.pop("url_rtsp", camera.url_rtsp)
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
     if url != masquer(camera.url_rtsp) and url != camera.url_rtsp:
+        # Le contact ONVIF suit l'hôte : un autre mot de passe ou chemin le garde (et un changement d'IP par la MAC).
+        if _decouper(url).hostname != _decouper(camera.url_rtsp).hostname:
+            _oublier_onvif(camera)
         camera.url_rtsp = url
-        camera.port_onvif = None
         _remettre_a_unknown(camera)
     for champ, valeur in champs.items():
         setattr(camera, champ, valeur)
@@ -361,46 +379,224 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     return CameraLue.depuis(camera)
 
 
-def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Reglages:
-    """Réglages lus sur la caméra d'une Caméra active, par ONVIF ; retient le port qui a répondu.
+class SecuriteOnvif(BaseModel):
+    """Sécurité de l'échange ONVIF avec la caméra, montrée dans ses Réglages."""
+
+    # Joint en HTTPS (docs/adr/0007-onvif-en-https-par-cle-memorisee.md).
+    chiffre: bool
+    # Empreinte SHA-256 (hexadécimal) de la clé publique du Certificat de l'Appareil, et sa date de mémorisation ;
+    # `None` hors HTTPS.
+    empreinte: str | None
+    empreinte_memorisee_le: datetime | None
+    # TLS 1.0 ou 1.1 négocié : accepté, mais signalé.
+    tls_ancien: bool
+    # ONVIF en clair avec un mot de passe de moins de `LONGUEUR_MOT_DE_PASSE_SUR` caractères : son empreinte
+    # WS-Security (SHA-1) circule en clair et se casse hors ligne. Jamais le mot de passe ni sa longueur.
+    mot_de_passe_court: bool
+
+
+class ReglagesLus(onvif.Reglages):
+    securite: SecuriteOnvif
+
+
+class CertificatsCompares(BaseModel):
+    """Clé mémorisée (et sa date) et clé que la caméra présente, pour que l'Administrateur tranche."""
+
+    # `None` : changée dès le premier contact, au milieu de l'échange.
+    empreinte_memorisee: str | None
+    empreinte_memorisee_le: datetime | None
+    empreinte_presentee: str | None
+
+
+class CertificatChange(onvif.ErreurOnvif):
+    """`certificat_change` d'une Caméra, avec les deux empreintes."""
+
+    def __init__(self, certificats: CertificatsCompares) -> None:
+        super().__init__("certificat_change", empreinte_vue=certificats.empreinte_presentee)
+        self.certificats = certificats
+
+
+class ConfianceCertificat(BaseModel):
+    # Empreinte que les Réglages ont montrée comme présentée : la caméra doit la présenter encore.
+    empreinte: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> ReglagesLus:
+    """Réglages lus sur la caméra d'une Caméra active, par ONVIF, et sécurité de l'échange ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.lire_reglages(url, port, maintenant))
+    reglages, securite = _par_onvif(
+        base, id_camera, maintenant, lambda url, retenu: onvif.lire_reglages(url, retenu, maintenant)
+    )
+    return ReglagesLus(**reglages.model_dump(), securite=securite)
 
 
 def modifier_reglages(
     base: Session, id_camera: int, modification: onvif.ModificationReglages, maintenant: Callable[[], datetime]
 ) -> onvif.ResultatModification:
-    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le port.
+    """Envoie la modification à la caméra d'une Caméra active, par ONVIF, puis la relit ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.modifier_reglages(url, port, modification, maintenant))
+    resultat, _ = _par_onvif(
+        base,
+        id_camera,
+        maintenant,
+        lambda url, retenu: onvif.modifier_reglages(url, retenu, modification, maintenant),
+    )
+    return resultat
 
 
 def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
-    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le port.
+    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le contact.
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    return _par_onvif(base, id_camera, lambda url, port: onvif.mettre_a_l_heure(url, port, maintenant))
+    horloge, _ = _par_onvif(
+        base, id_camera, maintenant, lambda url, retenu: onvif.mettre_a_l_heure(url, retenu, maintenant)
+    )
+    return horloge
 
 
-def _par_onvif[T](base: Session, id_camera: int, echange: Callable[[str, int | None], tuple[T, int]]) -> T:
-    """Échange ONVIF avec la caméra d'une Caméra active ; retient le port qui a répondu."""
-    camera = _trouver(base, id_camera)
-    if not camera.active:
-        raise CameraIntrouvable
-    url, port_retenu = camera.url_rtsp, camera.port_onvif
+def _par_onvif[T](
+    base: Session,
+    id_camera: int,
+    maintenant: Callable[[], datetime],
+    echange: Callable[[str, onvif.Retenu], tuple[T, onvif.Contact]],
+) -> tuple[T, SecuriteOnvif]:
+    """Échange ONVIF avec la caméra d'une Caméra active ; retient le contact, et la clé au premier contact HTTPS."""
+    camera = _trouver_active(base, id_camera)
+    url = camera.url_rtsp
+    retenu = onvif.Retenu(
+        camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif, camera.onvif_en_clair_accepte
+    )
+    memorisee_le = camera.empreinte_onvif_le
     # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
-    resultat, port = echange(url, port_retenu)
-    if port != port_retenu:
-        # Seulement si l'URL n'a pas changé entre-temps : le port est celui de cet hôte.
-        base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(port_onvif=port))
+    try:
+        resultat, contact = echange(url, retenu)
+    except onvif.ErreurOnvif as erreur:
+        _journaliser_refus(id_camera, retenu, erreur)
+        if erreur.code == "certificat_change":
+            raise CertificatChange(
+                CertificatsCompares(
+                    empreinte_memorisee=retenu.empreinte,
+                    empreinte_memorisee_le=memorisee_le,
+                    empreinte_presentee=erreur.empreinte_vue,
+                )
+            ) from erreur
+        raise
+    valeurs: dict[str, object] = {}
+    if (contact.schema, contact.port) != (retenu.schema, retenu.port):
+        valeurs |= {"schema_onvif": contact.schema, "port_onvif": contact.port}
+    if contact.empreinte is not None and retenu.empreinte is None:
+        memorisee_le = maintenant()
+        valeurs |= {"empreinte_onvif": contact.empreinte, "empreinte_onvif_le": memorisee_le}
+    if valeurs:
+        # Seulement si l'URL n'a pas changé entre-temps : le contact est celui de cet hôte.
+        base.execute(update(Camera).where(Camera.id == id_camera, Camera.url_rtsp == url).values(**valeurs))
         base.commit()
-    return resultat
+    chiffre = contact.schema == "https"
+    securite = SecuriteOnvif(
+        chiffre=chiffre,
+        empreinte=contact.empreinte if chiffre else None,
+        empreinte_memorisee_le=memorisee_le if chiffre else None,
+        tls_ancien=contact.tls_ancien,
+        mot_de_passe_court=not chiffre and _mot_de_passe_court(url),
+    )
+    return resultat, securite
+
+
+def _mot_de_passe_court(url: str) -> bool:
+    """Mot de passe de l'URL RTSP, décodé, de 1 à `LONGUEUR_MOT_DE_PASSE_SUR` - 1 caractères ; absent : non."""
+    mot_de_passe = unquote(urlsplit(url).password or "")
+    return 0 < len(mot_de_passe) < LONGUEUR_MOT_DE_PASSE_SUR
+
+
+def _journaliser_refus(id_camera: int, retenu: onvif.Retenu, erreur: onvif.ErreurOnvif) -> None:
+    """Journalise un refus de sécurité (certificat changé, HTTPS indisponible), avec les empreintes."""
+    if erreur.code == "certificat_change":
+        journal.warning(
+            "ONVIF : Caméra %s, certificat changé (mémorisé %s, présenté %s) : refusé",
+            id_camera,
+            retenu.empreinte,
+            erreur.empreinte_vue,
+        )
+    elif erreur.code == "https_indisponible":
+        journal.warning(
+            "ONVIF : Caméra %s, HTTPS indisponible (certificat mémorisé %s) : refusé, sans repli HTTP",
+            id_camera,
+            retenu.empreinte,
+        )
+
+
+def faire_confiance(base: Session, id_camera: int, empreinte: str, maintenant: Callable[[], datetime]) -> None:
+    """Mémorise la clé que la caméra d'une Caméra active présente, si c'est bien `empreinte` (celle montrée à
+    l'Administrateur) ; le contact devient HTTPS.
+
+    Lève `CameraIntrouvable`, `CertificatNonPresente` ou `onvif.ErreurOnvif` (la caméra ne répond pas en HTTPS).
+    """
+    camera = _trouver_active(base, id_camera)
+    url, ancienne = camera.url_rtsp, camera.empreinte_onvif
+    base.rollback()
+    presentee = onvif.empreinte_presentee(url)
+    if presentee != empreinte:
+        journal.warning(
+            "ONVIF : Caméra %s, confiance refusée : %s n'est pas le certificat présenté (%s)",
+            id_camera,
+            empreinte,
+            presentee,
+        )
+        raise CertificatNonPresente
+    base.execute(
+        update(Camera)
+        .where(Camera.id == id_camera, Camera.url_rtsp == url)
+        .values(
+            schema_onvif="https",
+            port_onvif=onvif.PORT_HTTPS,
+            empreinte_onvif=presentee,
+            empreinte_onvif_le=maintenant(),
+        )
+    )
+    base.commit()
+    journal.info("ONVIF : Caméra %s, confiance au nouveau certificat %s (remplace %s)", id_camera, presentee, ancienne)
+
+
+def oublier_certificat(base: Session, id_camera: int) -> None:
+    """Efface clé, schéma et port ONVIF retenus : le contact suivant repart de zéro.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée).
+    """
+    camera = _trouver_active(base, id_camera)
+    ancienne = camera.empreinte_onvif
+    _oublier_onvif(camera)
+    base.commit()
+    journal.info("ONVIF : Caméra %s, certificat %s oublié", id_camera, ancienne)
+
+
+def accepter_en_clair(base: Session, id_camera: int, accepte: bool) -> None:
+    """« Régler quand même en clair » (`accepte`), ou retrait de l'accord. Lève `CameraIntrouvable` (inconnue ou
+    désactivée).
+
+    Une Caméra en HTTPS n'est jamais réglée en clair : l'accord ne sert qu'à une caméra sans HTTPS.
+    """
+    camera = _trouver_active(base, id_camera)
+    camera.onvif_en_clair_accepte = accepte
+    base.commit()
+    journal.info("ONVIF : Caméra %s, ONVIF en clair %s", id_camera, "accepté" if accepte else "retiré")
+
+
+def _oublier_onvif(camera: Camera) -> None:
+    """Contact, clé et accord ONVIF retenus pour l'hôte de l'URL : à chercher, et à demander, de nouveau.
+
+    Gardés tant que l'hôte reste celui de l'Appareil : autre mot de passe ou chemin, nouvelle IP suivie par la MAC.
+    """
+    camera.port_onvif = None
+    camera.schema_onvif = None
+    camera.empreinte_onvif = None
+    camera.empreinte_onvif_le = None
+    camera.onvif_en_clair_accepte = False
 
 
 def supprimer(base: Session, id_camera: int) -> None:
@@ -414,6 +610,14 @@ def supprimer(base: Session, id_camera: int) -> None:
 def _trouver(base: Session, id_camera: int, verrouiller: bool = False) -> Camera:
     camera = base.get(Camera, id_camera, with_for_update=verrouiller)
     if camera is None:
+        raise CameraIntrouvable
+    return camera
+
+
+def _trouver_active(base: Session, id_camera: int) -> Camera:
+    """Caméra active : seules elles ont des Réglages. Inconnue ou désactivée → `CameraIntrouvable`."""
+    camera = _trouver(base, id_camera)
+    if not camera.active:
         raise CameraIntrouvable
     return camera
 
