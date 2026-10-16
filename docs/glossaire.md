@@ -38,9 +38,21 @@ Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes se
 
 À éviter : heure système.
 
+## Image {#image}
+
+Comment l’Appareil rend ce que voit son capteur (filtre infrarouge, luminosité, contraste, saturation, netteté, contre-jour, WDR), partagée par toutes ses Caméras.
+
+À éviter : imaging, réglages capteur.
+
+## Encodage {#encodage}
+
+Résolution, images par seconde, débit et codec du Flux d’une Caméra.
+
+À éviter : profil, configuration vidéo, stream.
+
 ## Réglages de la Caméra {#reglages-de-la-camera}
 
-Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations et l’Horloge de son Appareil.
+Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations, l’Horloge et l’Image de son Appareil, et l’Encodage de son Flux.
 
 À éviter : configuration, paramètres.
 
