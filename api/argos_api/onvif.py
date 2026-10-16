@@ -91,8 +91,9 @@ DELAI_REPONSE_S = 4
 # Relecture après un envoi d'Encodage : la caméra relance son encodeur, et peut se taire quelques secondes.
 PAS_RELECTURE_S = 2
 DELAI_RELECTURE_S = 20
-ESPACE_MEDIA_2 = "http://www.onvif.org/ver20/media/wsdl"
-ESPACE_SCHEMA = "http://www.onvif.org/ver10/schema"
+# Espaces de noms XML : des noms imposés par ONVIF, jamais appelés (NOSONAR définitif).
+ESPACE_MEDIA_2 = "http://www.onvif.org/ver20/media/wsdl"  # NOSONAR
+ESPACE_SCHEMA = "http://www.onvif.org/ver10/schema"  # NOSONAR
 
 DOSSIER_WSDL = Path(__file__).parent / "wsdl"
 SOAP_12 = "http://www.w3.org/2003/05/soap-envelope"
