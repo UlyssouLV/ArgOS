@@ -315,7 +315,7 @@ def _contexte_tls(attendue: str | None) -> _ContexteTls:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         contexte.minimum_version = ssl.TLSVersion.TLSv1  # NOSONAR : caméras anciennes, signalées « TLS ancien »
-    contexte.set_ciphers("DEFAULT:@SECLEVEL=0")
+    contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : TLS 1.0 des caméras anciennes, ADR 0007
     contexte.attendue = attendue
     contexte.version = None
     return contexte

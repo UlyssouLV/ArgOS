@@ -436,7 +436,7 @@ def creer_serveur(
             if tls_max < ssl.TLSVersion.TLSv1_2:
                 # Caméra ancienne simulée : OpenSSL 3 n'accepte TLS 1.0 et 1.1 qu'au niveau de sécurité 0.
                 contexte.minimum_version = tls_max  # NOSONAR : simulation d'une caméra ancienne, jamais en prod
-                contexte.set_ciphers("DEFAULT:@SECLEVEL=0")
+                contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : simulation d'une caméra ancienne
             contexte.maximum_version = tls_max
         contexte.load_cert_chain(*certificat)
         # Poignée de main dans le fil de chaque requête, pas dans celui qui accepte les connexions.
@@ -449,12 +449,12 @@ def sonder(port: int, https: bool) -> None:
     contexte = None
     if https:
         # Sonde locale du certificat auto-signé de la simulation : rien à vérifier.
-        contexte = ssl.create_default_context()
+        contexte = ssl.create_default_context()  # NOSONAR : sonde locale d'un certificat auto-signé de dev
         contexte.check_hostname = False  # NOSONAR : sonde locale d'un certificat auto-signé de dev
         contexte.verify_mode = ssl.CERT_NONE  # NOSONAR : sonde locale d'un certificat auto-signé de dev
         # Toute version servie, `ONVIF_TLS_MAX` compris : OpenSSL 3 n'accepte TLS 1.0 et 1.1 qu'au niveau 0.
         contexte.minimum_version = ssl.TLSVersion.TLSv1  # NOSONAR : sonde locale d'une caméra ancienne simulée
-        contexte.set_ciphers("DEFAULT:@SECLEVEL=0")
+        contexte.set_ciphers("DEFAULT:@SECLEVEL=0")  # NOSONAR : sonde locale d'une caméra ancienne simulée
     requete = urllib.request.Request(
         f"{'https' if https else 'http'}://127.0.0.1:{port}{CHEMIN_APPAREIL}",
         data=_enveloppe("<tds:GetSystemDateAndTime/>").encode(),
