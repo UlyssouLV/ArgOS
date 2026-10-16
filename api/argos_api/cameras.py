@@ -427,7 +427,7 @@ def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], dateti
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
     reglages, securite = _par_onvif(
-        base, id_camera, maintenant, lambda url, retenu: onvif.lire_reglages(url, retenu, maintenant)
+        base, id_camera, maintenant, lambda url, retenu, codec: onvif.lire_reglages(url, retenu, maintenant, codec)
     )
     return ReglagesLus(**reglages.model_dump(), securite=securite)
 
@@ -443,7 +443,7 @@ def modifier_reglages(
         base,
         id_camera,
         maintenant,
-        lambda url, retenu: onvif.modifier_reglages(url, retenu, modification, maintenant),
+        lambda url, retenu, codec: onvif.modifier_reglages(url, retenu, modification, maintenant, codec),
     )
     return resultat
 
@@ -454,7 +454,7 @@ def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], dat
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
     horloge, _ = _par_onvif(
-        base, id_camera, maintenant, lambda url, retenu: onvif.mettre_a_l_heure(url, retenu, maintenant)
+        base, id_camera, maintenant, lambda url, retenu, _codec: onvif.mettre_a_l_heure(url, retenu, maintenant)
     )
     return horloge
 
@@ -463,19 +463,21 @@ def _par_onvif[T](
     base: Session,
     id_camera: int,
     maintenant: Callable[[], datetime],
-    echange: Callable[[str, onvif.Retenu], tuple[T, onvif.Contact]],
+    echange: Callable[[str, onvif.Retenu, str | None], tuple[T, onvif.Contact]],
 ) -> tuple[T, SecuriteOnvif]:
-    """Échange ONVIF avec la caméra d'une Caméra active ; retient le contact, et la clé au premier contact HTTPS."""
+    """Échange ONVIF avec la caméra d'une Caméra active (URL RTSP, contact retenu, codec connu du Flux) ; retient le
+    contact, et la clé au premier contact HTTPS."""
     camera = _trouver_active(base, id_camera)
     url = camera.url_rtsp
     retenu = onvif.Retenu(
         camera.schema_onvif, camera.port_onvif, camera.empreinte_onvif, camera.onvif_en_clair_accepte
     )
     memorisee_le = camera.empreinte_onvif_le
+    codec = camera.codec
     # Pas de transaction ouverte pendant l'échange réseau.
     base.rollback()
     try:
-        resultat, contact = echange(url, retenu)
+        resultat, contact = echange(url, retenu, codec)
     except onvif.ErreurOnvif as erreur:
         _journaliser_refus(id_camera, retenu, erreur)
         if erreur.code == "certificat_change":

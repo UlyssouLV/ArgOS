@@ -28,6 +28,8 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_SERVICES` (vide par défaut : appareil et média 1 seuls) ajoute `image` et `media2`, séparés par des virgules. Pour la Caméra simulée 2, compose le lit dans `ONVIF_SERVICES_2` (`image,media2` par défaut) : `ONVIF_SERVICES_2=image` coupe le média 2 au démarrage (ni annoncé, ni servi), pour tester le repli média 1 sur son Flux H.264.
 
+`ONVIF_SILENCE_APRES_ENCODAGE_S` (vide par défaut : jamais) rend la caméra muette ce nombre de secondes après chaque changement d'Encodage accepté (médias 1 et 2) : elle ferme chaque connexion sans répondre, sur tous ses services, comme une caméra qui relance son encodeur. C'est le cas « la caméra n'a pas répondu après l'envoi ». Pour la Caméra simulée 2, compose le lit dans `ONVIF_SILENCE_APRES_ENCODAGE_S_2`.
+
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
 ## HTTP, HTTPS ou les deux
@@ -75,7 +77,7 @@ uv sync
 .venv/bin/python -m pytest
 ```
 
-Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé) lancent `camera_onvif.py` comme le conteneur.
+Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé ; silence après un changement d'Encodage) lancent `camera_onvif.py` comme le conteneur.
 
 ## Plus tard
 

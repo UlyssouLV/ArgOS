@@ -206,6 +206,28 @@ def camera_simulee_2_sans_https() -> None:
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_PORT_HTTPS_2": ""})
 
 
+def camera_simulee_2_sans_media_2() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », sans média 2 : le repli média 1 en H.264.
+
+    `remettre_onvif_en_usine` lui rend ensuite le média 2.
+    """
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_SERVICES_2": "image"})
+
+
+def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », muette `secondes` après un changement
+    d'Encodage. `remettre_onvif_en_usine` lui rend ensuite une réponse immédiate.
+    """
+    compose(
+        "up",
+        "-d",
+        "--force-recreate",
+        "--wait",
+        "camera-simulee-2-onvif",
+        env={"ONVIF_SILENCE_APRES_ENCODAGE_S_2": str(secondes)},
+    )
+
+
 def requetes_onvif_recues(service: str, depuis: datetime, de: str, schema_port: str) -> list[str]:
     """Lignes du journal d'une interface ONVIF simulée : requêtes reçues depuis `depuis`, de l'IP `de`, sur
     `schema_port` (`https:443`, `http:8899`). Le healthcheck, local, n'y est pas compté.

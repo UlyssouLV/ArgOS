@@ -79,11 +79,46 @@ export type Image = {
   options: OptionsImage | null;
 };
 
+/** Encodage relu ; `resolution` : `largeur`x`hauteur` ; `null` : valeur que la caméra ne donne pas. */
+export type ValeursEncodage = {
+  resolution: string;
+  images_par_seconde: number | null;
+  /** kbit/s. */
+  debit_max: number | null;
+  codec: string;
+  qualite: number | null;
+  intervalle_images_cles: number | null;
+};
+
+/** Ce que la caméra propose ; `null` : non proposé. */
+export type OptionsEncodage = {
+  resolutions: string[];
+  images_par_seconde: Bornes | null;
+  debit_max: Bornes | null;
+};
+
+/**
+ * Encodage du Flux de la Caméra (profil de son URL RTSP), docs/adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md.
+ * `profil_introuvable` : aucun profil à l'URL RTSP ; `non_reglable` : ni média 2, ni Flux en H.264 (valeurs en
+ * lecture seule).
+ */
+export type Encodage = {
+  reglable: boolean;
+  raison: "profil_introuvable" | "non_reglable" | null;
+  profil: string | null;
+  valeurs: ValeursEncodage | null;
+  options: OptionsEncodage | null;
+};
+
+/** Champs d'Encodage réglables. */
+export type ChampEncodage = "resolution" | "images_par_seconde" | "debit_max";
+
 /** Réglages de la Caméra, lus sur la caméra par ONVIF à chaque ouverture. */
 export type Reglages = {
   horloge: Horloge;
   incrustations: { nom: IncrustationNom; date_heure: IncrustationDateHeure };
   image: Image;
+  encodage: Encodage;
 };
 
 /** Sécurité de l'échange ONVIF avec la caméra (docs/adr/0007-onvif-en-https-par-cle-memorisee.md). */
@@ -210,6 +245,11 @@ export function textePosition(position: Position | null): string {
 export const INFRAROUGE: Record<ModeInfrarouge, string> = { ON: "jour", OFF: "nuit", AUTO: "automatique" };
 export const COMPENSATION: Record<ModeCompensation, string> = { OFF: "coupé", ON: "activé" };
 
+/** Résolution lisible : `1920x1080` → `1920×1080`. */
+export function texteResolution(resolution: string): string {
+  return resolution.replace("x", "×");
+}
+
 /** Pas d'un curseur : au centième sur une plage étroite (0 à 1…), à l'unité sinon. */
 export function pasDe(bornes: Bornes): number {
   return bornes.max - bornes.min <= 10 ? 0.01 : 1;
@@ -258,11 +298,15 @@ export type ModificationIncrustation = { affichee?: boolean; texte?: string; pos
 /** Champs d'Image modifiés : seuls ceux présents sont envoyés à la caméra. */
 export type ModificationImage = Partial<{ [C in ChampImage]: NonNullable<ValeursImage[C]> }>;
 
-/** `horloge` absent : fuseau inchangé ; `image` absente : Image inchangée. */
+/** Champs d'Encodage modifiés : seuls ceux présents sont envoyés à la caméra. */
+export type ModificationEncodage = Partial<SaisieEncodage>;
+
+/** `horloge` absent : fuseau inchangé ; `image` absente : Image inchangée ; `encodage` absent : Flux non coupé. */
 export type Modification = {
   horloge?: { fuseau: string };
   incrustations: Partial<Record<CleIncrustation, ModificationIncrustation>>;
   image?: ModificationImage;
+  encodage?: ModificationEncodage;
 };
 
 export type StatutChamp = "pris" | "pas_pris" | "refuse";
@@ -276,6 +320,8 @@ export type ChampModifie = {
   demande: string | boolean | number;
   relu: string | boolean | number | null;
   statut: StatutChamp;
+  /** `sans_reponse` : la caméra n'a plus répondu après l'envoi d'Encodage. */
+  raison?: "sans_reponse" | null;
 };
 
 export type ResultatModification = { champs: ChampModifie[]; reglages: Reglages };
@@ -283,14 +329,18 @@ export type ResultatModification = { champs: ChampModifie[]; reglages: Reglages 
 /** Valeurs du formulaire d'une Incrustation ; `texte` ne sert qu'au nom. */
 export type IncrustationSaisie = { affichee: boolean; texte: string; position: Position };
 
+/** Encodage saisi ; un nombre effacé vaut `NaN`, hors des bornes. */
+export type SaisieEncodage = { resolution: string; images_par_seconde: number; debit_max: number };
+
 /**
  * `fuseau` : nom IANA, ou fuseau inconnu de la caméra tel quel tant qu'il n'est pas changé.
- * `image` : `null` si l'Image n'est pas réglable.
+ * `image` : `null` si l'Image n'est pas réglable ; `encodage` : `null` si l'Encodage ne l'est pas.
  */
 export type Saisie = {
   fuseau: string;
   incrustations: Record<CleIncrustation, IncrustationSaisie>;
   image: ValeursImage | null;
+  encodage: SaisieEncodage | null;
 };
 
 // Coin proposé pour une Incrustation cachée qu'on réaffiche : celui de la caméra « sortie d'usine ».
@@ -309,7 +359,46 @@ export function saisieDepuis(reglages: Reglages): Saisie {
       },
     },
     image: reglages.image.valeurs && { ...reglages.image.valeurs },
+    encodage: saisieEncodage(reglages.encodage),
   };
+}
+
+function saisieEncodage(encodage: Encodage): SaisieEncodage | null {
+  const valeurs = encodage.valeurs;
+  if (!encodage.reglable || !valeurs) return null;
+  return {
+    resolution: valeurs.resolution,
+    images_par_seconde: valeurs.images_par_seconde ?? Number.NaN,
+    debit_max: valeurs.debit_max ?? Number.NaN,
+  };
+}
+
+/** Champs d'Encodage saisis qui diffèrent de la caméra ; un champ que la caméra ne borne pas n'est jamais envoyé. */
+function modificationEncodage(actuel: Encodage, saisie: SaisieEncodage | null): ModificationEncodage {
+  const encodage: ModificationEncodage = {};
+  const valeurs = actuel.valeurs;
+  const options = actuel.options;
+  if (!saisie || !valeurs || !options) return encodage;
+  if (saisie.resolution !== valeurs.resolution) encodage.resolution = saisie.resolution;
+  if (options.images_par_seconde && saisie.images_par_seconde !== valeurs.images_par_seconde) {
+    encodage.images_par_seconde = saisie.images_par_seconde;
+  }
+  if (options.debit_max && saisie.debit_max !== valeurs.debit_max) encodage.debit_max = saisie.debit_max;
+  return encodage;
+}
+
+/** Champs d'Encodage saisis hors des options de la caméra : rien ne part tant qu'il y en a. */
+export function encodageHorsBornes(encodage: Encodage, saisie: SaisieEncodage | null): ChampEncodage[] {
+  const options = encodage.options;
+  if (!saisie || !options) return [];
+  const dehors: ChampEncodage[] = [];
+  if (!options.resolutions.includes(saisie.resolution)) dehors.push("resolution");
+  for (const champ of ["images_par_seconde", "debit_max"] as const) {
+    const bornes = options[champ];
+    const valeur = saisie[champ];
+    if (bornes && !(valeur >= bornes.min && valeur <= bornes.max)) dehors.push(champ);
+  }
+  return dehors;
 }
 
 /** Champs d'Image saisis qui diffèrent de la caméra ; un paramètre non proposé (`null`) n'est jamais envoyé. */
@@ -349,9 +438,16 @@ export function modificationsEntre(actuels: Reglages, saisie: Saisie): Modificat
   if (saisie.fuseau !== fuseauLu(actuels.horloge)) modification.horloge = { fuseau: saisie.fuseau };
   const image = modificationImage(actuels.image.valeurs, saisie.image);
   if (Object.keys(image).length > 0) modification.image = image;
+  const encodage = modificationEncodage(actuels.encodage, saisie.encodage);
+  if (Object.keys(encodage).length > 0) modification.encodage = encodage;
   return modification;
 }
 
 export function estVide(modification: Modification): boolean {
-  return !modification.horloge && !modification.image && Object.keys(modification.incrustations).length === 0;
+  return (
+    !modification.horloge &&
+    !modification.image &&
+    !modification.encodage &&
+    Object.keys(modification.incrustations).length === 0
+  );
 }

@@ -8,6 +8,7 @@ import {
   COMPENSATIONS_IMAGE,
   empreinteCourte,
   empreinteGroupee,
+  encodageHorsBornes,
   estVide,
   faireConfiance,
   fuseauLu,
@@ -25,8 +26,10 @@ import {
   texteDateHeure,
   texteEcart,
   textePosition,
+  texteResolution,
   type Bornes,
   type CertificatsCompares,
+  type ChampEncodage,
   type ChampImage,
   type ChampModifie,
   type CleIncrustation,
@@ -39,6 +42,7 @@ import {
   type Reglages,
   type ReglagesLus,
   type Saisie,
+  type SaisieEncodage,
   type SecuriteOnvif,
   type ValeursImage,
 } from "../reglages";
@@ -46,7 +50,8 @@ import {
 type Props = Readonly<{ camera: Camera; onFermer: () => void }>;
 
 /**
- * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure, Incrustations et Image se règlent.
+ * Réglages de la Caméra lus sur la caméra par ONVIF à l'ouverture ; fuseau, heure, Incrustations, Image et Encodage du
+ * Flux se règlent.
  * Un certificat changé, un HTTPS disparu ou une caméra sans HTTPS (ONVIF en clair non accepté) bloque les Réglages
  * jusqu'à la décision de l'Administrateur, puis relit.
  */
@@ -338,9 +343,10 @@ const LIBELLES: Record<
 type PropsFormulaire = Readonly<{ camera: Camera; origine: Reglages; fuseaux: string[] }>;
 
 /**
- * Formulaire des Réglages (fuseau, Incrustations, Image) : « Enregistrer » n'envoie que ce qui diffère de la caméra, puis
- * montre le statut de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture et
- * toujours affichées. La mise à l'heure du Site part seule, à la demande.
+ * Formulaire des Réglages (fuseau, Incrustations, Image, Encodage) : « Enregistrer » n'envoie que ce qui diffère de la
+ * caméra, puis montre le statut de chaque champ envoyé ; « Annuler » revient aux valeurs d'origine, lues à l'ouverture
+ * et toujours affichées. Un envoi qui touche l'Encodage coupe le Flux : il se confirme. La mise à l'heure du Site part
+ * seule, à la demande.
  */
 function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
   // Dernières valeurs lues sur la caméra : à l'ouverture, puis relues après chaque envoi.
@@ -348,9 +354,11 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
   const [saisie, setSaisie] = useState<Saisie>(() => saisieDepuis(origine));
   const [statuts, setStatuts] = useState<Record<string, ChampModifie>>({});
   const [aCacher, setACacher] = useState<CleIncrustation | null>(null);
+  const [coupure, setCoupure] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const modification = modificationsEntre(actuels, saisie);
+  const horsBornes = encodageHorsBornes(actuels.encodage, saisie.encodage);
 
   function changer(cle: CleIncrustation, champs: Partial<IncrustationSaisie>) {
     setSaisie((avant) => ({
@@ -366,6 +374,7 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
   }
 
   async function enregistrer() {
+    setCoupure(false);
     setEnvoi(true);
     setErreur(null);
     try {
@@ -388,7 +397,9 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
       className="reglages-formulaire"
       onSubmit={(e) => {
         e.preventDefault();
-        void enregistrer();
+        // L'Encodage coupe le Flux quelques secondes : confirmé avant l'envoi, pas l'Image ni les Incrustations.
+        if (modification.encodage) setCoupure(true);
+        else void enregistrer();
       }}
     >
       <div className="reglages-valeurs">
@@ -432,14 +443,35 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
             setSaisie((avant) => ({ ...avant, image: avant.image && { ...avant.image, ...champs } }))
           }
         />
+        <ChampsEncodage
+          origine={origine.encodage}
+          actuels={actuels}
+          saisie={saisie.encodage}
+          horsBornes={horsBornes}
+          statuts={statuts}
+          onChanger={(champs) =>
+            setSaisie((avant) => ({ ...avant, encodage: avant.encodage && { ...avant.encodage, ...champs } }))
+          }
+        />
       </div>
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}
         </p>
       )}
+      {coupure && (
+        <p className="confirmation">
+          <span>Le Flux de cette Caméra sera coupé quelques secondes.</span>
+          <button type="button" className="danger" onClick={() => void enregistrer()}>
+            Couper le Flux et enregistrer
+          </button>
+          <button type="button" onClick={() => setCoupure(false)}>
+            Garder le Flux
+          </button>
+        </p>
+      )}
       <div className="reglages-actions">
-        <button type="submit" disabled={envoi || estVide(modification)}>
+        <button type="submit" disabled={envoi || coupure || estVide(modification) || horsBornes.length > 0}>
           {envoi ? "Envoi à la caméra…" : "Enregistrer"}
         </button>
         <button
@@ -448,6 +480,7 @@ function FormulaireReglages({ camera, origine, fuseaux }: PropsFormulaire) {
           onClick={() => {
             setSaisie(saisieDepuis(origine));
             setACacher(null);
+            setCoupure(false);
             setStatuts({});
           }}
         >
@@ -792,6 +825,131 @@ function ChampsImage({ origine, actuels, saisie, statuts, onChanger }: PropsImag
   );
 }
 
+// Libellés des champs d'Encodage réglables : « Résolution », « Statut : débit max »…
+const LIBELLES_ENCODAGE: Record<ChampEncodage, string> = {
+  resolution: "Résolution",
+  images_par_seconde: "Images par seconde",
+  debit_max: "Débit max (kbit/s)",
+};
+
+const STATUTS_ENCODAGE: Record<ChampEncodage, string> = {
+  resolution: "résolution",
+  images_par_seconde: "images par seconde",
+  debit_max: "débit max",
+};
+
+type PropsEncodage = Readonly<{
+  origine: Reglages["encodage"];
+  actuels: Reglages;
+  saisie: SaisieEncodage | null;
+  horsBornes: ChampEncodage[];
+  statuts: Record<string, ChampModifie>;
+  onChanger: (champs: Partial<SaisieEncodage>) => void;
+}>;
+
+/**
+ * Encodage du Flux (profil de l'URL RTSP) : résolution parmi celles proposées, images par seconde et débit dans les
+ * bornes de la caméra ; codec, qualité et intervalle entre images clés en lecture seule. Non réglable : valeurs en
+ * lecture seule, et pourquoi.
+ */
+function ChampsEncodage({ origine, actuels, saisie, horsBornes, statuts, onChanger }: PropsEncodage) {
+  const id = useId();
+  const encodage = actuels.encodage;
+  const valeurs = encodage.valeurs;
+  if (!valeurs) {
+    return (
+      <section aria-label="Encodage du Flux">
+        <h4>Encodage du Flux</h4>
+        <p>
+          {encodage.raison === "profil_introuvable"
+            ? "Profil vidéo introuvable pour ce Flux"
+            : "Vidéo non réglable sur cette caméra"}
+        </p>
+      </section>
+    );
+  }
+  const options = encodage.options;
+  const reglable = encodage.reglable && options && saisie;
+  const statut = (champ: ChampEncodage) => (
+    <StatutChamp resultat={statuts[`encodage.${champ}`]} libelle={STATUTS_ENCODAGE[champ]} />
+  );
+  const nombre = (champ: "images_par_seconde" | "debit_max") => {
+    const bornes = options?.[champ];
+    if (!reglable || !bornes) return null;
+    const valeur = saisie[champ];
+    return (
+      <div>
+        <label htmlFor={`${id}-${champ}`}>{LIBELLES_ENCODAGE[champ]}</label>
+        <input
+          id={`${id}-${champ}`}
+          type="number"
+          min={bornes.min}
+          max={bornes.max}
+          step={pasDe(bornes)}
+          value={Number.isNaN(valeur) ? "" : valeur}
+          onChange={(e) => onChanger({ [champ]: e.target.value === "" ? Number.NaN : Number(e.target.value) })}
+        />
+        <Origine valeur={texteNombre(origine.valeurs?.[champ] ?? null)} />
+        {horsBornes.includes(champ) && (
+          <span className="erreur">
+            hors des bornes de la caméra ({bornes.min} à {bornes.max})
+          </span>
+        )}
+        {statut(champ)}
+      </div>
+    );
+  };
+
+  return (
+    <section aria-label="Encodage du Flux">
+      <h4>Encodage du Flux</h4>
+      {!reglable && <p>Vidéo non réglable sur cette caméra</p>}
+      <dl>
+        <dt>Profil</dt>
+        <dd>{encodage.profil ?? "—"}</dd>
+        {!reglable && (
+          <>
+            <dt>Résolution</dt>
+            <dd>{texteResolution(valeurs.resolution)}</dd>
+            <dt>Images par seconde</dt>
+            <dd>{texteNombre(valeurs.images_par_seconde)}</dd>
+            <dt>Débit max (kbit/s)</dt>
+            <dd>{texteNombre(valeurs.debit_max)}</dd>
+          </>
+        )}
+        <dt>Codec</dt>
+        <dd>{valeurs.codec}</dd>
+        <dt>Qualité</dt>
+        <dd>{texteNombre(valeurs.qualite)}</dd>
+        <dt>Intervalle entre images clés</dt>
+        <dd>{texteNombre(valeurs.intervalle_images_cles)}</dd>
+      </dl>
+      {reglable && (
+        <>
+          <div>
+            <label htmlFor={`${id}-resolution`}>{LIBELLES_ENCODAGE.resolution}</label>
+            <select
+              id={`${id}-resolution`}
+              value={saisie.resolution}
+              onChange={(e) => onChanger({ resolution: e.target.value })}
+            >
+              {options.resolutions.map((resolution) => (
+                <option key={resolution} value={resolution}>
+                  {texteResolution(resolution)}
+                </option>
+              ))}
+            </select>
+            <Origine valeur={origine.valeurs ? texteResolution(origine.valeurs.resolution) : "—"} />
+            {statut("resolution")}
+          </div>
+          {nombre("images_par_seconde")}
+          {nombre("debit_max")}
+        </>
+      )}
+    </section>
+  );
+}
+
 function texteNombre(valeur: number | null): string {
   return valeur === null ? "—" : String(valeur);
 }
@@ -809,6 +967,13 @@ function StatutChamp({
 }: Readonly<{ resultat: ChampModifie | undefined; libelle: string }>) {
   if (!resultat) return null;
   const { champ, demande, relu, statut } = resultat;
+  if (resultat.raison === "sans_reponse") {
+    return (
+      <span role="status" aria-label={`Statut : ${libelle}`} className="statut statut-pas_pris">
+        pas pris — la caméra n'a pas répondu après l'envoi
+      </span>
+    );
+  }
   return (
     <span role="status" aria-label={`Statut : ${libelle}`} className={`statut statut-${statut}`}>
       {STATUTS[statut]} (demandé : {texteValeur(champ, demande)}, relu : {texteValeur(champ, relu)})
@@ -822,5 +987,6 @@ function texteValeur(champ: string, valeur: ChampModifie["relu"]): string {
   if (typeof valeur === "number") return String(valeur);
   if (champ === "image.infrarouge") return INFRAROUGE[valeur as ModeInfrarouge];
   if (champ === "image.contre_jour" || champ === "image.wdr") return COMPENSATION[valeur as ModeCompensation];
+  if (champ === "encodage.resolution") return texteResolution(valeur);
   return champ.endsWith(".position") ? textePosition(valeur as Position) : valeur;
 }

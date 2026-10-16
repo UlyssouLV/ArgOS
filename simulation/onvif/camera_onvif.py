@@ -10,7 +10,9 @@ s'ils sont tous deux renseignés), `ONVIF_TYPES_CREABLES` (types d'Incrustation 
 par des virgules ; les deux par défaut), `ONVIF_TLS_MAX` (version TLS la plus haute servie, `1.0` à `1.3` : une
 caméra ancienne), `ONVIF_SERVICES` (services en plus de l'appareil et du média 1, séparés par des virgules : `image`,
 `media2` ; aucun par défaut), `ONVIF_CHEMINS_RTSP` (chemin et requête de l'URL RTSP de chaque profil, séparés par des
-virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut). HTTP et HTTPS servent la même caméra (même
+virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut), `ONVIF_SILENCE_APRES_ENCODAGE_S` (secondes
+pendant lesquelles la caméra ferme chaque connexion sans répondre après un changement d'Encodage accepté, comme une
+caméra qui relance son encodeur ; jamais par défaut). HTTP et HTTPS servent la même caméra (même
 état). Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
 opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
 `python camera_onvif.py sonde` lit l'heure du service local sur chaque port : healthcheck du conteneur.
@@ -24,6 +26,7 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -362,9 +365,14 @@ class Camera:
         types_creables: tuple[str, ...] = TYPES_TEXTE,
         services: frozenset[str] = frozenset(),
         chemins_rtsp: tuple[str, ...] = CHEMINS_RTSP,
+        silence_apres_encodage_s: float = 0,
     ) -> None:
-        """`services` : `image` et `media2` en plus de l'appareil et du média 1 ; `chemins_rtsp` : un profil par chemin."""
+        """`services` : `image` et `media2` en plus de l'appareil et du média 1 ; `chemins_rtsp` : un profil par chemin ;
+        `silence_apres_encodage_s` : muette ce temps-là après chaque changement d'Encodage accepté."""
         self.identifiants = identifiants
+        self.silence_apres_encodage_s = silence_apres_encodage_s
+        # Instant (`time.monotonic`) jusqu'auquel la caméra ne répond plus.
+        self.muette_jusqu_a = 0.0
         self.types_creables = types_creables
         self.etat = Etat()
         if not 1 <= len(chemins_rtsp) <= len(self.etat.encodeurs):
@@ -414,6 +422,14 @@ class Camera:
                 "GetVideoEncoderConfigurationOptions": self.lire_options_encodeur_2,
                 "SetVideoEncoderConfiguration": self.modifier_encodeur_2,
             }
+
+    def muette(self) -> bool:
+        """Encodeur en cours de relance : aucune requête ne reçoit de réponse."""
+        return time.monotonic() < self.muette_jusqu_a
+
+    def _relancer_l_encodeur(self) -> None:
+        if self.silence_apres_encodage_s:
+            self.muette_jusqu_a = time.monotonic() + self.silence_apres_encodage_s
 
     def traiter(self, chemin: str, corps: bytes, hote: str) -> tuple[int, str]:
         """Requête SOAP reçue sur `chemin` → (statut HTTP, réponse SOAP). `hote` : adresse sous laquelle on nous joint."""
@@ -604,6 +620,7 @@ class Camera:
         if codec != "H264":
             raise Faute("ter:ConfigModify", f"Codec non modifiable : {codec}")
         self._modifier(encodeur, configuration, encodeur.codec, _texte(configuration, "tt:H264/tt:GovLength"))
+        self._relancer_l_encodeur()
         return "<trt:SetVideoEncoderConfigurationResponse/>"
 
     # --- Média 2 ---
@@ -652,6 +669,7 @@ class Camera:
             raise Faute("ter:InvalidArgVal", "Configuration manquante")
         encodeur = self._encodeur(configuration.get("token", ""))
         self._modifier(encodeur, configuration, _texte(configuration, "tt:Encoding"), configuration.get("GovLength", ""))
+        self._relancer_l_encodeur()
         return "<tr2:SetVideoEncoderConfigurationResponse/>"
 
     # --- Image ---
@@ -832,6 +850,10 @@ def creer_serveur(
                 self.send_error(404)
                 return
             corps = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            if camera.muette():
+                # Connexion fermée sans réponse, comme une caméra qui relance son encodeur.
+                self.close_connection = True
+                return
             hote = self.headers.get("Host") or f"{self.server.server_address[0]}:{self.server.server_address[1]}"
             statut, reponse = camera.traiter(self.path, corps, hote)
             self.operation_soap = _nom_operation(corps)
@@ -920,7 +942,13 @@ def main() -> None:
     services = frozenset(_liste("ONVIF_SERVICES"))
     if inconnus := services - set(SERVICES):
         raise SystemExit(f"ONVIF_SERVICES : services inconnus {', '.join(sorted(inconnus))}")
-    camera = Camera(identifiants, types, services, _liste("ONVIF_CHEMINS_RTSP") or CHEMINS_RTSP)
+    camera = Camera(
+        identifiants,
+        types,
+        services,
+        _liste("ONVIF_CHEMINS_RTSP") or CHEMINS_RTSP,
+        float(os.environ.get("ONVIF_SILENCE_APRES_ENCODAGE_S") or 0),
+    )
     tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
     fils = []
     for https, port in ports.items():

@@ -99,6 +99,9 @@ services:
       # Service image et média 2, comme la caméra de dev ; les tests retirent le média 2 (`ONVIF_SERVICES_2=image`)
       # pour le repli média 1 sur ce Flux H.264.
       ONVIF_SERVICES: ${ONVIF_SERVICES_2-image,media2}
+      # Muette ce nombre de secondes après un changement d'Encodage (vide : jamais) ; les tests le règlent pour une
+      # caméra qui ne répond plus après l'envoi.
+      ONVIF_SILENCE_APRES_ENCODAGE_S: ${ONVIF_SILENCE_APRES_ENCODAGE_S_2:-}
       # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
       ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 
