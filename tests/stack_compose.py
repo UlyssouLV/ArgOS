@@ -58,6 +58,53 @@ def compose(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
     return _compose_avec_fichiers(FICHIERS_COMPOSE, *args, env=env)
 
 
+def recreer_le_site(dossier: Path | None = None) -> None:
+    """Relance `certificats` puis `web`, avec le certificat de `dossier` ou, sans lui, l'Autorité du Site.
+
+    Un override Compose fixe le bind mount : sur les runners CI, l'interpolation de
+    `${ARGOS_CERTIFICAT_DOSSIER}` depuis l'environnement du processus ne remplace pas toujours
+    la valeur vide du `.env`, et `certificats` lit alors `./certificats` au lieu du dossier de test.
+    """
+    chemin = str(dossier.resolve()) if dossier else ""
+    env = {"ARGOS_CERTIFICAT_DOSSIER": chemin}
+    fichiers: tuple[str, ...] = FICHIERS_COMPOSE
+    chemin_override = None
+    if dossier is not None:
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as override:
+            override.write(
+                "\n".join(
+                    [
+                        "services:",
+                        "  certificats:",
+                        "    environment:",
+                        f"      ARGOS_CERTIFICAT_DOSSIER: {chemin!r}",
+                        "    volumes:",
+                        "      - type: bind",
+                        f"        source: {chemin}",
+                        "        target: /certificat-fourni",
+                        "        read_only: true",
+                        "        bind:",
+                        "          create_host_path: false",
+                        "",
+                    ]
+                )
+            )
+            chemin_override = override.name
+        fichiers = (*FICHIERS_COMPOSE, chemin_override)
+    try:
+        _compose_avec_fichiers(
+            fichiers, "up", "-d", "--force-recreate", "--wait", "certificats", "web", env=env
+        )
+    except subprocess.CalledProcessError as erreur:
+        journal = compose("logs", "--no-log-prefix", "--tail", "50", "certificats").stdout
+        if journal.strip():
+            erreur.add_note(journal[-4000:])
+        raise
+    finally:
+        if chemin_override:
+            Path(chemin_override).unlink(missing_ok=True)
+
+
 def _lire_env() -> dict[str, str]:
     chemin = REPO_ROOT / ".env"
     if not chemin.exists():

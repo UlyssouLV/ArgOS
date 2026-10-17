@@ -17,15 +17,9 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from stack_compose import URL_SITE, attendre_api, compose
+from stack_compose import URL_SITE, attendre_api, compose, recreer_le_site
 
 PORTS_HTTP = (80, 8080)
-
-
-def recreer_le_site(dossier: Path | None = None) -> None:
-    """Relance `certificats` puis `web`, avec le certificat de `dossier` ou, sans lui, l'Autorité du Site."""
-    env = {"ARGOS_CERTIFICAT_DOSSIER": str(dossier) if dossier else ""}
-    compose("up", "-d", "--force-recreate", "--wait", "certificats", "web", env=env)
 
 
 def certificat_signe_par_une_ca_de_test(dossier: Path) -> tuple[str, bytes]:
