@@ -6,6 +6,7 @@
 #
 # Usage: update-from-pack.sh [--with-docs] [--with-suivi]
 #   --with-docs   scaffold docs-site if missing; else refresh PACK_OWNED paths
+#                 and repair known defects left by older templates
 #   --with-suivi  scaffold suivi-avancement if missing (role + README + template)
 set -euo pipefail
 
@@ -107,27 +108,36 @@ if [ -d "$PACK/agents/hooks" ]; then
 fi
 
 mkdir -p "$TARGET/agents/scripts"
-for f in dispatch.py gate-code-review.py update-from-pack.sh adopter-le-pack.sh scaffold-docs-site.sh; do
+for f in dispatch.py gate-code-review.py update-from-pack.sh adopter-le-pack.sh scaffold-docs-site.sh enchainer-implement.sh; do
   if [ -f "$PACK/agents/scripts/$f" ]; then
     rsync -a "$PACK/agents/scripts/$f" "$TARGET/agents/scripts/$f"
     chmod +x "$TARGET/agents/scripts/$f" 2>/dev/null || true
   fi
 done
 
-# Keep pack templates available for later --with-docs / scaffold
-if [ -d "$PACK/agents/templates" ]; then
-  mkdir -p "$TARGET/agents/templates"
-  rsync -a --exclude .DS_Store --exclude node_modules --exclude build \
-    "$PACK/agents/templates/" "$TARGET/agents/templates/"
-  echo "copié  agents/templates/"
+# Adapter copies actually executed by Claude Code / Cursor (same as adopter-le-pack.sh).
+mkdir -p "$TARGET/.claude/hooks" "$TARGET/.cursor/hooks"
+if [ -f "$PACK/agents/scripts/gate-code-review.py" ]; then
+  rsync -a "$PACK/agents/scripts/gate-code-review.py" "$TARGET/.claude/hooks/gate-code-review.py"
+fi
+if [ -f "$PACK/.cursor/hooks/gate-code-review.sh" ]; then
+  rsync -a "$PACK/.cursor/hooks/gate-code-review.sh" "$TARGET/.cursor/hooks/gate-code-review.sh"
+  chmod +x "$TARGET/.cursor/hooks/gate-code-review.sh"
+fi
+
+# Templates stay in the pack: scaffold-docs-site.sh reads them from $PACK.
+# Drop a copy left by an older update (duplicates docs-site/ for Sonar).
+if [ "$TARGET" != "$PACK" ] && [ -d "$TARGET/agents/templates" ]; then
+  rm -rf "$TARGET/agents/templates"
+  echo "retiré agents/templates/ (lu depuis le pack, plus copié)"
 fi
 
 # --- docs-site ---
 if [ "$WITH_DOCS" -eq 1 ]; then
   if [ -d "$TARGET/docs-site" ] && [ -f "$TARGET/docs-site/package.json" ]; then
-    bash "$TARGET/agents/scripts/scaffold-docs-site.sh" "$TARGET" --force-owned
+    bash "$PACK/agents/scripts/scaffold-docs-site.sh" "$TARGET" --force-owned
   else
-    bash "$TARGET/agents/scripts/scaffold-docs-site.sh" "$TARGET"
+    bash "$PACK/agents/scripts/scaffold-docs-site.sh" "$TARGET"
   fi
 else
   if [ ! -d "$TARGET/docs-site" ]; then
@@ -187,4 +197,4 @@ fi
   python3 agents/scripts/dispatch.py --check
 )
 
-echo "Pack à jour : $updated mis à jour, $added ajouté(s). Rien de local n’a été effacé (hors chemins docs PACK_OWNED si --with-docs)."
+echo "Pack à jour : $updated mis à jour, $added ajouté(s). Rien de local n’a été effacé (hors agents/templates/ et chemins docs PACK_OWNED si --with-docs)."

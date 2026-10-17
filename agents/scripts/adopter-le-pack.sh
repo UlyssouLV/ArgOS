@@ -48,8 +48,10 @@ else
 fi
 
 mkdir -p "$TARGET/agents"
-rsync -a --exclude .DS_Store --exclude __pycache__ "$PACK/agents/" "$TARGET/agents/"
-echo "copié  agents/"
+# templates/ stays in the pack: scaffold-docs-site.sh reads it from $PACK.
+rsync -a --exclude .DS_Store --exclude __pycache__ --exclude /templates/ \
+  "$PACK/agents/" "$TARGET/agents/"
+echo "copié  agents/ (sans templates/)"
 
 if [ ! -f "$TARGET/docs/dev/feuille-de-route/feuille-de-route-dev.md" ]; then
   mkdir -p "$TARGET/docs/dev/feuille-de-route" "$TARGET/docs/dev/recherches"
@@ -187,7 +189,7 @@ echo "câblé  hooks Claude + Cursor (merge, rien d’autre écrasé)"
 )
 
 if [ "$WITH_DOCS" -eq 1 ]; then
-  bash "$TARGET/agents/scripts/scaffold-docs-site.sh" "$TARGET"
+  bash "$PACK/agents/scripts/scaffold-docs-site.sh" "$TARGET"
 fi
 
 echo "Sonar : désactivé (pas de credentials). /qg skippe tant que SONAR_* n’est pas dans .env."
