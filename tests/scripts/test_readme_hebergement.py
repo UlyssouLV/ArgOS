@@ -49,6 +49,15 @@ def test_developper_est_distinct_de_lhebergement_local():
     assert README.index("## Hébergement local") < README.index("## Développer")
 
 
+def test_developper_exige_le_check_argos_tests_sur_main():
+    developper = section("Développer")
+    assert "ArgOS tests / ArgOS tests" in developper
+    assert "main" in developper
+    assert "Settings" in developper
+    assert "checks requis" in developper or "check requis" in developper
+    assert "CI" in developper
+
+
 def test_readme_ne_dit_pas_serveur_pour_le_site():
     assert "Serveur" not in README
     assert "serveur" not in README
