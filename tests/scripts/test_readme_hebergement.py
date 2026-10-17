@@ -51,7 +51,8 @@ def test_developper_est_distinct_de_lhebergement_local():
 
 def test_developper_exige_le_check_argos_tests_sur_main():
     developper = section("Développer")
-    assert "ArgOS tests / ArgOS tests" in developper
+    assert "**`ArgOS tests`**" in developper
+    assert "ArgOS tests / ArgOS tests" not in developper
     assert "main" in developper
     assert "Settings" in developper
     assert "checks requis" in developper or "check requis" in developper

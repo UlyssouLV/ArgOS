@@ -1,5 +1,5 @@
 # Suite complète des racines `test-roots` (équivalent `/t -a`), y compris les PR en brouillon.
-# Check GitHub (protection de branche) : « ArgOS tests / ArgOS tests ».
+# Check GitHub (protection de branche) : « ArgOS tests ».
 name: ArgOS tests
 
 on:

@@ -30,27 +30,6 @@ fi
 
 docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait
 
-racines() {
-    python3 <<'PY'
-from pathlib import Path
-
-dans_test_roots = False
-dans_paths = False
-for ligne in Path("agents/roles.yml").read_text().splitlines():
-    if ligne.startswith("  test-roots:"):
-        dans_test_roots = True
-        continue
-    if dans_test_roots and ligne.startswith("    paths:"):
-        dans_paths = True
-        continue
-    if dans_paths:
-        if ligne.startswith("      - "):
-            print(ligne[8:].strip().strip("'\""))
-        elif ligne.strip() and not ligne.startswith("      "):
-            break
-PY
-}
-
 while IFS= read -r racine; do
     [ -z "$racine" ] && continue
     echo "=== pytest ${racine} ==="
@@ -66,4 +45,4 @@ while IFS= read -r racine; do
         fi
         .venv/bin/python -m pytest
     )
-done < <(racines)
+done < <(python3 "$DEPOT/scripts/lire_test_roots.py" "$DEPOT/agents/roles.yml")

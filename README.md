@@ -144,7 +144,7 @@ Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Adm
 
 Pour `/t` : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright. Pour le front hors conteneur : Node 24 (npm). ffmpeg / ffprobe tournent dans des conteneurs.
 
-Protéger `main` (Settings GitHub, à la main, pas d’API) : exiger le check **`ArgOS tests / ArgOS tests`** parmi les checks requis. Toute CI ajoutée plus tard doit rejoindre cette liste. Tant qu’un check requis est rouge, la PR ne se fusionne pas. Même règle : [checks requis sur main](agents/docs/checks-requis-sur-main.md).
+Protéger `main` (Settings GitHub, à la main, pas d’API) : exiger le check **`ArgOS tests`** parmi les checks requis. Toute CI ajoutée plus tard doit rejoindre cette liste. Tant qu’un check requis est rouge, la PR ne se fusionne pas. Même règle : [checks requis sur main](agents/docs/checks-requis-sur-main.md).
 
 ## Ouvrir le Site depuis un autre poste
 

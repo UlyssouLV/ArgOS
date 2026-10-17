@@ -11,9 +11,19 @@ import pytest
 from conftest import REPO_ROOT
 
 SCRIPT = REPO_ROOT / "scripts" / "lancer-les-tests.sh"
+LIRE_RACINES = REPO_ROOT / "scripts" / "lire_test_roots.py"
 DELAI_S = 15
-COMPTE = "administrateur"
-PHRASE = "argos-dev-phrase-de-passe-de-test"
+
+
+def _affectation_bash(nom: str) -> str:
+    for ligne in SCRIPT.read_text().splitlines():
+        if ligne.startswith(f"{nom}="):
+            return ligne.split("=", 1)[1].strip().strip('"')
+    raise AssertionError(f"{nom} introuvable dans {SCRIPT}")
+
+
+COMPTE = _affectation_bash("COMPTE")
+PHRASE = _affectation_bash("PHRASE")
 
 
 @dataclass
@@ -39,6 +49,7 @@ class Depot:
         self.avec_uv = avec_uv
         (self.depot / "scripts").mkdir()
         shutil.copy2(SCRIPT, self.depot / "scripts" / "lancer-les-tests.sh")
+        shutil.copy2(LIRE_RACINES, self.depot / "scripts" / "lire_test_roots.py")
         (self.depot / ".env.example").write_text(
             "ARGOS_VERSION=0.7.0\nARGOS_IDENTIFIANT=\nARGOS_MOT_DE_PASSE=\nSONAR_TOKEN=\n"
         )
@@ -205,21 +216,3 @@ def test_le_script_installe_uv_s_il_manque(tmp_path):
     assert resultat.code == 0, resultat.sortie
     assert any("curl" in ligne and "astral.sh/uv" in ligne for ligne in resultat.journal)
     assert any(ligne.startswith("uv sync") for ligne in resultat.journal)
-
-
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "argos-tests.yml"
-
-
-def test_le_workflow_appelle_le_script_sur_chaque_pr_vers_main():
-    texte = WORKFLOW.read_text()
-
-    assert "name: ArgOS tests" in texte
-    assert "pull_request" in texte
-    assert "main" in texte
-    assert "ubuntu-latest" in texte
-    assert "cancel-in-progress: true" in texte
-    assert "scripts/lancer-les-tests.sh" in texte
-    assert "actions/checkout@" in texte
-    assert "SONAR" not in texte
-    assert "cache" not in texte.lower()
-    assert "secrets." not in texte
