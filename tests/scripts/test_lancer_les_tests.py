@@ -185,7 +185,7 @@ def test_le_script_lance_pytest_sur_chaque_racine_lue_dans_roles_yml(depot):
     resultat = depot.lancer()
 
     assert resultat.code == 0, resultat.sortie
-    assert any(ligne.startswith("uv sync") for ligne in resultat.journal)
+    assert any(ligne.startswith("uv sync --no-build") for ligne in resultat.journal)
     assert any("python -m pytest" in ligne for ligne in resultat.journal)
     pytest_cwd = [ligne for ligne in resultat.journal if "python -m pytest" in ligne]
     assert len(pytest_cwd) >= 2
@@ -214,5 +214,11 @@ def test_le_script_installe_uv_s_il_manque(tmp_path):
     resultat = depot.lancer()
 
     assert resultat.code == 0, resultat.sortie
-    assert any("curl" in ligne and "astral.sh/uv" in ligne for ligne in resultat.journal)
-    assert any(ligne.startswith("uv sync") for ligne in resultat.journal)
+    assert any(
+        "curl" in ligne
+        and "astral.sh/uv" in ligne
+        and "--proto" in ligne
+        and "=https" in ligne
+        for ligne in resultat.journal
+    )
+    assert any(ligne.startswith("uv sync --no-build") for ligne in resultat.journal)

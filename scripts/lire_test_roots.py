@@ -3,54 +3,45 @@
 
 from __future__ import annotations
 
-import sys
+import re
 from pathlib import Path
+
+_BLOC_PATHS = re.compile(
+    r"(?m)^  test-roots:\n(?:    .*\n)*?    paths:\n((?:      - .*\n?)*)"
+)
+
+
+def _sans_commentaires(texte: str) -> str:
+    return "\n".join(
+        ligne
+        for ligne in texte.splitlines()
+        if ligne.strip() and not ligne.lstrip().startswith("#")
+    )
+
+
+def _chemins_du_bloc(bloc: str) -> list[str]:
+    chemins: list[str] = []
+    for ligne in bloc.splitlines():
+        cle = ligne.strip()
+        if cle.startswith("- "):
+            chemins.append(cle[2:].strip().strip("'\""))
+    return chemins
 
 
 def lire_test_roots(roles_yml: Path) -> list[str]:
     """Retourne les chemins de `roles.test-roots.paths` (ordre du fichier)."""
-    dans_roles = False
-    dans_test_roots = False
-    dans_paths = False
-    chemins: list[str] = []
-
-    for ligne in roles_yml.read_text(encoding="utf-8").splitlines():
-        if not ligne.strip() or ligne.lstrip().startswith("#"):
-            continue
-
-        indent = len(ligne) - len(ligne.lstrip(" "))
-        cle = ligne.strip()
-
-        if indent == 0 and cle == "roles:":
-            dans_roles = True
-            dans_test_roots = False
-            dans_paths = False
-            continue
-
-        if not dans_roles:
-            continue
-
-        if indent == 2 and cle.endswith(":") and not cle.startswith("-"):
-            dans_test_roots = cle == "test-roots:"
-            dans_paths = False
-            continue
-
-        if dans_test_roots and indent == 4 and cle == "paths:":
-            dans_paths = True
-            continue
-
-        if dans_paths:
-            if indent == 6 and cle.startswith("- "):
-                chemins.append(cle[2:].strip().strip("'\""))
-                continue
-            if indent <= 4:
-                break
-
-    return chemins
+    texte = _sans_commentaires(roles_yml.read_text(encoding="utf-8"))
+    if not texte.endswith("\n"):
+        texte += "\n"
+    match = _BLOC_PATHS.search(texte)
+    if match is None:
+        return []
+    return _chemins_du_bloc(match.group(1))
 
 
 def main() -> None:
-    chemin = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("agents/roles.yml")
+    # Chemin fixé au dépôt du script (pas d'argument CLI : évite le path traversal).
+    chemin = Path(__file__).resolve().parent.parent / "agents" / "roles.yml"
     for racine in lire_test_roots(chemin):
         print(racine)
 
