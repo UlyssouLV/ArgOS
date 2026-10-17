@@ -1,10 +1,11 @@
 # Stack de prod. En dev, superposer les Caméras simulées : compose.simulation.yaml.
+# image: + build: : un clone construit et étiquette le registre de ce dépôt ; un Site
+# déjà chargé lance sans les sources (ARGOS_VERSION, docs/adr/0009-images-du-depot-et-compose-autonome.md).
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.21.1
+    image: ghcr.io/ulyssoulv/argos-pont:${ARGOS_VERSION:-0.7.0}
+    build: ./media
     restart: unless-stopped
-    volumes:
-      - ./media/mediamtx.yml:/mediamtx.yml:ro
     ports:
       - "8189:8189/udp"  # WebRTC (ICE, média chiffré en DTLS-SRTP)
       # 8554 (RTSP, en clair et sans authentification) non publié : réseau Compose seulement, ne jamais le
@@ -16,6 +17,7 @@ services:
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
 
   api:
+    image: ghcr.io/ulyssoulv/argos-api:${ARGOS_VERSION:-0.7.0}
     build: ./api
     restart: unless-stopped
     depends_on:
@@ -56,6 +58,7 @@ services:
 
   # Ponctuel, avant web : Autorité du Site et certificat serveur (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md).
   certificats:
+    image: ghcr.io/ulyssoulv/argos-certificats:${ARGOS_VERSION:-0.7.0}
     build: ./certificats
     restart: "no"
     environment:
@@ -76,6 +79,7 @@ services:
           create_host_path: false
 
   web:
+    image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.7.0}
     build: ./web
     restart: unless-stopped
     depends_on:

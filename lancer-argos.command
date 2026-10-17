@@ -74,7 +74,7 @@ fi
 echo "[2/4] Vérification / démarrage de Docker..."
 if ! command -v docker >/dev/null 2>&1; then
     echo "[ERREUR] Docker n'est pas installé (commande « docker » introuvable)."
-    echo "         Installe Docker Desktop (voir README.md, Prérequis), puis relance."
+    echo "         Installe Docker Desktop (voir README.md, Hébergement local), puis relance."
     pause_et_quitter 1
 fi
 if ! docker info >/dev/null 2>&1; then

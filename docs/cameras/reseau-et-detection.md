@@ -157,7 +157,7 @@ puis `docker compose up -d --wait`. Le script **réécrit** cette valeur à chaq
 
 Le sous-réseau doit être relu **après chaque redémarrage**, avant qu’ArgOS ne démarre : sinon `api` garde celui du dernier lancement. Docker relance bien les conteneurs tout seul (`restart: unless-stopped`), mais avec leur ancien réglage ; `docker compose up -d` les recrée quand `.env` a changé.
 
-Exemple de service **systemd** (à adapter, rien n’est installé par ArgOS) : dépôt dans `/opt/argos`, compte `argos` propriétaire du dépôt et membre du groupe `docker` (lancé en `root`, le script rendrait `.env` illisible pour ce compte). La prise des caméras doit avoir été choisie une fois en terminal (§ 6).
+Sur Ubuntu, `scripts/installer-le-site.sh` installe l’unité **systemd** `argos.service` (dossier `/opt/argos`, compte `argos` membre du groupe `docker`) : README, [Hébergement Ubuntu](../../README.md#hébergement-ubuntu). La prise des caméras doit avoir été choisie une fois en terminal (§ 6). L’exemple ci-dessous est celui de l’unité posée par le script.
 
 ```ini
 # /etc/systemd/system/argos.service
@@ -177,6 +177,8 @@ ExecStartPre=-/opt/argos/scripts/cameras/configurer-detection.sh
 ExecStart=/usr/bin/docker compose up -d --wait
 ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=300
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -196,7 +198,7 @@ journalctl -u argos.service   # ce qu'a dit le script au dernier démarrage
 - La stack de dev ajoute **`compose.simulation.yaml`** : les trois Caméras simulées (`camera-simulee-1` à `-3`, RTSP sur le port 554, `-2` avec identifiants) vivent sur le réseau Compose `cameras-simulees`, en `172.30.0.0/24`, que `api` rejoint. Chacune y a une IP et une MAC fixes (`172.30.0.11` à `.13`, `02:a6:05:00:00:01` à `:03`) : `api` est leur voisin direct, il lit leurs MAC sans macvlan (§ 9). Ce fichier **ajoute** lui-même `172.30.0.0/24` aux sous-réseaux venus de `.env` : le script n’en sait rien, et la prod (`compose.yaml` seul) n’en garde aucune trace.
 - La Détection balaie donc **aussi le réseau de la box** : tout appareil RTSP de la maison (une vraie caméra, un NAS, un décodeur) apparaît comme Candidat. C’est attendu. Le Mac lui-même n’en est pas : la simulation ne republie le pont que sur `127.0.0.1:8554`, que le réseau de la box ne voit pas (§ 4).
 - Sans prise privée (Mac hors réseau), le script laisse le réglage vide : la Détection ne cherche alors que dans `172.30.0.0/24` et trouve les trois Caméras simulées.
-- Sous Docker Desktop, `api` sort vers le réseau de la box par le NAT du Mac, comme sous Linux (§ 3). macvlan n’y existe pas : les vraies caméras vues depuis un Mac n’ont pas de MAC, et gardent le comportement de la 0.4.1 (§ 10). Lancer la stack à la main : README, [Protocole de lancement](../../README.md#protocole-de-lancement).
+- Sous Docker Desktop, `api` sort vers le réseau de la box par le NAT du Mac, comme sous Linux (§ 3). macvlan n’y existe pas : les vraies caméras vues depuis un Mac n’ont pas de MAC, et gardent le comportement de la 0.4.1 (§ 10). Lancer la stack : README, [Hébergement local](../../README.md#hébergement-local).
 
 ## 9. Reconnaître un Appareil : MAC, ARP, réseau des caméras
 
