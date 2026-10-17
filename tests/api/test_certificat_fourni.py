@@ -66,10 +66,15 @@ def certificat_signe_par_une_ca_de_test(dossier: Path) -> tuple[str, bytes]:
         .sign(cle_ca, hashes.SHA256())
     )
     pem = serialization.Encoding.PEM
-    (dossier / "certificat.crt").write_bytes(certificat.public_bytes(pem) + ca.public_bytes(pem))
-    (dossier / "cle.key").write_bytes(
+    chemin_crt = dossier / "certificat.crt"
+    chemin_cle = dossier / "cle.key"
+    chemin_crt.write_bytes(certificat.public_bytes(pem) + ca.public_bytes(pem))
+    chemin_cle.write_bytes(
         cle.private_bytes(pem, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     )
+    # Lisibles par l'utilisateur 101 du service `certificats` (umask 077 fréquent en CI).
+    chemin_crt.chmod(0o644)
+    chemin_cle.chmod(0o644)
     return ca.public_bytes(pem).decode(), certificat.public_bytes(serialization.Encoding.DER)
 
 

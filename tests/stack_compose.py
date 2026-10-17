@@ -325,14 +325,21 @@ def _adresses_et_macs(service: str) -> set[tuple[str, str]]:
 
 def _compose_avec_fichiers(fichiers: tuple[str, ...], *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """Comme `compose`, avec une liste explicite de fichiers (`-f`), absolus ou relatifs au dépôt."""
-    return subprocess.run(
-        ["docker", "compose", *(option for fichier in fichiers for option in ("-f", fichier)), *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    try:
+        return subprocess.run(
+            ["docker", "compose", *(option for fichier in fichiers for option in ("-f", fichier)), *args],
+            cwd=REPO_ROOT,
+            env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as erreur:
+        # pytest n'affiche pas stderr de CalledProcessError par défaut.
+        for flux in (erreur.stderr, erreur.stdout):
+            if flux and flux.strip():
+                erreur.add_note(flux[-4000:])
+        raise
 
 
 def lancer_stack() -> None:
