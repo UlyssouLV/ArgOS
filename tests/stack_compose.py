@@ -8,6 +8,7 @@ import os
 import socket
 import ssl
 import subprocess
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -54,14 +55,7 @@ urllib.request.urlopen(requete, timeout=5).read()
 
 def compose(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """`env` : variables de plus, lues par l'interpolation des fichiers compose."""
-    return subprocess.run(
-        ["docker", "compose", *(option for fichier in FICHIERS_COMPOSE for option in ("-f", fichier)), *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    return _compose_avec_fichiers(FICHIERS_COMPOSE, *args, env=env)
 
 
 def _lire_env() -> dict[str, str]:
@@ -266,31 +260,45 @@ def deplacer_cameras_simulees(adresses: dict[int, str], macs: dict[int, str] | N
     """Donne à chaque Caméra simulée (par numéro) sa nouvelle IP, MAC et nom Compose gardés : un nouveau bail DHCP.
 
     `macs` remplace la MAC de certaines : à la même IP, c'est alors un autre Appareil qui sert le même Flux.
-    Toutes quittent leur réseau avant d'y revenir : deux Caméras simulées peuvent échanger leurs IP.
-    Par l'API du moteur Docker : `docker network connect` ne garde pas la MAC.
+    Recrée les services via un override Compose (pas `NetworkConnect`) : sur les runners CI, l'API Docker
+    ignore `MacAddress` au rattachement, alors que `mac_address` à la création est respecté.
     """
     macs = MACS_SIMULEES | (macs or {})
-    conteneurs = {numero: compose("ps", "-q", f"camera-simulee-{numero}").stdout.strip() for numero in adresses}
-    # Lu sur `api`, toujours rattaché : une Caméra simulée peut être restée détachée par un test interrompu.
-    reseau = _reseau_simulation(compose("ps", "-q", "api").stdout.strip())
-    for conteneur in conteneurs.values():
-        # Sans `check` : déjà détachée, elle est simplement rattachée.
-        subprocess.run(["docker", "network", "disconnect", reseau, conteneur], capture_output=True)
-    with httpx.Client(transport=httpx.HTTPTransport(uds=_socket_docker()), base_url="http://docker") as moteur:
-        for numero, ip in adresses.items():
-            nom = f"camera-simulee-{numero}"
-            reponse = moteur.post(
-                f"/networks/{reseau}/connect",
-                json={
-                    "Container": conteneurs[numero],
-                    "EndpointConfig": {
-                        "IPAMConfig": {"IPv4Address": ip},
-                        "MacAddress": macs[numero],
-                        "Aliases": [nom],
-                    },
-                },
-            )
-            reponse.raise_for_status()
+    services = [f"camera-simulee-{numero}" for numero in adresses]
+    onvif = [f"camera-simulee-{numero}-onvif" for numero in adresses if numero in (2, 4)]
+    lignes = ["services:"]
+    for numero, ip in adresses.items():
+        lignes += [
+            f"  camera-simulee-{numero}:",
+            "    networks:",
+            f"      {RESEAU_SIMULATION}:",
+            f"        ipv4_address: {ip}",
+            f'        mac_address: "{macs[numero]}"',
+        ]
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as override:
+        override.write("\n".join(lignes) + "\n")
+        chemin_override = override.name
+    try:
+        # ONVIF d'abord : `network_mode: service:camera-simulee-N` ne survit pas à l'arrêt du parent.
+        # Un seul `up` avec l'override encore présent : Compose attache ONVIF au parent recréé.
+        a_arreter = (*onvif, *services)
+        compose("stop", *a_arreter)
+        _compose_avec_fichiers(
+            (*FICHIERS_COMPOSE, chemin_override),
+            "up",
+            "-d",
+            "--force-recreate",
+            "--wait",
+            *services,
+            *onvif,
+        )
+    finally:
+        Path(chemin_override).unlink(missing_ok=True)
+    for numero, ip in adresses.items():
+        attendu = {(ip, macs[numero])}
+        vu = _adresses_et_macs(f"camera-simulee-{numero}")
+        if vu != attendu:
+            raise RuntimeError(f"camera-simulee-{numero}: IP/MAC {vu}, attendu {attendu}")
 
 
 def remettre_cameras_simulees() -> None:
@@ -315,25 +323,16 @@ def _adresses_et_macs(service: str) -> set[tuple[str, str]]:
     return {tuple(adresse.split("/")) for adresse in inspection.stdout.split()}
 
 
-def _reseau_simulation(conteneur: str) -> str:
-    inspection = subprocess.run(
-        ["docker", "inspect", "-f", "{{range $nom, $_ := .NetworkSettings.Networks}}{{$nom}} {{end}}", conteneur],
+def _compose_avec_fichiers(fichiers: tuple[str, ...], *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Comme `compose`, avec une liste explicite de fichiers (`-f`), absolus ou relatifs au dépôt."""
+    return subprocess.run(
+        ["docker", "compose", *(option for fichier in fichiers for option in ("-f", fichier)), *args],
+        cwd=REPO_ROOT,
+        env={**os.environ, "ARGOS_APERCU_EXPIRATION_S": str(EXPIRATION_APERCU_S), **(env or {})},
         capture_output=True,
         text=True,
         check=True,
     )
-    (reseau,) = [nom for nom in inspection.stdout.split() if nom.endswith(f"_{RESEAU_SIMULATION}")]
-    return reseau
-
-
-def _socket_docker() -> str:
-    hote = subprocess.run(
-        ["docker", "context", "inspect", "-f", "{{.Endpoints.docker.Host}}"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    return hote.removeprefix("unix://")
 
 
 def lancer_stack() -> None:
