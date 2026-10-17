@@ -61,5 +61,5 @@ def reseau_simulation() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 def stack():
-    # --wait : les Caméras simulées sont « healthy » quand leur vidéo est diffusée.
-    compose("up", "-d", "--wait")
+    # --build --wait : images du clone (dont le Pont) ; Caméras simulées « healthy » une fois la vidéo diffusée.
+    compose("up", "-d", "--build", "--wait")
