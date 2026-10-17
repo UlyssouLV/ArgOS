@@ -48,15 +48,18 @@ Version **0.6.3** : régler une Caméra ne livre plus son mot de passe ni ses r�
 
 Version **0.6.4** : les Réglages d’une Caméra règlent aussi l’**Image** de son Appareil (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR), partagée par toutes ses Caméras, et l’**Encodage** de son Flux (résolution, images par seconde, débit max), relus après envoi avec le même statut par champ. L’Encodage passe par le média 2 d’ONVIF, par le média 1 seulement en H.264, sinon il reste en lecture seule ; un changement d’Encodage coupe le Flux quelques secondes, après confirmation. Un lecteur du Flux en tête du panneau montre l’effet des réglages (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos), [ADR 0008](docs/adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md)).
 
-## Prérequis
+Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) portent `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`. Un Mac lance toujours depuis le clone (lanceur, Caméras simulées). Sur Ubuntu, `scripts/installer-le-site.sh` pose un Site dans `/opt/argos` sans les sources : images chargées par `docker save` / `docker load`, unité systemd `argos.service` (voir [ADR 0009](docs/adr/0009-images-du-depot-et-compose-autonome.md)).
 
-- Docker (Docker Desktop sur Mac) avec Docker Compose
-- Pour `/t` seulement : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright
-- Pour lancer le front en dev seulement : Node 24 (npm)
+## Hébergement local
 
-Rien d’autre : ffmpeg / ffprobe tournent dans des conteneurs.
+PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Windows n’est pas documenté.
 
-## Configurer `.env`
+### Prérequis
+
+- Docker Desktop, avec Docker Compose
+- le clone de ce dépôt
+
+### Configuration
 
 `.env` est ignoré par git : les secrets n’entrent jamais dans le dépôt. Les clés sont décrites dans `.env.example`.
 
@@ -65,9 +68,11 @@ cp .env.example .env
 # dans .env : ARGOS_IDENTIFIANT=… et ARGOS_MOT_DE_PASSE=… (mot de passe long recommandé)
 ```
 
-`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En dev local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
+`ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-## Lanceur macOS
+`ARGOS_VERSION` étiquette les images construites (`0.7.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+
+### Installation / lancement
 
 Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
@@ -78,6 +83,66 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 5. ouvre une fenêtre Terminal avec les logs de la stack et l’UI sur `https://localhost`.
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
+
+## Hébergement Ubuntu
+
+Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Le registre GitHub n’est pas encore publié (0.7.2) : les quatre images du Site arrivent par `docker save` / `docker load`.
+
+### Prérequis
+
+- Ubuntu, avec Docker Engine et le plugin Compose
+- les quatre images du Site déjà chargées (`docker load`, ci-dessous)
+- le clone (ou une copie de `compose.yaml`, `compose.reseau-cameras.yaml`, `.env.example` et `scripts/`) le temps de lancer le script d’installation
+
+Postgres reste l’image officielle `postgres:18.6-alpine3.24` : Compose la tire au premier lancement. Rien à construire sur la machine Ubuntu.
+
+### Configuration
+
+Le script d’installation crée `/opt/argos/.env` d’après `.env.example`, **sans** les clés Sonar. Il demande le compte de l’Administrateur s’il n’est pas déjà dans l’environnement (`ARGOS_IDENTIFIANT`, `ARGOS_MOT_DE_PASSE`) ni dans ce `.env`.
+
+Après installation, dans `/opt/argos/.env` :
+
+- `ARGOS_VERSION` : étiquette des images chargées (ex. `0.7.0`)
+- `MTX_WEBRTCADDITIONALHOSTS` : IP de la machine Ubuntu sur le réseau local, pour que le certificat nomme le Site
+- Détection et réseau des caméras (macvlan) : [Réseau et Détection](docs/cameras/reseau-et-detection.md) — le script `scripts/cameras/configurer-detection.sh` est copié dans `/opt/argos` et lancé au boot ; la prise se choisit **une fois** en terminal
+
+### Installation / lancement
+
+**1. Construire et sauver les images** depuis un clone (Mac, ou une autre machine qui a Docker) :
+
+```bash
+docker compose -f compose.yaml build
+docker save \
+  ghcr.io/ulyssoulv/argos-api:0.7.0 \
+  ghcr.io/ulyssoulv/argos-web:0.7.0 \
+  ghcr.io/ulyssoulv/argos-pont:0.7.0 \
+  ghcr.io/ulyssoulv/argos-certificats:0.7.0 \
+  -o argos-images-0.7.0.tar
+```
+
+Adapter `0.7.0` à `ARGOS_VERSION`. Transférer l’archive vers la machine Ubuntu.
+
+**2. Charger les images** sur Ubuntu :
+
+```bash
+docker load -i argos-images-0.7.0.tar
+```
+
+**3. Installer le Site** depuis le clone (compte Administrateur demandé si besoin) :
+
+```bash
+sudo ./scripts/installer-le-site.sh
+```
+
+Le script pose `/opt/argos` (compose de prod, `.env`, script de Détection — pas le clone, pas `compose.simulation.yaml`), le compte système `argos` (groupe `docker`), et l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
+
+Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
+
+**Mettre à jour** : charger les nouvelles images (`docker load`), aligner `ARGOS_VERSION` dans `/opt/argos/.env` si l’étiquette change, puis `sudo systemctl restart argos.service`.
+
+## Développer
+
+Pour `/t` : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright. Pour le front hors conteneur : Node 24 (npm). ffmpeg / ffprobe tournent dans des conteneurs.
 
 ## Ouvrir le Site depuis un autre poste
 
