@@ -94,6 +94,9 @@ def test_le_dossier_du_site_a_le_compose_lenv_et_la_detection_sans_sources_ni_so
     assert (resultat.racine / "compose.yaml").is_file()
     assert (resultat.racine / ".env").is_file()
     assert (resultat.racine / "scripts" / "cameras" / "configurer-detection.sh").is_file()
+    # Bind Compose du certificat fourni (`./certificats`, create_host_path: false) : dossier vide, pas les sources.
+    assert (resultat.racine / "certificats").is_dir()
+    assert not any((resultat.racine / "certificats").iterdir())
     assert not (resultat.racine / "api").exists()
     assert not (resultat.racine / "web").exists()
     assert not (resultat.racine / "compose.simulation.yaml").exists()

@@ -108,10 +108,10 @@ Après installation, dans `/opt/argos/.env` :
 
 ### Installation / lancement
 
-**1. Construire et sauver les images** depuis un clone (Mac, ou une autre machine qui a Docker) :
+**1. Construire et sauver les images** depuis un clone (Mac, ou une autre machine qui a Docker). Les images doivent correspondre à l’architecture de la machine Ubuntu (souvent `linux/amd64`). Sur un Mac Apple Silicon, sans ça, le `build` produit de l’arm64 : `docker load` réussit, le Site ne démarre pas.
 
 ```bash
-docker compose -f compose.yaml build
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
 docker save \
   ghcr.io/ulyssoulv/argos-api:0.7.0 \
   ghcr.io/ulyssoulv/argos-web:0.7.0 \
@@ -120,7 +120,7 @@ docker save \
   -o argos-images-0.7.0.tar
 ```
 
-Adapter `0.7.0` à `ARGOS_VERSION`. Transférer l’archive vers la machine Ubuntu.
+Adapter `0.7.0` à `ARGOS_VERSION`. Transférer l’archive vers la machine Ubuntu. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
 
 **2. Charger les images** sur Ubuntu :
 

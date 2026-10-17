@@ -24,14 +24,9 @@ Contraintes transverses :
 - **0.6.2** — Authentification des Flux : WHEP et HLS relayés par nginx seulement à une session ArgOS (`auth_request`, `401` sinon), l’UI revient à la connexion quand un Flux est refusé ; RTSP `8554` n’est plus publié sur l’hôte (dev : `127.0.0.1` seulement) ; MediaMTX reste sans authentification derrière le réseau Compose ; un Live WebRTC déjà établi continue après la fin de la session (Plus tard) ([PR #74](https://github.com/UlyssouLV/ArgOS/pull/74), [spec](../../specs/v0.6.2-authentification-des-flux.md), [ADR 0006](../../adr/0006-flux-authentifies-par-nginx.md)).
 - **0.6.3** — Sécurisation d’ONVIF : ONVIF en HTTPS sur `443` quand la caméra le propose, clé du Certificat de l’Appareil mémorisée au premier contact puis vérifiée (clé changée ou HTTPS disparu refusés et signalés, l’Administrateur fait confiance au nouveau certificat ou l’oublie) ; ONVIF en clair seulement sur accord de l’Administrateur, mémorisé et révocable ; TLS ancien accepté et signalé ; mot de passe de caméra court (< 12 caractères) signalé à l’ajout ; port, clé et accord gardés tant que l’hôte ne change pas ; `# NOSONAR` de la 0.6.0 justifiés pour de bon. Bug connu : modifier l’URL d’une Caméra sans retaper son mot de passe enregistre `***` ([#86](https://github.com/UlyssouLV/ArgOS/issues/86), Plus tard) ([PR #85](https://github.com/UlyssouLV/ArgOS/pull/85), [spec](../../specs/v0.6.3-securisation-d-onvif.md), [ADR 0007](../../adr/0007-onvif-en-https-par-cle-memorisee.md), [doc](../../cameras/parametrer-une-camera.md)).
 - **0.6.4** — Réglages image et vidéo par ONVIF : sections Image (filtre infrarouge jour / nuit / automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR ; de l’Appareil, partagée par ses Caméras) et Encodage du Flux (résolution, images par seconde, débit max ; codec, qualité et intervalle entre images clés en lecture seule) dans les Réglages, relues après envoi avec un statut par champ ; profil retenu d’après l’URL RTSP de la Caméra ; Encodage par le média 2, par le média 1 seulement en H.264, sinon non réglable ; confirmation avant la coupure du Flux ; lecteur du Flux dans le panneau ; Caméra simulée 2 avec service image et média 2. Bug connu : la suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées ([#95](https://github.com/UlyssouLV/ArgOS/issues/95), Plus tard) ([PR #94](https://github.com/UlyssouLV/ArgOS/pull/94), [spec](../../specs/v0.6.4-reglages-image-et-video-par-onvif.md), [ADR 0008](../../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md), [doc](../../cameras/parametrer-une-camera.md)).
+- **0.7.0** — Site installable sans le dépôt : images `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`, compose de prod autonome, install Ubuntu dans `/opt/argos` avec systemd ; Mac toujours depuis le clone (lanceur, Caméras simulées) ([PR #101](https://github.com/UlyssouLV/ArgOS/pull/101), [spec](../../specs/v0.7.0-site-installable-sans-le-depot.md), [ADR 0009](../../adr/0009-images-du-depot-et-compose-autonome.md)).
 
-## Prochaine : 0.7.0 — Serveur installable sans le dépôt
-
-**Objectif.** Produire des images versionnées du serveur (`api`, `web`, pont) et un compose de prod autonome, pour installer et mettre à jour un Site sans les sources, avec ses réglages dans `.env`.
-
-**Hors périmètre :** CI des PR (0.7.1) et publication au registre (0.7.2).
-
-## Ensuite : 0.7.1 — Intégration continue
+## Prochaine : 0.7.1 — Intégration continue
 
 **Objectif.** Lancer les tests (`/t`) sur chaque PR dans GitHub Actions, stack Docker comprise, pour qu’une PR rouge ne puisse pas être fusionnée.
 
@@ -39,7 +34,7 @@ Contraintes transverses :
 
 ## Ensuite : 0.7.2 — Livraison continue
 
-**Objectif.** Publier les images du serveur à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un serveur Linux, réseau des caméras isolé compris (VLAN, sans internet) : on peut installer ArgOS sur un vrai Site.
+**Objectif.** Publier les images du Site à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un Site Ubuntu, réseau des caméras isolé compris (VLAN, sans internet) : on peut installer ArgOS sur un vrai Site. Y compris la promotion d’une image déjà verte (même digest) vers les Sites Ubuntu.
 
 **Hors périmètre :** enregistrement des Flux (0.8.0).
 

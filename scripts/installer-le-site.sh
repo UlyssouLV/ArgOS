@@ -5,7 +5,7 @@
 # Voir docs/adr/0009-images-du-depot-et-compose-autonome.md.
 set -euo pipefail
 
-SOURCE="$(cd "$(dirname "$0")/.." && pwd)"
+DEPOT="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIXE="${ARGOS_PREFIX:-}"
 RACINE="${PREFIXE}/opt/argos"
 UNITE="${PREFIXE}/etc/systemd/system/argos.service"
@@ -30,15 +30,16 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ ! -f "$SOURCE/compose.yaml" ] || [ ! -f "$SOURCE/.env.example" ]; then
-    echo "[ERREUR] compose.yaml ou .env.example introuvable à côté du script ($SOURCE)." >&2
+if [ ! -f "$DEPOT/compose.yaml" ] || [ ! -f "$DEPOT/.env.example" ]; then
+    echo "[ERREUR] compose.yaml ou .env.example introuvable à côté du script ($DEPOT)." >&2
     exit 1
 fi
 
-mkdir -p "$RACINE/scripts/cameras" "$(dirname "$UNITE")"
-cp "$SOURCE/compose.yaml" "$RACINE/compose.yaml"
-cp "$SOURCE/compose.reseau-cameras.yaml" "$RACINE/compose.reseau-cameras.yaml"
-cp "$SOURCE/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/cameras/configurer-detection.sh"
+# `certificats/` : bind Compose du certificat fourni (`create_host_path: false`). Vide = Autorité du Site.
+mkdir -p "$RACINE/scripts/cameras" "$RACINE/certificats" "$(dirname "$UNITE")"
+cp "$DEPOT/compose.yaml" "$RACINE/compose.yaml"
+cp "$DEPOT/compose.reseau-cameras.yaml" "$RACINE/compose.reseau-cameras.yaml"
+cp "$DEPOT/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/cameras/configurer-detection.sh"
 chmod 755 "$RACINE/scripts/cameras/configurer-detection.sh"
 
 if [ ! -f "$FICHIER_ENV" ]; then
@@ -46,7 +47,7 @@ if [ ! -f "$FICHIER_ENV" ]; then
         /^# SonarCloud/ { next }
         /^SONAR_/ { next }
         { print }
-    ' "$SOURCE/.env.example" > "$FICHIER_ENV"
+    ' "$DEPOT/.env.example" > "$FICHIER_ENV"
 fi
 
 if [ -z "$(valeur_env ARGOS_IDENTIFIANT)" ] || [ -z "$(valeur_env ARGOS_MOT_DE_PASSE)" ]; then

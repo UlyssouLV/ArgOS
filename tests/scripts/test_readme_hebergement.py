@@ -34,6 +34,8 @@ def test_hebergement_ubuntu_documente_save_load_le_script_opt_argos_et_systemd()
     assert "installer-le-site.sh" in texte
     assert "/opt/argos" in texte
     assert "argos.service" in texte
+    assert "linux/amd64" in texte
+    assert "DOCKER_DEFAULT_PLATFORM" in texte
 
 
 def test_developper_est_distinct_de_lhebergement_local():
