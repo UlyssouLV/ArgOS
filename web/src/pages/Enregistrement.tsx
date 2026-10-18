@@ -28,7 +28,7 @@ export function Enregistrement() {
   const [espace, setEspace] = useState<EspaceEnregistrements | null>(null);
   const [debits, setDebits] = useState<DebitsEcriture | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [enregistrement, setEnregistrement] = useState(false);
+  const [enCours, setEnCours] = useState(false);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -60,7 +60,7 @@ export function Enregistrement() {
       setErreur(`La conservation doit être un entier entre ${CONSERVATION_MIN} et ${CONSERVATION_MAX} heures.`);
       return;
     }
-    setEnregistrement(true);
+    setEnCours(true);
     try {
       const reglages = await modifierReglagesSite({ conservation_h: heures });
       setConservation(reglages.conservation_h);
@@ -70,7 +70,7 @@ export function Enregistrement() {
     } catch (e) {
       setErreur(messageEchec(e));
     } finally {
-      setEnregistrement(false);
+      setEnCours(false);
     }
   }
 
@@ -81,7 +81,7 @@ export function Enregistrement() {
       setErreur(`Le seuil doit être un entier d’au moins ${Math.round(SEUIL_MIN_O / MO)} Mo.`);
       return;
     }
-    setEnregistrement(true);
+    setEnCours(true);
     try {
       const reglages = await modifierReglagesSite({ seuil_octets_libres: mo * MO });
       setSeuilO(reglages.seuil_octets_libres);
@@ -93,7 +93,7 @@ export function Enregistrement() {
     } catch (e) {
       setErreur(messageEchec(e));
     } finally {
-      setEnregistrement(false);
+      setEnCours(false);
     }
   }
 
@@ -196,13 +196,13 @@ export function Enregistrement() {
           Durée pendant laquelle le Site garde les segments (de {CONSERVATION_MIN} à {CONSERVATION_MAX} h).
           L’interrupteur d’enregistrement de chaque Caméra reste dans Administration.
         </p>
-        <button type="submit" disabled={conservation === null || conservationInchangee || enregistrement}>
+        <button type="submit" disabled={conservation === null || conservationInchangee || enCours}>
           Enregistrer la conservation
         </button>
       </form>
       <form className="seuil-place" onSubmit={(e) => void enregistrerSeuil(e)}>
         <label>
-          Seuil de place libre (Mo)
+          Seuil de place disque (Mo)
           <input
             type="number"
             name="seuil_mo"
@@ -218,7 +218,7 @@ export function Enregistrement() {
           Marge d’octets libres sous laquelle un signal apparaît (plancher {Math.round(SEUIL_MIN_O / MO)}{" "}
           Mo, défaut 1024 Mo). Aucune coupure automatique.
         </p>
-        <button type="submit" disabled={seuilO === null || seuilInchange || enregistrement}>
+        <button type="submit" disabled={seuilO === null || seuilInchange || enCours}>
           Enregistrer le seuil
         </button>
       </form>

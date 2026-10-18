@@ -371,7 +371,7 @@ def _routes_cameras(
     @routes.patch("/{id_camera}")
     def modifier(id_camera: int, modification: ModificationCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.modifier(base, id_camera, modification, racine_enregistrements)
+            return cameras.modifier(base, id_camera, modification, racine_enregistrements, horloge)
 
     @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
     def supprimer(id_camera: int, base: Base) -> None:

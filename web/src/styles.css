@@ -95,6 +95,16 @@ input {
   border-bottom-color: #fff;
 }
 
+.onglets .pastille-seuil {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  background: #c45c26;
+  vertical-align: middle;
+}
+
 .contenu {
   padding: 1.5rem;
 }

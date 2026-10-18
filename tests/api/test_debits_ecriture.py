@@ -29,16 +29,19 @@ def reglages_remis(administrateur):
     remettre()
 
 
-def _ecrire_segment(id_camera: int, octets: int) -> None:
+def _ecrire_segment(id_camera: int, octets: int, age_s: int = 250) -> None:
+    """Écrit un segment daté de `age_s` s (dans la fenêtre) ; débit attendu ≈ octets // age_s."""
     compose(
         "exec",
         "-T",
         "api",
         "python",
         "-c",
-        "from pathlib import Path; "
-        f"p = Path('/enregistrements/camera-{id_camera}'); p.mkdir(parents=True, exist_ok=True); "
-        f"(p / 'segment.mp4').write_bytes(b'x' * {octets})",
+        "import time\n"
+        "from pathlib import Path\n"
+        f"p = Path('/enregistrements/camera-{id_camera}'); p.mkdir(parents=True, exist_ok=True)\n"
+        f"f = p / 'segment.mp4'; f.write_bytes(b'x' * {octets})\n"
+        f"t = time.time() - {age_s}; __import__('os').utime(f, (t, t))\n",
     )
 
 
@@ -86,14 +89,31 @@ def test_camera_sans_segments_ni_encodage_inconnu(connecte, creer_camera):
 def test_debit_mesure_sur_segments_recents(connecte, creer_camera):
     camera = creer_camera().json()
     assert connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
-    octets = 150_000  # → 500 o/s sur 300 s
-    _ecrire_segment(camera["id"], octets)
+    age_s = 250
+    octets = 150_000  # → 600 o/s sur 250 s
+    _ecrire_segment(camera["id"], octets, age_s=age_s)
 
     corps = connecte.get("/api/debits-ecriture").json()
 
     resume = next(c for c in corps["cameras"] if c["id"] == camera["id"])
     assert resume["source_debit"] == "mesure"
-    assert resume["debit_o_s"] == octets // FENETRE_MESURE_S
+    assert resume["debit_o_s"] == pytest.approx(octets / age_s, rel=0.05)
+
+
+def test_debit_mesure_fenetre_courte_si_segments_recents(connecte, creer_camera):
+    """Un enregistrement tout juste démarré ne divise pas par la fenêtre pleine (sous-estimation)."""
+    camera = creer_camera().json()
+    assert connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
+    age_s = 10
+    octets = 50_000
+    _ecrire_segment(camera["id"], octets, age_s=age_s)
+
+    corps = connecte.get("/api/debits-ecriture").json()
+
+    resume = next(c for c in corps["cameras"] if c["id"] == camera["id"])
+    assert resume["source_debit"] == "mesure"
+    assert resume["debit_o_s"] == pytest.approx(octets / age_s, rel=0.15)
+    assert resume["debit_o_s"] > octets // FENETRE_MESURE_S
 
 
 def test_repli_encodage_sans_segments(connecte, creer_camera):
@@ -108,18 +128,28 @@ def test_repli_encodage_sans_segments(connecte, creer_camera):
     assert resume["debit_o_s"] == 4096 * 1000 // 8
 
 
+def test_enregistrement_on_ne_bloque_pas_si_repli_onvif_impossible(connecte, creer_camera):
+    """Allumer l'enregistrement reste 200 même si le peuplement ONVIF du repli échoue (hôte .invalid)."""
+    camera = creer_camera().json()
+    assert connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
+    resume = next(c for c in connecte.get("/api/debits-ecriture").json()["cameras"] if c["id"] == camera["id"])
+    assert resume["enregistrement"] is True
+    assert resume["source_debit"] == "inconnu"
+
+
 def test_agregats_enregistrement_et_projection(connecte, creer_camera):
     a = creer_camera().json()
     b = creer_camera().json()
     assert connecte.patch(f"/api/cameras/{a['id']}", json={"enregistrement": True}).status_code == 200
     # b active mais enregistrement OFF
-    _ecrire_segment(a["id"], 300_000)  # 1000 o/s
+    age_s = 250
+    _ecrire_segment(a["id"], 250_000, age_s=age_s)  # ≈ 1000 o/s
     _fixer_debit_encodage(b["id"], 8)  # 1000 o/s
 
     corps = connecte.get("/api/debits-ecriture").json()
     par_id = {c["id"]: c for c in corps["cameras"]}
 
-    assert par_id[a["id"]]["debit_o_s"] == 1000
+    assert par_id[a["id"]]["debit_o_s"] == pytest.approx(250_000 / age_s, rel=0.05)
     assert par_id[a["id"]]["source_debit"] == "mesure"
     assert par_id[b["id"]]["debit_o_s"] == 1000
     assert par_id[b["id"]]["source_debit"] == "encodage"
@@ -135,20 +165,36 @@ def test_agregats_enregistrement_et_projection(connecte, creer_camera):
     assert {a["id"], b["id"]} <= {c["id"] for c in actives}
 
 
-def test_agregat_inconnu_si_une_camera_du_jeu_est_inconnue(connecte, creer_camera):
+def test_agregat_somme_les_connus_si_une_camera_est_inconnue(connecte, creer_camera):
     a = creer_camera().json()
     b = creer_camera().json()
-    assert connecte.patch(f"/api/cameras/{a['id']}", json={"enregistrement": True}).status_code == 200
+    _seul_enregistrement(connecte, a["id"])
     assert connecte.patch(f"/api/cameras/{b['id']}", json={"enregistrement": True}).status_code == 200
-    _ecrire_segment(a["id"], 300_000)
-    # b : pas de segments ni encodage → inconnu
+    age_s = 250
+    _ecrire_segment(a["id"], 250_000, age_s=age_s)  # ≈ 1000 o/s
+    # b : hôte .invalid → pas de repli ONVIF ; sans segments → inconnu
 
     corps = connecte.get("/api/debits-ecriture").json()
     par_id = {c["id"]: c for c in corps["cameras"]}
 
+    assert par_id[a["id"]]["source_debit"] == "mesure"
+    debit_a = par_id[a["id"]]["debit_o_s"]
+    assert debit_a == pytest.approx(250_000 / age_s, rel=0.05)
     assert par_id[b["id"]]["source_debit"] == "inconnu"
-    assert corps["debit_enregistrement_o_s"] is None
-    assert corps["debit_projection_o_s"] is None
+    # Seules a (mesure) et b (inconnu) enregistrent : agrégat = débit de a.
+    assert corps["debit_enregistrement_o_s"] == debit_a
+
+
+def test_agregat_none_si_toutes_inconnues(connecte, creer_camera):
+    camera = creer_camera().json()
+    assert connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
+    # Hôte .invalid : pas de repli ONVIF ; sans segments → inconnu.
+    corps = connecte.get("/api/debits-ecriture").json()
+    resume = next(c for c in corps["cameras"] if c["id"] == camera["id"])
+    assert resume["source_debit"] == "inconnu"
+    en_cours = [c for c in corps["cameras"] if c["enregistrement"]]
+    if all(c["source_debit"] == "inconnu" for c in en_cours):
+        assert corps["debit_enregistrement_o_s"] is None
 
 
 def test_tenue_confrontée_a_la_conservation(connecte, creer_camera):

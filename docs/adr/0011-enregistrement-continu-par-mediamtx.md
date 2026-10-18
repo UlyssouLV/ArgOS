@@ -2,6 +2,10 @@
 
 Le Live tire déjà le RTSP à la demande (`sourceOnDemand`, ADR 0001). L’enregistrement continu exige l’inverse pour les Caméras choisies : MediaMTX écrit des segments **fMP4** sans réencodage sur un **volume Docker nommé**, l’API active `record` et coupe le mode à la demande **seulement** quand l’enregistrement est ON. Conservation courte fixe (1 h en 0.8.0) via `recordDeleteAfter` ; pas de relecture HTTP dans cette décision.
 
+> **Modifié en V0.8.1** ([#121](https://github.com/UlyssouLV/ArgOS/issues/121)) — Conservation des segments
+> Avant : Fixe 1 h (`recordDeleteAfter: 1h`), non réglable depuis l’UI
+> Après : Conservation Site 1–24 h (défaut 1 h), poussée au pont (ADR 0012)
+
 ## Considered Options
 
 - **Enregistreur externe (ffmpeg côté API)** : contrôle fin, mais second pipeline, réencodage ou copie à gérer, hors du pont déjà en place.

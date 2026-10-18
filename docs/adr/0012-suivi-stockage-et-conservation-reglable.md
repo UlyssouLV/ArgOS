@@ -1,6 +1,6 @@
 # Suivi stockage et conservation réglable sur le volume actuel
 
-L’enregistrement continu (ADR 0011) écrit sur un **volume Docker nommé** avec une conservation fixe. Pour dimensionner la rétention sans changer *où* vivent les octets, le Site expose l’**espace libre** de ce volume, un **seuil** d’alerte (signal seul), une **conservation Site** (1–24 h) poussée en `recordDeleteAfter`, et des **débits d’écriture** mesurés sur les segments récents (repli encodage / inconnu), avec projection « toutes Caméras actives » et estimation de tenue.
+L’enregistrement continu (ADR 0011) écrit sur un **volume Docker nommé** avec une conservation fixe. Pour dimensionner la **Conservation** sans changer *où* vivent les octets, le Site expose l’**espace libre** de ce volume, un **Seuil de place disque** (signal seul), une **Conservation Site** (1–24 h) poussée en `recordDeleteAfter`, et des **Débits d’écriture** mesurés sur les segments récents (repli encodage / inconnu), avec projection « toutes Caméras actives » et estimation de tenue.
 
 ## Considered Options
 

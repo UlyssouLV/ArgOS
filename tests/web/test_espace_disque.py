@@ -47,7 +47,7 @@ def test_page_affiche_total_libre_utilise(enregistrement: Page):
 
 
 def test_regler_le_seuil_depuis_la_page(enregistrement: Page, api):
-    champ = enregistrement.get_by_label("Seuil de place libre (Mo)")
+    champ = enregistrement.get_by_label("Seuil de place disque (Mo)")
     expect(champ).to_have_value(str(SEUIL_DEFAUT // MO), timeout=10_000)
 
     champ.fill("256")
@@ -68,6 +68,7 @@ def test_signal_sous_le_seuil(enregistrement: Page, api):
     enregistrement.reload()
     expect(enregistrement.get_by_role("heading", name="Enregistrement")).to_be_visible()
     expect(enregistrement.get_by_role("status")).to_contain_text("Place libre sous le seuil", timeout=10_000)
+    expect(enregistrement.get_by_label("Place libre sous le seuil")).to_be_visible()
 
 
 def test_pas_de_signal_quand_assez_de_place(enregistrement: Page, api):

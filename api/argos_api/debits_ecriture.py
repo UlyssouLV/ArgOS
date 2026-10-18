@@ -91,12 +91,17 @@ def _debit_camera(camera: Camera, racine: Path, maintenant: float) -> tuple[int 
 
 
 def _mesurer(dossier: Path, maintenant: float) -> int | None:
-    """Somme des tailles des fichiers touchés dans la fenêtre / durée de la fenêtre."""
+    """Somme des tailles des fichiers touchés dans la fenêtre / durée d'observation réelle.
+
+    Si l'enregistrement vient de démarrer, on divise par le temps écoulé depuis le plus
+    ancien fichier de la fenêtre (plancher 1 s), pas par la fenêtre pleine — sinon le
+    débit est sous-estimé jusqu'à ce que la fenêtre soit remplie.
+    """
     if not dossier.is_dir():
         return None
     seuil = maintenant - FENETRE_MESURE_S
     total = 0
-    trouve = False
+    plus_ancien: float | None = None
     try:
         for chemin in dossier.rglob("*"):
             if not chemin.is_file():
@@ -107,12 +112,13 @@ def _mesurer(dossier: Path, maintenant: float) -> int | None:
                 continue
             if stats.st_mtime >= seuil:
                 total += stats.st_size
-                trouve = True
+                plus_ancien = stats.st_mtime if plus_ancien is None else min(plus_ancien, stats.st_mtime)
     except OSError:
         return None
-    if not trouve:
+    if plus_ancien is None:
         return None
-    return total // FENETRE_MESURE_S
+    duree_s = max(1, min(FENETRE_MESURE_S, int(maintenant - plus_ancien) or 1))
+    return total // duree_s
 
 
 def _depuis_encodage(kbit_s: int | None) -> int | None:
@@ -122,12 +128,13 @@ def _depuis_encodage(kbit_s: int | None) -> int | None:
 
 
 def _agregat(cameras: list[DebitCamera]) -> int | None:
-    """Somme des débits connus ; `None` si une Caméra du jeu est inconnue. Jeu vide → 0."""
+    """Somme des débits connus. Jeu vide → 0. Toutes inconnues → None (les connues restent sommées)."""
     if not cameras:
         return 0
-    if any(c.source_debit == "inconnu" for c in cameras):
+    connus = [c.debit_o_s or 0 for c in cameras if c.source_debit != "inconnu"]
+    if not connus:
         return None
-    return sum(c.debit_o_s or 0 for c in cameras)
+    return sum(connus)
 
 
 def _tenue(
