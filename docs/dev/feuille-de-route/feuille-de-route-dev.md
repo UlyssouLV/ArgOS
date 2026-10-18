@@ -26,14 +26,9 @@ Contraintes transverses :
 - **0.6.4** — Réglages image et vidéo par ONVIF : sections Image (filtre infrarouge jour / nuit / automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR ; de l’Appareil, partagée par ses Caméras) et Encodage du Flux (résolution, images par seconde, débit max ; codec, qualité et intervalle entre images clés en lecture seule) dans les Réglages, relues après envoi avec un statut par champ ; profil retenu d’après l’URL RTSP de la Caméra ; Encodage par le média 2, par le média 1 seulement en H.264, sinon non réglable ; confirmation avant la coupure du Flux ; lecteur du Flux dans le panneau ; Caméra simulée 2 avec service image et média 2. Bug connu : la suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées ([#95](https://github.com/UlyssouLV/ArgOS/issues/95), Plus tard) ([PR #94](https://github.com/UlyssouLV/ArgOS/pull/94), [spec](../../specs/v0.6.4-reglages-image-et-video-par-onvif.md), [ADR 0008](../../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md), [doc](../../cameras/parametrer-une-camera.md)).
 - **0.7.0** — Site installable sans le dépôt : images `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`, compose de prod autonome, install Ubuntu dans `/opt/argos` avec systemd ; Mac toujours depuis le clone (lanceur, Caméras simulées) ([PR #101](https://github.com/UlyssouLV/ArgOS/pull/101), [spec](../../specs/v0.7.0-site-installable-sans-le-depot.md), [ADR 0009](../../adr/0009-images-du-depot-et-compose-autonome.md)).
 - **0.7.1** — Intégration continue : chaque PR vers `main` lance la suite (`/t -a`, stack Docker) via GitHub Actions ; check **`ArgOS tests`** à exiger pour protéger `main` ([PR #106](https://github.com/UlyssouLV/ArgOS/pull/106), [spec](../../specs/v0.7.1-integration-continue.md)).
+- **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
 
-## Prochaine : 0.7.2 — Livraison continue
-
-**Objectif.** Publier les images du Site à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un Site Ubuntu, réseau des caméras isolé compris (VLAN, sans internet) : on peut installer ArgOS sur un vrai Site. Y compris la promotion d’une image déjà verte (même digest) vers les Sites Ubuntu.
-
-**Hors périmètre :** enregistrement des Flux (0.8.0).
-
-## Ensuite : 0.8.0 — Enregistrement continu
+## Prochaine : 0.8.0 — Enregistrement continu
 
 **Objectif.** Enregistrer sur disque, sans réencodage, le Flux des Caméras choisies : MediaMTX enregistre en segments, l’API le pilote, un interrupteur par Caméra dans l’Administration l’active ; durée de conservation fixe, les plus anciens segments sont effacés. Une tranche de bout en bout, vérifiable par l’Administrateur.
 
