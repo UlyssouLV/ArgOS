@@ -27,14 +27,9 @@ Contraintes transverses :
 - **0.7.0** — Site installable sans le dépôt : images `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`, compose de prod autonome, install Ubuntu dans `/opt/argos` avec systemd ; Mac toujours depuis le clone (lanceur, Caméras simulées) ([PR #101](https://github.com/UlyssouLV/ArgOS/pull/101), [spec](../../specs/v0.7.0-site-installable-sans-le-depot.md), [ADR 0009](../../adr/0009-images-du-depot-et-compose-autonome.md)).
 - **0.7.1** — Intégration continue : chaque PR vers `main` lance la suite (`/t -a`, stack Docker) via GitHub Actions ; check **`ArgOS tests`** à exiger pour protéger `main` ([PR #106](https://github.com/UlyssouLV/ArgOS/pull/106), [spec](../../specs/v0.7.1-integration-continue.md)).
 - **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
+- **0.8.0** — Enregistrement continu : segments fMP4 (~1 min, rétention 1 h) via MediaMTX, volume Docker nommé, interrupteur et indicateur dans l’Administration ([PR #120](https://github.com/UlyssouLV/ArgOS/pull/120), [spec](../../specs/v0.8.0-enregistrement-continu.md), [ADR 0011](../../adr/0011-enregistrement-continu-par-mediamtx.md)).
 
-## Prochaine : 0.8.0 — Enregistrement continu
-
-**Objectif.** Enregistrer sur disque, sans réencodage, le Flux des Caméras choisies : MediaMTX enregistre en segments, l’API le pilote, un interrupteur par Caméra dans l’Administration l’active ; durée de conservation fixe, les plus anciens segments sont effacés. Une tranche de bout en bout, vérifiable par l’Administrateur.
-
-**Hors périmètre :** page de suivi stockage / débits (0.8.1), relecture depuis l’UI (0.8.2).
-
-## Ensuite : 0.8.1 — Suivi du stockage et du débit d’écriture
+## Prochaine : 0.8.1 — Suivi du stockage et du débit d’écriture
 
 **Objectif.** Une page **Enregistrement** montre l’espace disque disponible, le débit d’écriture par Caméra si possible et le débit global selon les Caméras configurées / actives, pour estimer jusqu’où tient la conservation (et donc à quelle cadence purger). L’Administrateur règle aussi la durée de conservation et un seuil de place disque à partir de ces indications.
 
