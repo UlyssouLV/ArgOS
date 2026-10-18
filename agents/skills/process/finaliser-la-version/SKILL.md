@@ -20,7 +20,7 @@ Paths: **`agents/roles.yml`**.
 
 ## 0. Locate the PR
 
-Current branch must not be `main`. Resolve the open PR for this branch (`gh pr view`). If none, stop.
+Resolve **base** / release **tag** prefix per `agents/docs/integration-channel.md`. Current branch must not be **protected** (`main` / `master` / **base**). Resolve the open PR for this branch (`gh pr view`). If none, stop. PR base must be **base**. Releases via `/crel` use **tag(X.Y.Z)** (e.g. `orchestrator-v0.1.0` on this channel).
 
 Infer **`X.Y.Z`** from the branch `vX.Y.Z-<slug>` or the PR title `VX.Y.Z — …`. If missing: ask and wait.
 

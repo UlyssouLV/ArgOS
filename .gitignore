@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 *.db
 .env
+.tmp-certificat-fourni/
 cookies.txt
 
 node_modules/

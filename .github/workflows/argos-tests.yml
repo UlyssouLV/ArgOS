@@ -1,0 +1,24 @@
+# Suite complète des racines `test-roots` (équivalent `/t -a`), y compris les PR en brouillon.
+# Check GitHub (protection de branche) : « ArgOS tests ».
+name: ArgOS tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: argos-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  argos-tests:
+    name: ArgOS tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/lancer-les-tests.sh
