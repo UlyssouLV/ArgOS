@@ -14,6 +14,15 @@ rtmp: no
 srt: no
 moq: no
 
+# Enregistrement continu (docs/adr/0011-enregistrement-continu-par-mediamtx.md) : format et conservation
+# du volume /enregistrements. record reste off ; l'API l'allumera plus tard sur camera-<id>.
+pathDefaults:
+  record: no
+  recordPath: /enregistrements/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordSegmentDuration: 1m
+  recordDeleteAfter: 1h
+
 # API de contrôle : port non publié dans compose.yaml, seulement joignable par le réseau Compose (docs/securite.md).
 api: yes
 apiAddress: :9997

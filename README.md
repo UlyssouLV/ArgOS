@@ -88,6 +88,8 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
 
+Les segments d’enregistrement (volume Docker `enregistrements`) se listent depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
+
 ## Hébergement Ubuntu
 
 Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
@@ -121,6 +123,8 @@ sudo ./scripts/installer-le-site.sh
 Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et de mise à jour — pas le clone, pas `compose.simulation.yaml`), tire les images (`docker compose pull`), crée le compte système `argos` (groupe `docker`), et pose l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
 
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
+
+Les segments d’enregistrement (volume Docker `enregistrements` sous `/opt/argos`) se listent depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
 
 **2. Mettre à jour** : au démarrage ou au restart de `argos.service`, `ExecStartPre` lance `/opt/argos/scripts/mettre-a-jour-le-site.sh`. La même commande unique s’exécute à la main, sans attendre un reboot :
 
