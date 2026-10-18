@@ -74,6 +74,8 @@ def test_signal_sous_le_seuil(enregistrement: Page, api):
 
 
 def test_pas_de_signal_quand_assez_de_place(enregistrement: Page, api):
+    libre = api.get("/api/espace-enregistrements").json()["libre_o"]
+    assert libre >= SEUIL_MIN, "prérequis : assez de place libre pour un seuil au plancher"
     assert api.patch("/api/reglages-site", json={"seuil_octets_libres": SEUIL_MIN}).status_code == 200
     enregistrement.reload()
     expect(enregistrement.get_by_role("heading", name="Enregistrement")).to_be_visible()

@@ -78,6 +78,8 @@ def test_sous_seuil_quand_le_seuil_depasse_la_place_libre(connecte):
 
 
 def test_pas_sous_seuil_quand_assez_de_place(connecte):
+    libre = connecte.get("/api/espace-enregistrements").json()["libre_o"]
+    assert libre >= SEUIL_MIN, "prérequis : assez de place libre pour un seuil au plancher"
     assert connecte.patch("/api/reglages-site", json={"seuil_octets_libres": SEUIL_MIN}).status_code == 200
 
     assert connecte.get("/api/espace-enregistrements").json()["sous_seuil"] is False
