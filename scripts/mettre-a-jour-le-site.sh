@@ -43,7 +43,7 @@ command -v curl >/dev/null 2>&1 || echec "curl introuvable."
 command -v python3 >/dev/null 2>&1 || echec "python3 introuvable."
 
 RELEASES="$(
-    curl -fsSL \
+    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
         -H "Accept: application/vnd.github+json" \
         -H "User-Agent: argos-site" \
         "https://api.github.com/repos/${DEPOT_GITHUB}/releases"
@@ -108,7 +108,8 @@ URL_ARTEFACT="${CHOIX#* }"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-curl -fsSL -o "$TMP/argos-site.tar.gz" "$URL_ARTEFACT" || echec "Téléchargement de l'artefact impossible."
+curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    -o "$TMP/argos-site.tar.gz" "$URL_ARTEFACT" || echec "Téléchargement de l'artefact impossible."
 tar -xzf "$TMP/argos-site.tar.gz" -C "$TMP" || echec "Archive d'artefact illisible."
 SRC="$TMP/argos-site"
 [ -d "$SRC" ] || echec "Artefact sans dossier argos-site."
