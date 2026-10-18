@@ -422,7 +422,11 @@ def creer(
 
 
 def modifier(
-    base: Session, id_camera: int, modification: ModificationCamera, racine_enregistrements: Path
+    base: Session,
+    id_camera: int,
+    modification: ModificationCamera,
+    racine_enregistrements: Path,
+    maintenant: Callable[[], datetime] | None = None,
 ) -> CameraLue:
     # Ligne verrouillée : une sonde en cours n'écrit son état qu'après, et voit alors la nouvelle URL.
     camera = _trouver(base, id_camera, verrouiller=True)
@@ -443,7 +447,12 @@ def modifier(
     if not camera.active:
         camera.enregistrement = False
         _remettre_a_unknown(camera)
+    enregistrement_allume = champs.get("enregistrement") is True and camera.enregistrement
+    debit_encodage_manquant = camera.debit_encodage_kbit_s is None
     _enregistrer(base, camera)
+    # Repli Débit d'écriture : peupler le débit d'encodage sans obliger un passage par les Réglages.
+    if enregistrement_allume and debit_encodage_manquant and maintenant is not None:
+        essayer_retenir_debit_encodage(base, id_camera, maintenant)
     return CameraLue.depuis(camera, racine_enregistrements)
 
 
@@ -497,6 +506,7 @@ def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], dateti
     reglages, securite = _par_onvif(
         base, id_camera, maintenant, lambda url, retenu, codec: onvif.lire_reglages(url, retenu, maintenant, codec)
     )
+    _retenir_debit_encodage(base, id_camera, reglages.encodage)
     return ReglagesLus(**reglages.model_dump(), securite=securite)
 
 
@@ -513,7 +523,28 @@ def modifier_reglages(
         maintenant,
         lambda url, retenu, codec: onvif.modifier_reglages(url, retenu, modification, maintenant, codec),
     )
+    _retenir_debit_encodage(base, id_camera, resultat.reglages.encodage)
     return resultat
+
+
+def _retenir_debit_encodage(base: Session, id_camera: int, encodage: onvif.Encodage) -> None:
+    """Mémorise le débit max d'Encodage pour le repli du Débit d'écriture (ADR 0012)."""
+    valeurs = encodage.valeurs
+    if valeurs is None or valeurs.debit_max is None:
+        return
+    base.execute(update(Camera).where(Camera.id == id_camera).values(debit_encodage_kbit_s=valeurs.debit_max))
+    base.commit()
+
+
+def essayer_retenir_debit_encodage(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> None:
+    """Best-effort : lit l'Encodage ONVIF pour le repli Débit d'écriture. Échec silencieux (caméra muette, etc.)."""
+    try:
+        reglages, _ = _par_onvif(
+            base, id_camera, maintenant, lambda url, retenu, codec: onvif.lire_reglages(url, retenu, maintenant, codec)
+        )
+    except (CameraIntrouvable, CertificatChange, onvif.ErreurOnvif):
+        return
+    _retenir_debit_encodage(base, id_camera, reglages.encodage)
 
 
 def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:

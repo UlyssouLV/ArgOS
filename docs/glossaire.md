@@ -140,6 +140,24 @@ Fichier fMP4 produit par le Pont pour une plage courte du Flux d’une Caméra e
 
 À éviter : chunk, part, clip.
 
+## Conservation {#conservation}
+
+Durée pendant laquelle le Site garde les Segments d’enregistrement avant de les effacer (fenêtre glissante côté Pont). Réglable pour tout le Site.
+
+À éviter : rétention seule, TTL, recordDeleteAfter (terme pont).
+
+## Seuil de place disque {#seuil-de-place-disque}
+
+Marge d’octets libres sur le volume des enregistrements en dessous de laquelle le Site signale un risque de saturation, sans couper l’Enregistrement tout seul.
+
+À éviter : quota, alerte disque, watermark.
+
+## Débit d’écriture {#debit-d-ecriture}
+
+Vitesse à laquelle les Segments d’une Caméra (ou l’ensemble retenu) remplissent le volume : mesurée sur les fichiers récents si possible, sinon estimée d’après l’encodage connu.
+
+À éviter : bitrate Live, débit max ONVIF seul (c’est un repli, pas le concept).
+
 ## Staging {#staging}
 
 Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.

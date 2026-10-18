@@ -56,6 +56,8 @@ Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](doc
 
 Version **0.8.0** : l’Administrateur active l’**enregistrement continu** d’une Caméra depuis l’Administration (OFF à l’ajout) ; MediaMTX écrit des segments fMP4 (~1 minute) dans le volume Docker `enregistrements`, sans réencodage, avec une conservation d’**une heure**. Un indicateur montre l’état, le chemin du dossier et l’âge du dernier segment ; pas de relecture depuis l’UI (voir [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md), [ADR 0011](docs/adr/0011-enregistrement-continu-par-mediamtx.md)).
 
+Version **0.8.1** : l’onglet **Enregistrement** montre l’espace du volume (total / libre / utilisé), les **débits d’écriture** (mesurés ou estimés) et une estimation de tenue face à la **Conservation** Site (1–24 h, défaut 1 h) ; un **Seuil de place disque** (défaut 1 Go) signale sans couper l’enregistrement. L’interrupteur reste dans l’Administration (voir [ADR 0012](docs/adr/0012-suivi-stockage-et-conservation-reglable.md)).
+
 ## Hébergement local
 
 PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Pour Windows (Docker Desktop seulement) ou un essai du canal Staging sans Ubuntu : [Essayer staging](#essayer-staging).
@@ -76,7 +78,7 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-`ARGOS_VERSION` étiquette les images construites (`0.8.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+`ARGOS_VERSION` étiquette les images construites (`0.8.1` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
 
 ### Installation / lancement
 
@@ -110,7 +112,7 @@ Le script d’installation crée `/opt/argos/.env` d’après `.env.example`, **
 
 Après installation, dans `/opt/argos/.env` :
 
-- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.8.0`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
+- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.8.1`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
 - `MTX_WEBRTCADDITIONALHOSTS` : IP de la machine Ubuntu sur le réseau local, pour que le certificat nomme le Site
 - Détection et réseau des caméras (macvlan) : [Réseau et Détection](docs/cameras/reseau-et-detection.md) — le script `scripts/cameras/configurer-detection.sh` est copié dans `/opt/argos` et lancé au boot ; la prise se choisit **une fois** en terminal
 
@@ -141,14 +143,14 @@ Si une GitHub Release semver plus récente existe, le script applique l’artefa
 ```bash
 DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
 docker save \
-  ghcr.io/ulyssoulv/argos-api:0.8.0 \
-  ghcr.io/ulyssoulv/argos-web:0.8.0 \
-  ghcr.io/ulyssoulv/argos-pont:0.8.0 \
-  ghcr.io/ulyssoulv/argos-certificats:0.8.0 \
-  -o argos-images-0.8.0.tar
+  ghcr.io/ulyssoulv/argos-api:0.8.1 \
+  ghcr.io/ulyssoulv/argos-web:0.8.1 \
+  ghcr.io/ulyssoulv/argos-pont:0.8.1 \
+  ghcr.io/ulyssoulv/argos-certificats:0.8.1 \
+  -o argos-images-0.8.1.tar
 ```
 
-Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.8.0.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.8.0` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
+Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.8.1.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.8.1` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
 
 ## Essayer staging
 

@@ -28,14 +28,9 @@ Contraintes transverses :
 - **0.7.1** — Intégration continue : chaque PR vers `main` lance la suite (`/t -a`, stack Docker) via GitHub Actions ; check **`ArgOS tests`** à exiger pour protéger `main` ([PR #106](https://github.com/UlyssouLV/ArgOS/pull/106), [spec](../../specs/v0.7.1-integration-continue.md)).
 - **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
 - **0.8.0** — Enregistrement continu : segments fMP4 (~1 min, rétention 1 h) via MediaMTX, volume Docker nommé, interrupteur et indicateur dans l’Administration ([PR #120](https://github.com/UlyssouLV/ArgOS/pull/120), [spec](../../specs/v0.8.0-enregistrement-continu.md), [ADR 0011](../../adr/0011-enregistrement-continu-par-mediamtx.md)).
+- **0.8.1** — Suivi du stockage et du débit d’écriture : page Enregistrement (espace volume, débits, tenue), Conservation Site 1–24 h et Seuil de place disque (signal seul) ([PR #126](https://github.com/UlyssouLV/ArgOS/pull/126), [spec](../../specs/v0.8.1-suivi-du-stockage-et-du-debit-decriture.md), [ADR 0012](../../adr/0012-suivi-stockage-et-conservation-reglable.md)).
 
-## Prochaine : 0.8.1 — Suivi du stockage et du débit d’écriture
-
-**Objectif.** Une page **Enregistrement** montre l’espace disque disponible, le débit d’écriture par Caméra si possible et le débit global selon les Caméras configurées / actives, pour estimer jusqu’où tient la conservation (et donc à quelle cadence purger). L’Administrateur règle aussi la durée de conservation et un seuil de place disque à partir de ces indications.
-
-**Hors périmètre :** relecture des enregistrements (0.8.2), plages horaires d’enregistrement.
-
-## Ensuite : 0.8.2 — Relecture des enregistrements
+## Prochaine : 0.8.2 — Relecture des enregistrements
 
 **Objectif.** Parcourir et relire les enregistrements de chaque Caméra depuis l’UI : choisir un moment, lire.
 

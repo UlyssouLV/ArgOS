@@ -17,14 +17,29 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, essai, fuseaux, onvif, sessions, soi, sonde
+from argos_api import (
+    cameras,
+    debits_ecriture,
+    detection,
+    espace_enregistrements,
+    essai,
+    fuseaux,
+    onvif,
+    reglages_site,
+    sessions,
+    soi,
+    sonde,
+)
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
+from argos_api.debits_ecriture import DebitsEcriture
 from argos_api.ecoute import SortieSeulement
+from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
+from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
 from argos_api.surveillance import Surveillance
 
 COOKIE_SESSION = "argos_session"
@@ -172,7 +187,8 @@ def creer_app(
         def reconcilier() -> None:
             with ouvrir_base() as base:
                 actives = cameras.relais_actifs(base)
-            pont.reconcilier(actives)
+                conservation = reglages_site.conservation_h(base)
+            pont.reconcilier(actives, conservation)
 
         boucles = [
             BoucleDeFond("surveillance-cameras", surveillance.sonder_tout, configuration.intervalle_sonde),
@@ -266,8 +282,33 @@ def creer_app(
         """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
 
+    @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
+    def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
+        """Réglages globaux du Site (Conservation et Seuil de place disque, ADR 0012)."""
+        return reglages_site.lire(base)
+
+    @app.patch("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
+    def modifier_reglages_site(
+        modification: ModificationReglagesSite, base: Annotated[Session, Depends(base)]
+    ) -> ReglagesSiteLus:
+        """Met à jour les réglages Site ; la Conservation est poussée au pont au tour suivant."""
+        return reglages_site.modifier(base, modification)
+
+    racine_enregistrements = Path(configuration.enregistrements)
+
+    @app.get("/api/espace-enregistrements", dependencies=[Depends(administrateur_connecte)])
+    def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:
+        """Espace du volume des enregistrements ; signal `sous_seuil` sans couper l'enregistrement."""
+        return espace_enregistrements.lire(racine_enregistrements, base)
+
+    @app.get("/api/debits-ecriture", dependencies=[Depends(administrateur_connecte)])
+    def lire_debits_ecriture(base: Annotated[Session, Depends(base)]) -> DebitsEcriture:
+        """Débits d'écriture (mesure / encodage / inconnu), agrégats et tenue vs Conservation."""
+        espace = espace_enregistrements.lire(racine_enregistrements, base)
+        return debits_ecriture.lire(racine_enregistrements, base, espace.libre_o)
+
     app.include_router(
-        _routes_cameras(base, administrateur_connecte, horloge, Path(configuration.enregistrements))
+        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements)
     )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
@@ -287,7 +328,7 @@ def creer_app(
             adresses_d_argos,
             base,
             administrateur_connecte,
-            Path(configuration.enregistrements),
+            racine_enregistrements,
         )
     )
     return app
@@ -330,7 +371,7 @@ def _routes_cameras(
     @routes.patch("/{id_camera}")
     def modifier(id_camera: int, modification: ModificationCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.modifier(base, id_camera, modification, racine_enregistrements)
+            return cameras.modifier(base, id_camera, modification, racine_enregistrements, horloge)
 
     @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
     def supprimer(id_camera: int, base: Base) -> None:

@@ -208,6 +208,8 @@ def test_live_camera_h265_sans_decodage_hevc_affiche_le_message_sans_requete_ni_
     nom = creer(url_simulee(4))
     attendre_codec(api, nom, "H265")
     live.add_init_script(SANS_HEVC)
+    # Avant le codec H265, le Live peut avoir tenté du WHEP (codec encore null) : on ne compte que après reload.
+    requetes_flux.clear()
     live.reload()
 
     expect(camera_affichee(live)).to_have_text(nom)
@@ -226,6 +228,7 @@ def test_live_camera_h265_que_le_navigateur_echoue_a_decoder_affiche_le_message_
     nom = creer(url_simulee(4))
     attendre_codec(api, nom, "H265")
     live.add_init_script(HEVC_PRETENDU)
+    requetes_flux.clear()
     live.reload()
 
     expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_VIDEO_MS)
@@ -245,6 +248,7 @@ def test_live_camera_h265_injoignable_retente_en_hls_puis_suivant_ferme_le_lecte
     h264 = creer(url_simulee(1))
     en_h265(injoignable)
     live.add_init_script(HEVC_PRETENDU)
+    requetes_flux.clear()
     live.reload()
 
     expect(camera_affichee(live)).to_have_text(injoignable)
@@ -270,6 +274,7 @@ def test_live_d_une_camera_h264_a_une_camera_h265_ferme_la_connexion_webrtc(
     h265 = creer(url_simulee(4))
     attendre_codec(api, h265, "H265")
     live.add_init_script(SANS_HEVC)
+    requetes_flux.clear()
     live.reload()
     expect(camera_affichee(live)).to_have_text(h264)
     attendre_que_la_video_joue(live)
