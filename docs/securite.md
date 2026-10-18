@@ -20,7 +20,7 @@ Un attaquant présent sur le réseau se fait passer pour la caméra (même IP) e
 
 Défenses, toutes hors de la 0.2.0 :
 
-- **Isoler les caméras** sur un réseau à part (VLAN), sans accès internet, que seul le serveur peut joindre.
+- **Isoler les caméras** sur un réseau à part (VLAN / deux prises), sans accès internet, que seule la machine ArgOS peut joindre : l’hôte tire `ghcr.io` et sert les postes sur la prise de la box, le macvlan parle aux caméras sur l’autre ([Réseau et Détection](cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)).
 - **Authentification RTSP** obligatoire, idéalement **RTSPS** (RTSP chiffré) quand la caméra le permet.
 - **Détecter une image figée ou en boucle** : heure incrustée par la caméra qui n'avance pas, images identiques à N minutes d'écart.
 - **Événements ONVIF de sabotage** (« tamper ») émis par certaines caméras.

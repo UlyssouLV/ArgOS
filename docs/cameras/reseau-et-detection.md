@@ -49,15 +49,22 @@ Pour savoir si un câble est branché : `ip link` affiche `state UP` sur une pri
 
 La machine, les caméras et les postes (ordinateurs, téléphones sur le Wi-Fi de la box) sont sur le **même** réseau : la prise de la machine porte le seul sous-réseau à chercher, par exemple `192.168.1.0/24`. C’est le plus simple, mais tout appareil du réseau (y compris un invité sur le Wi-Fi) peut joindre les caméras.
 
-### Deux prises : réseau des caméras isolé
+### Deux prises : réseau des caméras isolé (VLAN)
 
-Installation recommandée ([sécurité](../securite.md#rejeu--injection-de-flux--comme-dans-les-films-)) : une prise vers la box (postes, internet), une autre vers un **switch réservé aux caméras**.
+Installation recommandée ([sécurité](../securite.md#rejeu--injection-de-flux--comme-dans-les-films-)) : une prise vers la box (postes, internet), une autre vers un **switch ou VLAN réservé aux caméras**, **sans route vers internet**.
 
 ```
-box ── enp1s0 (192.168.1.20/24) ── machine ArgOS ── enp2s0 (10.10.0.1/24) ── switch ── caméras
+box / internet ── enp1s0 (192.168.1.20/24) ── machine ArgOS ── enp2s0 (10.10.0.1/24) ── switch / VLAN ── caméras
+                         │
+                         └── docker pull ghcr.io (images du Site), UI, API HTTPS
 ```
 
-Dans l’exemple ci-dessus, les caméras sont sur `enp2s0` : le sous-réseau à chercher est `10.10.0.0/24`, pas celui de la box. Les caméras ne joignent ni la box ni internet ; seule la machine ArgOS les voit. C’est la prise `enp2s0` qu’il faudra choisir dans le script (§ 6).
+Dans l’exemple ci-dessus :
+
+- **`enp1s0`** (box) : l’hôte tire les images sur `ghcr.io`, sert les postes, et sort sur internet. C’est la prise « publique » du Site.
+- **`enp2s0`** (caméras) : sous-réseau à chercher pour la Détection (`10.10.0.0/24`), et prise du **macvlan** (§ 9). Les caméras ne joignent ni la box ni internet ; seule la machine ArgOS les voit. C’est cette prise qu’il faudra choisir dans le script (§ 6).
+
+Pas de nouvel automatisme réseau dans ArgOS : le VLAN / le switch isolé se configure sur le matériel ; ArgOS s’y branche via le script et `compose.reseau-cameras.yaml` déjà livrés.
 
 ## 3. Pourquoi l’API, dans Docker, ne voit pas les prises
 
