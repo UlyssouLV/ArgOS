@@ -100,6 +100,8 @@ export function Enregistrement() {
   const conservationInchangee = conservation !== null && saisieConservation === String(conservation);
   const seuilInchange =
     seuilO !== null && saisieSeuilMo === String(Math.round(seuilO / MO));
+  // Même couple libre / seuil que l’écran affiche (évite un décalage avec `espace.sous_seuil` seul).
+  const sousSeuil = espace !== null && seuilO !== null && espace.libre_o < seuilO;
 
   return (
     <section className="enregistrement-site">
@@ -109,7 +111,7 @@ export function Enregistrement() {
           {erreur}
         </p>
       )}
-      {espace?.sous_seuil && (
+      {sousSeuil && (
         <p className="signal-seuil" role="status">
           Place libre sous le seuil : l’enregistrement continue, agissez si besoin (réduire la
           conservation ou couper des caméras).

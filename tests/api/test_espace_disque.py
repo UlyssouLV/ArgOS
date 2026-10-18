@@ -71,7 +71,8 @@ def test_espace_sans_session_401(client):
 
 def test_sous_seuil_quand_le_seuil_depasse_la_place_libre(connecte):
     libre = connecte.get("/api/espace-enregistrements").json()["libre_o"]
-    assert connecte.patch("/api/reglages-site", json={"seuil_octets_libres": libre + 1}).status_code == 200
+    # Marge large : le libre du volume peut bouger d’un octet entre le PATCH et le GET.
+    assert connecte.patch("/api/reglages-site", json={"seuil_octets_libres": libre + SEUIL_DEFAUT}).status_code == 200
 
     assert connecte.get("/api/espace-enregistrements").json()["sous_seuil"] is True
 

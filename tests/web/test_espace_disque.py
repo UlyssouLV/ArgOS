@@ -62,8 +62,10 @@ def test_regler_le_seuil_depuis_la_page(enregistrement: Page, api):
 
 def test_signal_sous_le_seuil(enregistrement: Page, api):
     libre = api.get("/api/espace-enregistrements").json()["libre_o"]
-    seuil = max(libre + MO, SEUIL_MIN)
+    # Marge large : le libre du volume CI peut bouger de plusieurs Mo entre le PATCH et le reload.
+    seuil = max(libre + SEUIL_DEFAUT, SEUIL_MIN)
     assert api.patch("/api/reglages-site", json={"seuil_octets_libres": seuil}).status_code == 200
+    assert api.get("/api/espace-enregistrements").json()["sous_seuil"] is True
 
     enregistrement.reload()
     expect(enregistrement.get_by_role("heading", name="Enregistrement")).to_be_visible()
