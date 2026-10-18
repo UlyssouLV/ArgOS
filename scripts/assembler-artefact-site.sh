@@ -13,7 +13,8 @@ mkdir -p "$DEST/scripts/cameras"
 cp "$DEPOT/compose.yaml" "$DEST/compose.yaml"
 cp "$DEPOT/compose.reseau-cameras.yaml" "$DEST/compose.reseau-cameras.yaml"
 cp "$DEPOT/scripts/cameras/configurer-detection.sh" "$DEST/scripts/cameras/configurer-detection.sh"
-chmod 755 "$DEST/scripts/cameras/configurer-detection.sh"
+cp "$DEPOT/scripts/mettre-a-jour-le-site.sh" "$DEST/scripts/mettre-a-jour-le-site.sh"
+chmod 755 "$DEST/scripts/cameras/configurer-detection.sh" "$DEST/scripts/mettre-a-jour-le-site.sh"
 cp "$DEPOT/scripts/argos.service" "$DEST/argos.service"
 
 # macOS : ne pas embarquer les fichiers AppleDouble `._*` dans l'archive.

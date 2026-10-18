@@ -172,6 +172,8 @@ Type=oneshot
 RemainAfterExit=yes
 User=argos
 WorkingDirectory=/opt/argos
+# « -+ » : root même si User=argos ; un échec (ou rien à faire) n'empêche pas le démarrage.
+ExecStartPre=-+/opt/argos/scripts/mettre-a-jour-le-site.sh
 # « - » : un échec du script (plage trop grande) n'empêche pas ArgOS de démarrer.
 ExecStartPre=-/opt/argos/scripts/cameras/configurer-detection.sh
 ExecStart=/usr/bin/docker compose up -d --wait

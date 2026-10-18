@@ -86,6 +86,7 @@ def test_l_artefact_du_site_a_compose_et_detection_sans_env_ni_secrets(tmp_path:
     assert any(n.endswith("compose.yaml") for n in noms)
     assert any(n.endswith("compose.reseau-cameras.yaml") for n in noms)
     assert any(n.endswith("scripts/cameras/configurer-detection.sh") for n in noms)
+    assert any(n.endswith("scripts/mettre-a-jour-le-site.sh") for n in noms)
     assert any(n.endswith("argos.service") for n in noms)
     assert not any(n.rstrip("/").endswith(".env") or "/.env" in n for n in noms)
     assert not any(Path(n).name.startswith("._") for n in noms)
