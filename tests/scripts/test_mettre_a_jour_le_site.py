@@ -26,6 +26,7 @@ def _artefact(dossier: Path, compose: str = "COMPOSE_NOUVEAU\n") -> Path:
     (racine / "compose.yaml").write_text(compose)
     (racine / "compose.reseau-cameras.yaml").write_text("RESEAU_NOUVEAU\n")
     (racine / "scripts" / "cameras" / "configurer-detection.sh").write_text("#!/bin/sh\n")
+    (racine / "scripts" / "lib-fichiers-site.sh").write_text("# bundle Site\n")
     (racine / "scripts" / "mettre-a-jour-le-site.sh").write_text("#!/bin/sh\n")
     (racine / "argos.service").write_text("[Unit]\nDescription=ArgOS\n")
     archive = dossier / "argos-site.tar.gz"
@@ -52,6 +53,7 @@ class Site:
         self.bin = dossier / "bin"
         self.bin.mkdir()
         self.journal_docker = dossier / "docker.txt"
+        self.journal_curl = dossier / "curl.txt"
         self.releases = dossier / "releases.json"
         self.archive = _artefact(dossier)
         self.releases.write_text(
@@ -86,9 +88,11 @@ class Site:
         )
         archive = self.archive
         releases = self.releases
+        journal_curl = self.journal_curl
         _ecrire_executable(
             self.bin / "curl",
             f"""
+echo "$*" >> "{journal_curl}"
 out=""
 url=""
 prev=""
@@ -107,7 +111,11 @@ esac
 """,
         )
 
-    def lancer(self, docker_corps: str | None = None) -> subprocess.CompletedProcess[str]:
+    def lancer(
+        self,
+        docker_corps: str | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         if docker_corps is not None:
             _ecrire_executable(
                 self.bin / "docker",
@@ -121,7 +129,8 @@ esac
             | {
                 "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
                 "ARGOS_PREFIX": str(self.prefixe),
-            },
+            }
+            | (extra_env or {}),
             timeout=DELAI_S,
         )
 
@@ -150,6 +159,7 @@ def test_applique_l_artefact_sans_ecraser_env_ni_certificats_et_tire_les_images(
     assert (site.racine / "compose.yaml").read_text() == "COMPOSE_NOUVEAU\n"
     assert (site.racine / "compose.reseau-cameras.yaml").read_text() == "RESEAU_NOUVEAU\n"
     assert (site.racine / "scripts" / "mettre-a-jour-le-site.sh").is_file()
+    assert (site.racine / "scripts" / "lib-fichiers-site.sh").is_file()
     env = site.env()
     assert "ARGOS_VERSION=0.7.3" in env
     assert "ARGOS_IDENTIFIANT=garder" in env
@@ -172,6 +182,15 @@ def test_echec_journalise_sans_rollback_automatique(tmp_path: Path):
     assert "ARGOS_VERSION=0.7.3" in env
     assert "ARGOS_IDENTIFIANT=garder" in env
     assert (site.racine / "certificats" / "fourni.crt").read_text() == "CERTIFICAT_FOURNI\n"
+
+
+def test_interroge_le_depot_github_indique(tmp_path: Path):
+    site = Site(tmp_path)
+
+    proc = site.lancer(extra_env={"ARGOS_GITHUB_DEPOT": "exemple/Depot"})
+
+    assert proc.returncode == CODE_APPLIQUEE, proc.stdout + proc.stderr
+    assert "repos/exemple/Depot/releases" in site.journal_curl.read_text()
 
 
 def test_canal_staging_ne_suit_pas_les_releases_semver(tmp_path: Path):

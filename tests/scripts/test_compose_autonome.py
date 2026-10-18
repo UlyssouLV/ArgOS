@@ -41,6 +41,12 @@ def config_prod(dossier: Path, *fichiers: str, env: str = f"ARGOS_VERSION={VERSI
     return json.loads(proc.stdout)
 
 
+def test_le_repli_compose_sans_env_est_la_version_de_production_courante():
+    compose = (REPO_ROOT / "compose.yaml").read_text()
+    assert compose.count("${ARGOS_VERSION:-0.7.2}") == 4
+    assert "ARGOS_VERSION:-0.7.0" not in compose
+
+
 def test_les_quatre_images_du_site_portent_le_registre_et_argos_version(tmp_path):
     config = config_prod(tmp_path, "compose.yaml")
 

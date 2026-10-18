@@ -185,7 +185,8 @@ ExecStartPre=-+/opt/argos/scripts/mettre-a-jour-le-site.sh
 ExecStartPre=-/opt/argos/scripts/cameras/configurer-detection.sh
 ExecStart=/usr/bin/docker compose up -d --wait
 ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=300
+# englobe ExecStartPre (artefact, pull, recreate) : un délai fixe tuerait une MAJ au boot.
+TimeoutStartSec=infinity
 Restart=on-failure
 RestartSec=5
 

@@ -51,9 +51,15 @@ Contraintes transverses :
 
 **Hors périmètre :** plages horaires d’enregistrement, fil rouge 1.0.0 (à redéfinir).
 
+## Ensuite : 0.9.0 — Le Site, serveur de temps des Caméras
+
+**Objectif.** Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
+
+**Hors périmètre :** fil rouge 1.0.0.
+
 ## Ensuite : 1.0.0 — Fil rouge Site → Live RTSP
 
-**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois 0.8.x livré.
+**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois 0.8.x / 0.9.0 livrés.
 
 **Hors périmètre :** IA, PTZ, VPN, chiffrement des identifiants (Plus tard).
 
@@ -94,10 +100,6 @@ Prendre en charge les Appareils qui portent plusieurs Caméras sous une seule ad
 ### PTZ
 
 Après le paramétrage ONVIF (0.6.0) : pilotage PTZ des Caméras motorisées, et tracking éventuel.
-
-### Le Site, serveur de temps des Caméras
-
-Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Après la 0.7.0 (conteneurs). Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
 
 ### Catalogue du matériel connu
 

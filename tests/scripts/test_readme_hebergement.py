@@ -39,6 +39,8 @@ def test_hebergement_ubuntu_documente_pull_la_maj_et_le_secours_save_load():
     assert "docker save" in texte
     assert "docker load" in texte
     assert "secours" in texte.lower() or "hors ligne" in texte.lower() or "hors-ligne" in texte.lower()
+    assert "Danger Zone" in texte
+    assert "Public" in texte
 
 
 def test_hebergement_ubuntu_branche_la_maj_au_boot_et_en_commande():

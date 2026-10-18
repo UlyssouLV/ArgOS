@@ -96,6 +96,7 @@ def test_le_dossier_du_site_a_le_compose_lenv_et_la_detection_sans_sources_ni_so
     assert (resultat.racine / ".env").is_file()
     assert (resultat.racine / "scripts" / "cameras" / "configurer-detection.sh").is_file()
     assert (resultat.racine / "scripts" / "mettre-a-jour-le-site.sh").is_file()
+    assert (resultat.racine / "scripts" / "lib-fichiers-site.sh").is_file()
     # Bind Compose du certificat fourni (`./certificats`, create_host_path: false) : dossier vide, pas les sources.
     assert (resultat.racine / "certificats").is_dir()
     assert not any((resultat.racine / "certificats").iterdir())
@@ -104,7 +105,7 @@ def test_le_dossier_du_site_a_le_compose_lenv_et_la_detection_sans_sources_ni_so
     assert not (resultat.racine / "compose.simulation.yaml").exists()
     env = (resultat.racine / ".env").read_text()
     assert "SONAR_" not in env
-    assert "ARGOS_VERSION=" in env
+    assert "ARGOS_VERSION=0.7.2" in env
 
 
 def test_compte_argos_dans_le_groupe_docker_et_unite_activee_au_boot(ubuntu):
@@ -121,6 +122,7 @@ def test_compte_argos_dans_le_groupe_docker_et_unite_activee_au_boot(ubuntu):
     assert "User=argos" in texte
     assert "WorkingDirectory=/opt/argos" in texte
     assert "mettre-a-jour-le-site.sh" in texte
+    assert "TimeoutStartSec=infinity" in texte
     assert "OnCalendar" not in texte
     assert ".timer" not in texte
 

@@ -8,13 +8,11 @@ SORTIE="${1:-${DEPOT}/argos-site.tar.gz}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# shellcheck source=lib-fichiers-site.sh
+. "$(dirname "$0")/lib-fichiers-site.sh"
+
 DEST="$TMP/argos-site"
-mkdir -p "$DEST/scripts/cameras"
-cp "$DEPOT/compose.yaml" "$DEST/compose.yaml"
-cp "$DEPOT/compose.reseau-cameras.yaml" "$DEST/compose.reseau-cameras.yaml"
-cp "$DEPOT/scripts/cameras/configurer-detection.sh" "$DEST/scripts/cameras/configurer-detection.sh"
-cp "$DEPOT/scripts/mettre-a-jour-le-site.sh" "$DEST/scripts/mettre-a-jour-le-site.sh"
-chmod 755 "$DEST/scripts/cameras/configurer-detection.sh" "$DEST/scripts/mettre-a-jour-le-site.sh"
+copier_fichiers_du_site "$DEPOT" "$DEST"
 cp "$DEPOT/scripts/argos.service" "$DEST/argos.service"
 
 # macOS : ne pas embarquer les fichiers AppleDouble `._*` dans l'archive.

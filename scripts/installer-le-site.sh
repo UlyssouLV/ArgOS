@@ -35,13 +35,12 @@ if [ ! -f "$DEPOT/compose.yaml" ] || [ ! -f "$DEPOT/.env.example" ]; then
     exit 1
 fi
 
+# shellcheck source=lib-fichiers-site.sh
+. "$(dirname "$0")/lib-fichiers-site.sh"
+
 # `certificats/` : bind Compose du certificat fourni (`create_host_path: false`). Vide = Autorité du Site.
-mkdir -p "$RACINE/scripts/cameras" "$RACINE/certificats" "$(dirname "$UNITE")"
-cp "$DEPOT/compose.yaml" "$RACINE/compose.yaml"
-cp "$DEPOT/compose.reseau-cameras.yaml" "$RACINE/compose.reseau-cameras.yaml"
-cp "$DEPOT/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/cameras/configurer-detection.sh"
-cp "$DEPOT/scripts/mettre-a-jour-le-site.sh" "$RACINE/scripts/mettre-a-jour-le-site.sh"
-chmod 755 "$RACINE/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/mettre-a-jour-le-site.sh"
+mkdir -p "$RACINE/certificats" "$(dirname "$UNITE")"
+copier_fichiers_du_site "$DEPOT" "$RACINE"
 
 if [ ! -f "$FICHIER_ENV" ]; then
     awk '

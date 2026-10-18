@@ -74,7 +74,7 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-`ARGOS_VERSION` étiquette les images construites (`0.7.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+`ARGOS_VERSION` étiquette les images construites (`0.7.2` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
 
 ### Installation / lancement
 
@@ -90,12 +90,12 @@ Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml 
 
 ## Hébergement Ubuntu
 
-Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (paquets publics, sans jeton).
+Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
 
 ### Prérequis
 
 - Ubuntu, avec Docker Engine et le plugin Compose
-- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux))
+- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
 - le clone (ou une copie de `compose.yaml`, `compose.reseau-cameras.yaml`, `.env.example` et `scripts/`) le temps de lancer le script d’installation
 
 Postgres reste l’image officielle `postgres:18.6-alpine3.24` : Compose la tire au premier lancement. Rien à construire sur la machine Ubuntu.

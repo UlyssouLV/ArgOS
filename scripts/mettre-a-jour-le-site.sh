@@ -114,15 +114,9 @@ tar -xzf "$TMP/argos-site.tar.gz" -C "$TMP" || echec "Archive d'artefact illisib
 SRC="$TMP/argos-site"
 [ -d "$SRC" ] || echec "Artefact sans dossier argos-site."
 
-cp "$SRC/compose.yaml" "$RACINE/compose.yaml"
-cp "$SRC/compose.reseau-cameras.yaml" "$RACINE/compose.reseau-cameras.yaml"
-mkdir -p "$RACINE/scripts/cameras"
-cp "$SRC/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/cameras/configurer-detection.sh"
-if [ -f "$SRC/scripts/mettre-a-jour-le-site.sh" ]; then
-    cp "$SRC/scripts/mettre-a-jour-le-site.sh" "$RACINE/scripts/mettre-a-jour-le-site.sh"
-fi
-chmod 755 "$RACINE/scripts/cameras/configurer-detection.sh" \
-    "$RACINE/scripts/mettre-a-jour-le-site.sh" 2>/dev/null || true
+# shellcheck source=lib-fichiers-site.sh
+. "$(dirname "$0")/lib-fichiers-site.sh"
+copier_fichiers_du_site "$SRC" "$RACINE"
 if [ -f "$SRC/argos.service" ]; then
     cp "$SRC/argos.service" "$RACINE/argos.service"
     if [ -d "$(dirname "$UNITE")" ]; then
