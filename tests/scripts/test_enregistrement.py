@@ -8,21 +8,30 @@ from test_compose_autonome import config_prod
 CIBLE = "/enregistrements"
 
 
-def _montage_enregistrements(tmp_path: Path) -> dict:
-    montages = config_prod(tmp_path, "compose.yaml")["services"]["mediamtx"].get("volumes") or []
+def _montage(tmp_path: Path, service: str) -> dict:
+    montages = config_prod(tmp_path, "compose.yaml")["services"][service].get("volumes") or []
     for montage in montages:
         if montage.get("target") == CIBLE:
             return montage
-    raise AssertionError(f"aucun montage {CIBLE} sur mediamtx : {montages}")
+    raise AssertionError(f"aucun montage {CIBLE} sur {service} : {montages}")
 
 
 def test_compose_declare_le_volume_enregistrements_et_le_monte_en_ecriture_sur_le_pont(tmp_path):
     config = config_prod(tmp_path, "compose.yaml")
 
     assert "enregistrements" in config["volumes"]
-    montage = _montage_enregistrements(tmp_path)
+    montage = _montage(tmp_path, "mediamtx")
     assert montage["type"] == "volume"
     assert montage["source"] == "enregistrements"
+    assert not montage.get("read_only")
+
+
+def test_compose_monte_le_volume_enregistrements_dans_api(tmp_path):
+    montage = _montage(tmp_path, "api")
+
+    assert montage["type"] == "volume"
+    assert montage["source"] == "enregistrements"
+    # Inscriptible : la suppression d'une Caméra unlink camera-<id>/ (même uid que le pont).
     assert not montage.get("read_only")
 
 

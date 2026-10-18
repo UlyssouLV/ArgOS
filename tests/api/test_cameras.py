@@ -96,6 +96,8 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "schema_onvif": None,
         # Accordé seulement depuis les Réglages, pour une caméra sans HTTPS.
         "onvif_en_clair_accepte": False,
+        # Enregistrement continu : OFF à l'ajout (docs/adr/0011-enregistrement-continu-par-mediamtx.md).
+        "enregistrement": False,
     }
 
 

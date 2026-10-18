@@ -1,10 +1,12 @@
 """Caméras du Site : URL RTSP (validation, masquage, hôte et port) et règles de gestion."""
 
 import logging
+import shutil
 import socket
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from ipaddress import IPv4Address
+from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import SplitResult, unquote, urlsplit
 
@@ -16,7 +18,7 @@ from sqlalchemy.orm import Session
 from argos_api import onvif, voisinage
 from argos_api.detection import Candidat
 from argos_api.modeles import AUTRE_APPAREIL, Camera, RaisonEtat
-from argos_api.pont import chemin_flux
+from argos_api.pont import Relais, chemin_flux
 
 PORT_RTSP = 554
 MASQUE = "***"
@@ -39,6 +41,10 @@ class Doublon(Exception):
 
 class CameraActive(Exception):
     """Seule une Caméra désactivée peut être supprimée."""
+
+
+class EnregistrementRefuse(Exception):
+    """Une Caméra désactivée ne peut pas enregistrer."""
 
 
 class CertificatNonPresente(Exception):
@@ -84,6 +90,7 @@ class ModificationCamera(BaseModel):
     url_rtsp: UrlRtsp = None
     emplacement: str | None = None
     active: bool = None
+    enregistrement: bool = None
 
 
 class CameraLue(BaseModel):
@@ -109,6 +116,7 @@ class CameraLue(BaseModel):
     schema_onvif: onvif.Schema | None
     # L'Administrateur accepte l'ONVIF en clair (caméra sans HTTPS) ; depuis ses Réglages.
     onvif_en_clair_accepte: bool
+    enregistrement: bool
 
     @classmethod
     def depuis(cls, camera: Camera) -> "CameraLue":
@@ -130,6 +138,7 @@ class CameraLue(BaseModel):
             port_onvif=camera.port_onvif,
             schema_onvif=camera.schema_onvif,
             onvif_en_clair_accepte=camera.onvif_en_clair_accepte,
+            enregistrement=camera.enregistrement,
         )
 
 
@@ -137,17 +146,17 @@ def lister(base: Session) -> list[CameraLue]:
     return [CameraLue.depuis(c) for c in base.scalars(select(Camera).order_by(Camera.id))]
 
 
-def urls_actives(base: Session) -> dict[int, str]:
-    """URL RTSP stockée (mot de passe compris) de chaque Caméra active à relayer, par id.
+def relais_actifs(base: Session) -> dict[int, Relais]:
+    """Relais de chaque Caméra active : URL RTSP stockée (mot de passe compris) et Enregistrement.
 
     Sans celles où un autre Appareil répond : son Flux ne doit jamais passer sous leur nom.
     """
     lignes = base.execute(
-        select(Camera.id, Camera.url_rtsp).where(
+        select(Camera.id, Camera.url_rtsp, Camera.enregistrement).where(
             Camera.active, Camera.raison_etat.is_distinct_from(AUTRE_APPAREIL)
         )
     )
-    return {id_camera: url for id_camera, url in lignes}
+    return {id_camera: Relais(url, enregistrement) for id_camera, url, enregistrement in lignes}
 
 
 def mac_a_l_adresse(url: str) -> str | None:
@@ -353,7 +362,13 @@ def lire(base: Session, id_camera: int) -> CameraLue:
 def creer(base: Session, nouvelle: NouvelleCamera, mac: str | None = None, codec: str | None = None) -> CameraLue:
     """`mac` et `codec` : lus sur le réseau pendant l'essai, jamais saisis par l'Administrateur."""
     camera = Camera(
-        **nouvelle.model_dump(), active=True, etat="unknown", etat_verifie_le=None, mac=mac, codec=codec
+        **nouvelle.model_dump(),
+        active=True,
+        enregistrement=False,
+        etat="unknown",
+        etat_verifie_le=None,
+        mac=mac,
+        codec=codec,
     )
     _enregistrer(base, camera)
     return CameraLue.depuis(camera)
@@ -363,6 +378,9 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     # Ligne verrouillée : une sonde en cours n'écrit son état qu'après, et voit alors la nouvelle URL.
     camera = _trouver(base, id_camera, verrouiller=True)
     champs = modification.model_dump(exclude_unset=True)
+    sera_active = champs["active"] if "active" in champs else camera.active
+    if champs.get("enregistrement") is True and not sera_active:
+        raise EnregistrementRefuse
     url = champs.pop("url_rtsp", camera.url_rtsp)
     # L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe est conservé.
     if url != masquer(camera.url_rtsp) and url != camera.url_rtsp:
@@ -374,6 +392,7 @@ def modifier(base: Session, id_camera: int, modification: ModificationCamera) ->
     for champ, valeur in champs.items():
         setattr(camera, champ, valeur)
     if not camera.active:
+        camera.enregistrement = False
         _remettre_a_unknown(camera)
     _enregistrer(base, camera)
     return CameraLue.depuis(camera)
@@ -601,12 +620,17 @@ def _oublier_onvif(camera: Camera) -> None:
     camera.onvif_en_clair_accepte = False
 
 
-def supprimer(base: Session, id_camera: int) -> None:
+def supprimer(base: Session, id_camera: int, racine_enregistrements: Path) -> None:
     camera = _trouver(base, id_camera)
     if camera.active:
         raise CameraActive
+    dossier = racine_enregistrements / chemin_flux(camera.id)
     base.delete(camera)
     base.commit()
+    try:
+        shutil.rmtree(dossier)
+    except FileNotFoundError:
+        pass
 
 
 def _trouver(base: Session, id_camera: int, verrouiller: bool = False) -> Camera:

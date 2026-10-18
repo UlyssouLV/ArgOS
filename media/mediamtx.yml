@@ -15,7 +15,7 @@ srt: no
 moq: no
 
 # Enregistrement continu (docs/adr/0011-enregistrement-continu-par-mediamtx.md) : format et conservation
-# du volume /enregistrements. record reste off ; l'API l'allumera plus tard sur camera-<id>.
+# du volume /enregistrements. record reste off par défaut ; l'API l'allume sur camera-<id>.
 pathDefaults:
   record: no
   recordPath: /enregistrements/%path/%Y-%m-%d_%H-%M-%S-%f

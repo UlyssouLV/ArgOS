@@ -23,6 +23,8 @@ export type Camera = {
   codec: string | null;
   /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
   chemin_flux: string | null;
+  /** Enregistrement continu du Flux ; `false` à l'ajout. */
+  enregistrement: boolean;
 };
 
 /**
@@ -91,7 +93,10 @@ export async function listerCameras(): Promise<Camera[]> {
 }
 
 /** L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe RTSP est conservé. */
-export async function modifierCamera(id: number, modification: Partial<SaisieCamera & { active: boolean }>): Promise<void> {
+export async function modifierCamera(
+  id: number,
+  modification: Partial<SaisieCamera & { active: boolean; enregistrement: boolean }>,
+): Promise<void> {
   await envoyer(`/api/cameras/${id}`, "PATCH", modification);
 }
 

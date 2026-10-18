@@ -5,6 +5,7 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from time import monotonic
 from ipaddress import IPv4Address, IPv4Network
 from typing import Annotated
@@ -170,7 +171,7 @@ def creer_app(
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
-                actives = cameras.urls_actives(base)
+                actives = cameras.relais_actifs(base)
             pont.reconcilier(actives)
 
         boucles = [
@@ -265,7 +266,9 @@ def creer_app(
         """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
 
-    app.include_router(_routes_cameras(base, administrateur_connecte, horloge))
+    app.include_router(
+        _routes_cameras(base, administrateur_connecte, horloge, Path(configuration.enregistrements))
+    )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
     def adresses_d_argos() -> set[IPv4Address]:
@@ -292,7 +295,10 @@ def _journaux_sur_la_sortie() -> None:
 
 
 def _routes_cameras(
-    base: Callable[[], Iterator[Session]], administrateur_connecte: Callable, horloge: Horloge
+    base: Callable[[], Iterator[Session]],
+    administrateur_connecte: Callable,
+    horloge: Horloge,
+    racine_enregistrements: Path,
 ) -> APIRouter:
     """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
     Base = Annotated[Session, Depends(base)]
@@ -320,7 +326,7 @@ def _routes_cameras(
     @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
     def supprimer(id_camera: int, base: Base) -> None:
         with _erreurs_cameras():
-            cameras.supprimer(base, id_camera)
+            cameras.supprimer(base, id_camera, racine_enregistrements)
 
     @routes.get(
         "/{id_camera}/reglages",
@@ -577,6 +583,10 @@ def _erreurs_cameras() -> Iterator[None]:
     except cameras.CameraActive:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Désactiver la Caméra avant de la supprimer."
+        ) from None
+    except cameras.EnregistrementRefuse:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Une Caméra désactivée ne peut pas enregistrer."
         ) from None
     except cameras.CertificatNonPresente:
         raise HTTPException(

@@ -37,6 +37,11 @@ services:
         read_only: true
         volume:
           subpath: public
+      # Segments : lecture (indicateur, ticket suivant) et purge de camera-<id>/ à la suppression (ADR 0011).
+      # Pas :ro — unlink du dossier ; l'API n'écrit pas les segments (MediaMTX le fait).
+      - type: volume
+        source: enregistrements
+        target: /enregistrements
     # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.

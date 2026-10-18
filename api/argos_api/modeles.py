@@ -55,3 +55,5 @@ class Camera(Base):
     empreinte_onvif_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # L'Administrateur accepte de régler en ONVIF en clair cette caméra sans HTTPS ; révocable.
     onvif_en_clair_accepte: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Enregistrement continu du Flux (docs/adr/0011-enregistrement-continu-par-mediamtx.md) ; OFF à l'ajout.
+    enregistrement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

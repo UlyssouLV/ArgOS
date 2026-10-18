@@ -23,6 +23,8 @@ class Configuration(BaseSettings):
     delai_mediamtx: float = Field(5, gt=0, validation_alias="ARGOS_MEDIAMTX_DELAI_S")
     # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes (réglable pour les tests).
     expiration_apercu: float = Field(120, gt=0, validation_alias="ARGOS_APERCU_EXPIRATION_S")
+    # Volume des segments d'enregistrement, monté dans le conteneur (lecture + purge à la suppression).
+    enregistrements: str = Field("/enregistrements", validation_alias="ARGOS_ENREGISTREMENTS")
     # Port HTTPS du Site publié sur l'hôte : la Détection y demande le jeton de cette instance (soi.py).
     port_https: int = Field(443, gt=0, lt=65536, validation_alias="ARGOS_PORT_HTTPS")
 
