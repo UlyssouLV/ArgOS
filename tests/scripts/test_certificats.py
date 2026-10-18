@@ -5,7 +5,6 @@ du Site, clé comprise) et `certificats-serveur` (ce que `web` lit), et du dossi
 l'Administrateur (`ARGOS_CERTIFICAT_DOSSIER`).
 """
 
-import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -37,7 +36,8 @@ def image() -> str:
 
 
 def _rendre_lisible_par_l_hote(image: str, autorite: Path, serveur: Path) -> None:
-    """Le service écrit en uid 101 (clés en 0400) : sur Linux CI l'hôte ne peut plus les lire sans chown."""
+    """Le service écrit en uid 101 (clés 0400, dossiers 0700) : l'hôte CI doit pouvoir lire sans retirer
+    la propriété à 101, pour qu'un second lancement puisse encore écrire."""
     subprocess.run(
         [
             "docker",
@@ -46,14 +46,14 @@ def _rendre_lisible_par_l_hote(image: str, autorite: Path, serveur: Path) -> Non
             "--user",
             "0",
             "--entrypoint",
-            "chown",
+            "chmod",
             "-v",
             f"{autorite}:/autorite",
             "-v",
             f"{serveur}:/certificats-serveur",
             image,
             "-R",
-            f"{os.getuid()}:{os.getgid()}",
+            "a+rX",
             "/autorite",
             "/certificats-serveur",
         ],
