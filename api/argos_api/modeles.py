@@ -57,6 +57,8 @@ class Camera(Base):
     onvif_en_clair_accepte: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Enregistrement continu du Flux (docs/adr/0011-enregistrement-continu-par-mediamtx.md) ; OFF à l'ajout.
     enregistrement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Dernier débit max d'Encodage connu (kbit/s, ONVIF) : repli du Débit d'écriture sans segments récents.
+    debit_encodage_kbit_s: Mapped[int | None] = mapped_column(Integer)
 
 
 class ReglagesSite(Base):

@@ -17,15 +17,28 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, espace_enregistrements, essai, fuseaux, onvif, reglages_site, sessions, soi, sonde
+from argos_api import (
+    cameras,
+    debits_ecriture,
+    detection,
+    espace_enregistrements,
+    essai,
+    fuseaux,
+    onvif,
+    reglages_site,
+    sessions,
+    soi,
+    sonde,
+)
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
+from argos_api.debits_ecriture import DebitsEcriture
 from argos_api.ecoute import SortieSeulement
+from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
-from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
 from argos_api.surveillance import Surveillance
 
@@ -287,6 +300,12 @@ def creer_app(
     def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:
         """Espace du volume des enregistrements ; signal `sous_seuil` sans couper l'enregistrement."""
         return espace_enregistrements.lire(racine_enregistrements, base)
+
+    @app.get("/api/debits-ecriture", dependencies=[Depends(administrateur_connecte)])
+    def lire_debits_ecriture(base: Annotated[Session, Depends(base)]) -> DebitsEcriture:
+        """Débits d'écriture (mesure / encodage / inconnu), agrégats et tenue vs Conservation."""
+        espace = espace_enregistrements.lire(racine_enregistrements, base)
+        return debits_ecriture.lire(racine_enregistrements, base, espace.libre_o)
 
     app.include_router(
         _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements)

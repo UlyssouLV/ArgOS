@@ -497,6 +497,7 @@ def lire_reglages(base: Session, id_camera: int, maintenant: Callable[[], dateti
     reglages, securite = _par_onvif(
         base, id_camera, maintenant, lambda url, retenu, codec: onvif.lire_reglages(url, retenu, maintenant, codec)
     )
+    _retenir_debit_encodage(base, id_camera, reglages.encodage)
     return ReglagesLus(**reglages.model_dump(), securite=securite)
 
 
@@ -513,7 +514,17 @@ def modifier_reglages(
         maintenant,
         lambda url, retenu, codec: onvif.modifier_reglages(url, retenu, modification, maintenant, codec),
     )
+    _retenir_debit_encodage(base, id_camera, resultat.reglages.encodage)
     return resultat
+
+
+def _retenir_debit_encodage(base: Session, id_camera: int, encodage: onvif.Encodage) -> None:
+    """Mémorise le débit max d'Encodage pour le repli du Débit d'écriture (ADR 0012)."""
+    valeurs = encodage.valeurs
+    if valeurs is None or valeurs.debit_max is None:
+        return
+    base.execute(update(Camera).where(Camera.id == id_camera).values(debit_encodage_kbit_s=valeurs.debit_max))
+    base.commit()
 
 
 def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:

@@ -6,10 +6,17 @@ import {
   CONSERVATION_MIN,
   MO,
   SEUIL_MIN_O,
+  formaterDebit,
+  formaterDuree,
   formaterOctets,
+  libelleEtatEnregistrement,
+  libelleSourceDebit,
+  libelleTenue,
+  lireDebitsEcriture,
   lireEspaceEnregistrements,
   lireReglagesSite,
   modifierReglagesSite,
+  type DebitsEcriture,
   type EspaceEnregistrements,
 } from "../reglagesSite";
 
@@ -19,17 +26,23 @@ export function Enregistrement() {
   const [seuilO, setSeuilO] = useState<number | null>(null);
   const [saisieSeuilMo, setSaisieSeuilMo] = useState("");
   const [espace, setEspace] = useState<EspaceEnregistrements | null>(null);
+  const [debits, setDebits] = useState<DebitsEcriture | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enregistrement, setEnregistrement] = useState(false);
 
   const rafraichir = useCallback(async () => {
     try {
-      const [reglages, espaceLu] = await Promise.all([lireReglagesSite(), lireEspaceEnregistrements()]);
+      const [reglages, espaceLu, debitsLus] = await Promise.all([
+        lireReglagesSite(),
+        lireEspaceEnregistrements(),
+        lireDebitsEcriture(),
+      ]);
       setConservation(reglages.conservation_h);
       setSaisieConservation(String(reglages.conservation_h));
       setSeuilO(reglages.seuil_octets_libres);
       setSaisieSeuilMo(String(Math.round(reglages.seuil_octets_libres / MO)));
       setEspace(espaceLu);
+      setDebits(debitsLus);
       setErreur(null);
     } catch (e) {
       setErreur(messageEchec(e));
@@ -52,6 +65,7 @@ export function Enregistrement() {
       const reglages = await modifierReglagesSite({ conservation_h: heures });
       setConservation(reglages.conservation_h);
       setSaisieConservation(String(reglages.conservation_h));
+      setDebits(await lireDebitsEcriture());
       setErreur(null);
     } catch (e) {
       setErreur(messageEchec(e));
@@ -72,8 +86,9 @@ export function Enregistrement() {
       const reglages = await modifierReglagesSite({ seuil_octets_libres: mo * MO });
       setSeuilO(reglages.seuil_octets_libres);
       setSaisieSeuilMo(String(Math.round(reglages.seuil_octets_libres / MO)));
-      const espaceLu = await lireEspaceEnregistrements();
+      const [espaceLu, debitsLus] = await Promise.all([lireEspaceEnregistrements(), lireDebitsEcriture()]);
       setEspace(espaceLu);
+      setDebits(debitsLus);
       setErreur(null);
     } catch (e) {
       setErreur(messageEchec(e));
@@ -115,6 +130,52 @@ export function Enregistrement() {
             <dd>{formaterOctets(espace.utilise_o)}</dd>
           </div>
         </dl>
+      )}
+      {debits && (
+        <section className="debits-ecriture" aria-labelledby="titre-debits">
+          <h2 id="titre-debits">Débits d’écriture</h2>
+          <dl className="agregats-debit">
+            <div>
+              <dt>Débit (enregistrement en cours)</dt>
+              <dd>{formaterDebit(debits.debit_enregistrement_o_s)}</dd>
+              <dd className={classeTenue(debits.tenue_enregistrement_ok)}>
+                Tenue estimée : {formaterDuree(debits.tenue_enregistrement_s)} —{" "}
+                {libelleTenue(debits.tenue_enregistrement_ok)}
+              </dd>
+            </div>
+            <div>
+              <dt>Projection (toutes Caméras actives)</dt>
+              <dd>{formaterDebit(debits.debit_projection_o_s)}</dd>
+              <dd className={classeTenue(debits.tenue_projection_ok)}>
+                Tenue estimée : {formaterDuree(debits.tenue_projection_s)} —{" "}
+                {libelleTenue(debits.tenue_projection_ok)}
+              </dd>
+            </div>
+          </dl>
+          <table className="resume-cameras" aria-label="Débits par Caméra">
+            <thead>
+              <tr>
+                <th scope="col">Caméra</th>
+                <th scope="col">État</th>
+                <th scope="col">Débit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {debits.cameras.map((camera) => (
+                <tr key={camera.id}>
+                  <td>{camera.nom}</td>
+                  <td>{libelleEtatEnregistrement(camera.etat_enregistrement)}</td>
+                  <td>
+                    {formaterDebit(camera.debit_o_s)}
+                    {camera.source_debit !== "inconnu" && (
+                      <span className="source-debit"> ({libelleSourceDebit(camera.source_debit)})</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
       <form className="conservation" onSubmit={(e) => void enregistrerConservation(e)}>
         <label>
@@ -163,4 +224,10 @@ export function Enregistrement() {
       </form>
     </section>
   );
+}
+
+function classeTenue(ok: boolean | null): string {
+  if (ok === true) return "tenue-ok";
+  if (ok === false) return "tenue-ambitieuse";
+  return "tenue-inconnue";
 }
