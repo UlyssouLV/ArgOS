@@ -128,6 +128,18 @@ Réglages d’une Caméra dont l’Appareil ne propose pas ONVIF chiffré, envoy
 
 À éviter : mode HTTP, mode non sécurisé.
 
+## Enregistrement {#enregistrement}
+
+Écriture continue sur disque du Flux d’une Caméra choisie par l’Administrateur, sans réencodage, en segments gérés par le Pont.
+
+À éviter : recording, archive, NVR.
+
+## Segment d’enregistrement {#segment-d-enregistrement}
+
+Fichier fMP4 produit par le Pont pour une plage courte du Flux d’une Caméra en Enregistrement (ordre de la minute), rangé sous le dossier de cette Caméra.
+
+À éviter : chunk, part, clip.
+
 ## Staging {#staging}
 
 Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.

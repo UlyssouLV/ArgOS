@@ -80,6 +80,15 @@ Ne plus stocker en clair le mot de passe des Caméras dans la base.
 
 Accéder au Site depuis internet par un VPN (WireGuard, Tailscale…), sans redirection de port ni UPnP.
 
+### Réseau Site : DHCP caméras et isolement (une prise / VLAN)
+
+Deux situations d’install encore mal couvertes après la 0.7.2 (doc VLAN / deux prises seulement) :
+
+1. **Pas de routeur** sur le réseau des caméras → pas de DHCP → caméras sans IP utile → la Détection ne les trouve pas. Le Site pourrait servir le DHCP sur cette prise (ex. `dnsmasq`), ou guider clairement les IP fixes.
+2. **Routeur Wi‑Fi / box voulu**, mais caméras isolées : le routeur ne doit voir que le serveur ; le serveur parle au routeur pour la MAJ / futurs services. Avec **une seule prise Ethernet**, compartimenter via **VLAN** (switch managé, trunk) plutôt qu’un seul L2 partagé (conflit de DHCP, perte d’isolement). Alternative matérielle : seconde NIC (USB-Ethernet).
+
+Objectif produit : poser / documenter (et éventuellement automatiser) ces topologies pour qu’un Administrateur non spécialiste isole les caméras sans se battre avec le réseau.
+
 ### Détection de Flux figé ou rejoué
 
 Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
