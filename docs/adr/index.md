@@ -17,3 +17,4 @@ Ce n’est ni une spec produit, ni un tutoriel. C’est le journal des choix str
 | [0007](./0007-onvif-en-https-par-cle-memorisee.md) | ONVIF en HTTPS par clé mémorisée, repli HTTP consenti |
 | [0008](./0008-encodage-par-media-2-media-1-seulement-en-h264.md) | Encodage réglé par le média 2, média 1 seulement en H.264 |
 | [0009](./0009-images-du-depot-et-compose-autonome.md) | Images du dépôt et compose autonome, une seule branche |
+| [0010](./0010-canaux-staging-et-production-par-retag.md) | Canaux staging et production par retag de digest |

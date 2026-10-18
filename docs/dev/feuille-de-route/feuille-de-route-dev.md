@@ -26,28 +26,35 @@ Contraintes transverses :
 - **0.6.4** — Réglages image et vidéo par ONVIF : sections Image (filtre infrarouge jour / nuit / automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR ; de l’Appareil, partagée par ses Caméras) et Encodage du Flux (résolution, images par seconde, débit max ; codec, qualité et intervalle entre images clés en lecture seule) dans les Réglages, relues après envoi avec un statut par champ ; profil retenu d’après l’URL RTSP de la Caméra ; Encodage par le média 2, par le média 1 seulement en H.264, sinon non réglable ; confirmation avant la coupure du Flux ; lecteur du Flux dans le panneau ; Caméra simulée 2 avec service image et média 2. Bug connu : la suite de tests échoue quand des Caméras de dev sont déclarées sur les Caméras simulées ([#95](https://github.com/UlyssouLV/ArgOS/issues/95), Plus tard) ([PR #94](https://github.com/UlyssouLV/ArgOS/pull/94), [spec](../../specs/v0.6.4-reglages-image-et-video-par-onvif.md), [ADR 0008](../../adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md), [doc](../../cameras/parametrer-une-camera.md)).
 - **0.7.0** — Site installable sans le dépôt : images `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`, compose de prod autonome, install Ubuntu dans `/opt/argos` avec systemd ; Mac toujours depuis le clone (lanceur, Caméras simulées) ([PR #101](https://github.com/UlyssouLV/ArgOS/pull/101), [spec](../../specs/v0.7.0-site-installable-sans-le-depot.md), [ADR 0009](../../adr/0009-images-du-depot-et-compose-autonome.md)).
 - **0.7.1** — Intégration continue : chaque PR vers `main` lance la suite (`/t -a`, stack Docker) via GitHub Actions ; check **`ArgOS tests`** à exiger pour protéger `main` ([PR #106](https://github.com/UlyssouLV/ArgOS/pull/106), [spec](../../specs/v0.7.1-integration-continue.md)).
+- **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
 
-## Prochaine : 0.7.2 — Livraison continue
-
-**Objectif.** Publier les images du Site à chaque release (registre GitHub), avec une procédure d’installation et de mise à jour d’un Site Ubuntu, réseau des caméras isolé compris (VLAN, sans internet) : on peut installer ArgOS sur un vrai Site. Y compris la promotion d’une image déjà verte (même digest) vers les Sites Ubuntu.
-
-**Hors périmètre :** enregistrement des Flux (0.8.0).
-
-## Ensuite : 0.8.0 — Enregistrement continu
+## Prochaine : 0.8.0 — Enregistrement continu
 
 **Objectif.** Enregistrer sur disque, sans réencodage, le Flux des Caméras choisies : MediaMTX enregistre en segments, l’API le pilote, un interrupteur par Caméra dans l’Administration l’active ; durée de conservation fixe, les plus anciens segments sont effacés. Une tranche de bout en bout, vérifiable par l’Administrateur.
 
-**Hors périmètre :** relecture depuis l’UI et réglages avancés (0.8.1).
+**Hors périmètre :** page de suivi stockage / débits (0.8.1), relecture depuis l’UI (0.8.2).
 
-## Ensuite : 0.8.1 — Relecture et réglages de l’enregistrement
+## Ensuite : 0.8.1 — Suivi du stockage et du débit d’écriture
 
-**Objectif.** Relire les enregistrements d’une Caméra depuis l’UI (choisir un moment, lire), et régler l’enregistrement : durée de conservation, place disque, plages horaires.
+**Objectif.** Une page **Enregistrement** montre l’espace disque disponible, le débit d’écriture par Caméra si possible et le débit global selon les Caméras configurées / actives, pour estimer jusqu’où tient la conservation (et donc à quelle cadence purger). L’Administrateur règle aussi la durée de conservation et un seuil de place disque à partir de ces indications.
 
-**Hors périmètre :** fil rouge 1.0.0 (à redéfinir).
+**Hors périmètre :** relecture des enregistrements (0.8.2), plages horaires d’enregistrement.
+
+## Ensuite : 0.8.2 — Relecture des enregistrements
+
+**Objectif.** Parcourir et relire les enregistrements de chaque Caméra depuis l’UI : choisir un moment, lire.
+
+**Hors périmètre :** plages horaires d’enregistrement, fil rouge 1.0.0 (à redéfinir).
+
+## Ensuite : 0.9.0 — Le Site, serveur de temps des Caméras
+
+**Objectif.** Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
+
+**Hors périmètre :** fil rouge 1.0.0.
 
 ## Ensuite : 1.0.0 — Fil rouge Site → Live RTSP
 
-**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois 0.8.x livré.
+**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois 0.8.x / 0.9.0 livrés.
 
 **Hors périmètre :** IA, PTZ, VPN, chiffrement des identifiants (Plus tard).
 
@@ -88,10 +95,6 @@ Prendre en charge les Appareils qui portent plusieurs Caméras sous une seule ad
 ### PTZ
 
 Après le paramétrage ONVIF (0.6.0) : pilotage PTZ des Caméras motorisées, et tracking éventuel.
-
-### Le Site, serveur de temps des Caméras
-
-Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Après la 0.7.0 (conteneurs). Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
 
 ### Catalogue du matériel connu
 

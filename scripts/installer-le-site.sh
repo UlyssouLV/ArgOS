@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pose un Site sur Ubuntu : dossier Compose /opt/argos, compte argos, unité systemd.
 # Sans clone dans le dossier installé : compose de prod, .env du Site, script de Détection.
-# Les images du Site doivent déjà être chargées (docker load). Pas de Caméras simulées.
+# Images du Site par docker compose pull (registre ghcr). Pas de Caméras simulées.
 # Voir docs/adr/0009-images-du-depot-et-compose-autonome.md.
 set -euo pipefail
 
@@ -35,12 +35,12 @@ if [ ! -f "$DEPOT/compose.yaml" ] || [ ! -f "$DEPOT/.env.example" ]; then
     exit 1
 fi
 
+# shellcheck source=lib-fichiers-site.sh
+. "$(dirname "$0")/lib-fichiers-site.sh"
+
 # `certificats/` : bind Compose du certificat fourni (`create_host_path: false`). Vide = Autorité du Site.
-mkdir -p "$RACINE/scripts/cameras" "$RACINE/certificats" "$(dirname "$UNITE")"
-cp "$DEPOT/compose.yaml" "$RACINE/compose.yaml"
-cp "$DEPOT/compose.reseau-cameras.yaml" "$RACINE/compose.reseau-cameras.yaml"
-cp "$DEPOT/scripts/cameras/configurer-detection.sh" "$RACINE/scripts/cameras/configurer-detection.sh"
-chmod 755 "$RACINE/scripts/cameras/configurer-detection.sh"
+mkdir -p "$RACINE/certificats" "$(dirname "$UNITE")"
+copier_fichiers_du_site "$DEPOT" "$RACINE"
 
 if [ ! -f "$FICHIER_ENV" ]; then
     awk '
@@ -74,6 +74,8 @@ fi
 
 chmod 640 "$FICHIER_ENV"
 
+( cd "$RACINE" && docker compose pull )
+
 if ! getent group docker >/dev/null; then
     echo "[ERREUR] Groupe docker introuvable : installe Docker, puis relance." >&2
     exit 1
@@ -85,29 +87,7 @@ usermod -aG docker argos
 chown -R argos:argos "$RACINE"
 chmod 750 "$RACINE"
 
-cat > "$UNITE" <<'EOF'
-[Unit]
-Description=ArgOS
-Requires=docker.service
-After=docker.service network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-User=argos
-WorkingDirectory=/opt/argos
-# « - » : un échec du script (plage trop grande) n'empêche pas ArgOS de démarrer.
-ExecStartPre=-/opt/argos/scripts/cameras/configurer-detection.sh
-ExecStart=/usr/bin/docker compose up -d --wait
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=300
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
+cp "$DEPOT/scripts/argos.service" "$UNITE"
 
 systemctl daemon-reload
 systemctl enable --now argos.service

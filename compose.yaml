@@ -3,7 +3,7 @@
 # déjà chargé lance sans les sources (ARGOS_VERSION, docs/adr/0009-images-du-depot-et-compose-autonome.md).
 services:
   mediamtx:
-    image: ghcr.io/ulyssoulv/argos-pont:${ARGOS_VERSION:-0.7.0}
+    image: ghcr.io/ulyssoulv/argos-pont:${ARGOS_VERSION:-0.7.2}
     build: ./media
     restart: unless-stopped
     ports:
@@ -17,7 +17,7 @@ services:
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
 
   api:
-    image: ghcr.io/ulyssoulv/argos-api:${ARGOS_VERSION:-0.7.0}
+    image: ghcr.io/ulyssoulv/argos-api:${ARGOS_VERSION:-0.7.2}
     build: ./api
     restart: unless-stopped
     depends_on:
@@ -58,7 +58,7 @@ services:
 
   # Ponctuel, avant web : Autorité du Site et certificat serveur (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md).
   certificats:
-    image: ghcr.io/ulyssoulv/argos-certificats:${ARGOS_VERSION:-0.7.0}
+    image: ghcr.io/ulyssoulv/argos-certificats:${ARGOS_VERSION:-0.7.2}
     build: ./certificats
     restart: "no"
     environment:
@@ -79,7 +79,7 @@ services:
           create_host_path: false
 
   web:
-    image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.7.0}
+    image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.7.2}
     build: ./web
     restart: unless-stopped
     depends_on:

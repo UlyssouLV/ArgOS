@@ -48,13 +48,15 @@ Version **0.6.3** : régler une Caméra ne livre plus son mot de passe ni ses r�
 
 Version **0.6.4** : les Réglages d’une Caméra règlent aussi l’**Image** de son Appareil (filtre infrarouge jour, nuit ou automatique, luminosité, contraste, saturation, netteté, contre-jour, WDR), partagée par toutes ses Caméras, et l’**Encodage** de son Flux (résolution, images par seconde, débit max), relus après envoi avec le même statut par champ. L’Encodage passe par le média 2 d’ONVIF, par le média 1 seulement en H.264, sinon il reste en lecture seule ; un changement d’Encodage coupe le Flux quelques secondes, après confirmation. Un lecteur du Flux en tête du panneau montre l’effet des réglages (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#6-les-réglages-de-la-caméra-dans-argos), [ADR 0008](docs/adr/0008-encodage-par-media-2-media-1-seulement-en-h264.md)).
 
-Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) portent `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`. Un Mac lance toujours depuis le clone (lanceur, Caméras simulées). Sur Ubuntu, `scripts/installer-le-site.sh` pose un Site dans `/opt/argos` sans les sources : images chargées par `docker save` / `docker load`, unité systemd `argos.service` (voir [ADR 0009](docs/adr/0009-images-du-depot-et-compose-autonome.md)).
+Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) portent `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`. Un Mac lance toujours depuis le clone (lanceur, Caméras simulées). Sur Ubuntu, `scripts/installer-le-site.sh` pose un Site dans `/opt/argos` sans les sources, unité systemd `argos.service` (voir [ADR 0009](docs/adr/0009-images-du-depot-et-compose-autonome.md)).
 
 Version **0.7.1** : chaque pull request vers `main` lance automatiquement la suite de tests complète (équivalent `/t -a`, stack Docker comprise) via GitHub Actions. Le check affiché est **`ArgOS tests`** : à exiger dans la protection de branche de `main` pour qu’une PR rouge ne puisse pas être fusionnée (voir [checks requis sur main](agents/docs/checks-requis-sur-main.md)).
 
+Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` après CI verte sur `main`, canal [Production](docs/glossaire.md#production-canal) par Release `vX.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
+
 ## Hébergement local
 
-PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Windows n’est pas documenté.
+PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Pour Windows (Docker Desktop seulement) ou un essai du canal Staging sans Ubuntu : [Essayer staging](#essayer-staging).
 
 ### Prérequis
 
@@ -72,7 +74,7 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-`ARGOS_VERSION` étiquette les images construites (`0.7.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+`ARGOS_VERSION` étiquette les images construites (`0.7.2` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
 
 ### Installation / lancement
 
@@ -88,12 +90,12 @@ Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml 
 
 ## Hébergement Ubuntu
 
-Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Le registre GitHub n’est pas encore publié (0.7.2) : les quatre images du Site arrivent par `docker save` / `docker load`.
+Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
 
 ### Prérequis
 
 - Ubuntu, avec Docker Engine et le plugin Compose
-- les quatre images du Site déjà chargées (`docker load`, ci-dessous)
+- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
 - le clone (ou une copie de `compose.yaml`, `compose.reseau-cameras.yaml`, `.env.example` et `scripts/`) le temps de lancer le script d’installation
 
 Postgres reste l’image officielle `postgres:18.6-alpine3.24` : Compose la tire au premier lancement. Rien à construire sur la machine Ubuntu.
@@ -104,43 +106,61 @@ Le script d’installation crée `/opt/argos/.env` d’après `.env.example`, **
 
 Après installation, dans `/opt/argos/.env` :
 
-- `ARGOS_VERSION` : étiquette des images chargées (ex. `0.7.0`)
+- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.7.2`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
 - `MTX_WEBRTCADDITIONALHOSTS` : IP de la machine Ubuntu sur le réseau local, pour que le certificat nomme le Site
 - Détection et réseau des caméras (macvlan) : [Réseau et Détection](docs/cameras/reseau-et-detection.md) — le script `scripts/cameras/configurer-detection.sh` est copié dans `/opt/argos` et lancé au boot ; la prise se choisit **une fois** en terminal
 
 ### Installation / lancement
 
-**1. Construire et sauver les images** depuis un clone (Mac, ou une autre machine qui a Docker). Les images doivent correspondre à l’architecture de la machine Ubuntu (souvent `linux/amd64`). Sur un Mac Apple Silicon, sans ça, le `build` produit de l’arm64 : `docker load` réussit, le Site ne démarre pas.
-
-```bash
-DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
-docker save \
-  ghcr.io/ulyssoulv/argos-api:0.7.0 \
-  ghcr.io/ulyssoulv/argos-web:0.7.0 \
-  ghcr.io/ulyssoulv/argos-pont:0.7.0 \
-  ghcr.io/ulyssoulv/argos-certificats:0.7.0 \
-  -o argos-images-0.7.0.tar
-```
-
-Adapter `0.7.0` à `ARGOS_VERSION`. Transférer l’archive vers la machine Ubuntu. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
-
-**2. Charger les images** sur Ubuntu :
-
-```bash
-docker load -i argos-images-0.7.0.tar
-```
-
-**3. Installer le Site** depuis le clone (compte Administrateur demandé si besoin) :
+**1. Installer le Site** depuis le clone (compte Administrateur demandé si besoin) :
 
 ```bash
 sudo ./scripts/installer-le-site.sh
 ```
 
-Le script pose `/opt/argos` (compose de prod, `.env`, script de Détection — pas le clone, pas `compose.simulation.yaml`), le compte système `argos` (groupe `docker`), et l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
+Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et de mise à jour — pas le clone, pas `compose.simulation.yaml`), tire les images (`docker compose pull`), crée le compte système `argos` (groupe `docker`), et pose l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
 
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
-**Mettre à jour** : charger les nouvelles images (`docker load`), aligner `ARGOS_VERSION` dans `/opt/argos/.env` si l’étiquette change, puis `sudo systemctl restart argos.service`.
+**2. Mettre à jour** : au démarrage ou au restart de `argos.service`, `ExecStartPre` lance `/opt/argos/scripts/mettre-a-jour-le-site.sh`. La même commande unique s’exécute à la main, sans attendre un reboot :
+
+```bash
+sudo /opt/argos/scripts/mettre-a-jour-le-site.sh
+```
+
+Si une GitHub Release semver plus récente existe, le script applique l’artefact dans `/opt/argos` (compose, scripts, unité — **sans** écraser `.env` ni les certificats fournis), aligne `ARGOS_VERSION`, fait `docker compose pull` puis recreate. Coupure courte du Live pendant le recreate. Pas de timer quotidien, pas de rollback automatique. Codes de sortie : `0` mise à jour appliquée, `2` rien à faire, `1` échec (journalisé).
+
+**3. Secours hors ligne** (`docker save` / `docker load`) : si l’hôte ne joint pas `ghcr.io`, construire et sauver les images depuis un clone qui a Docker, sur l’architecture de la machine Ubuntu (souvent `linux/amd64` ; sur un Mac Apple Silicon, sans `DOCKER_DEFAULT_PLATFORM=linux/amd64`, le `build` produit de l’arm64) :
+
+```bash
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
+docker save \
+  ghcr.io/ulyssoulv/argos-api:0.7.2 \
+  ghcr.io/ulyssoulv/argos-web:0.7.2 \
+  ghcr.io/ulyssoulv/argos-pont:0.7.2 \
+  ghcr.io/ulyssoulv/argos-certificats:0.7.2 \
+  -o argos-images-0.7.2.tar
+```
+
+Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.7.2.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.7.2` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
+
+## Essayer staging
+
+Canal [Staging](docs/glossaire.md#staging) (`:staging`) : dernier digest vert de `main`, avant une Release. Utile pour valider sur une machine perso **avant** de promouvoir vers la production.
+
+**macOS et Windows** : Docker Desktop + clone de ce dépôt. Pas d’installation produit type Ubuntu (`/opt/argos`, systemd) — Windows n’est documenté que pour cet essai.
+
+1. Copier `.env.example` vers `.env`, renseigner le compte Administrateur, puis `ARGOS_VERSION=staging`.
+2. Tirer les images de prod (sans reconstruction locale) :
+
+```bash
+docker compose -f compose.yaml pull
+docker compose -f compose.yaml up -d --wait
+```
+
+3. Ouvrir `https://localhost`. Pour les Caméras simulées en plus, superposer `compose.simulation.yaml` comme en [Hébergement local](#hébergement-local).
+
+Sur un Site Ubuntu de test, la même valeur `ARGOS_VERSION=staging` dans `/opt/argos/.env` suit ce canal ; la commande de mise à jour semver ne s’applique pas tant que l’étiquette n’est pas un numéro de Release.
 
 ## Développer
 
