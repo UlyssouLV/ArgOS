@@ -176,6 +176,29 @@ def test_indicateur_en_erreur_si_le_dossier_n_est_pas_lisible(connecte, creer_ca
     assert lue["etat_enregistrement"] == "en_erreur"
 
 
+def test_indicateur_en_erreur_si_le_dernier_segment_est_trop_vieux(connecte, creer_camera):
+    """Écriture stagnante : dernier segment plus vieux que 2 × la durée de segment MediaMTX."""
+    camera = creer_camera().json()
+    compose(
+        "exec",
+        "-T",
+        "api",
+        "python",
+        "-c",
+        "from pathlib import Path; import os, time; "
+        f"p = Path('/enregistrements/camera-{camera['id']}'); p.mkdir(parents=True, exist_ok=True); "
+        "f = p / 'vieux.mp4'; f.write_text('x'); "
+        "t = time.time() - 200; os.utime(f, (t, t))",
+    )
+
+    allumee = connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).json()
+
+    assert allumee["enregistrement"] is True
+    assert allumee["etat_enregistrement"] == "en_erreur"
+    assert allumee["age_dernier_segment_s"] is not None
+    assert allumee["age_dernier_segment_s"] > 120
+
+
 def test_aucun_endpoint_de_telechargement_ni_de_lecture_des_segments(connecte, creer_camera):
     camera = creer_camera().json()
     identifiant = camera["id"]

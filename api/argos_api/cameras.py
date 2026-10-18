@@ -29,6 +29,8 @@ LONGUEUR_MOT_DE_PASSE_SUR = 12
 
 Etat = Literal["unknown", "online", "offline"]
 EtatEnregistrement = Literal["enregistre", "a_l_arret", "en_erreur"]
+# Au-delà de 2 × recordSegmentDuration (1 m) : l'écriture a stagné alors que l'enregistrement est ON.
+AGE_MAX_DERNIER_SEGMENT_S = 120.0
 
 # Refus et décisions sur le Certificat de l'Appareil : id de Caméra et empreintes, jamais d'identifiant ni d'URL.
 journal = logging.getLogger("argos_api.cameras")
@@ -166,15 +168,11 @@ def _indicateur_enregistrement(camera: Camera, racine: Path) -> tuple[EtatEnregi
         plein = os.statvfs(racine).f_bavail == 0
     except OSError:
         return "en_erreur", chemin, None
-    if plein and camera.enregistrement:
-        etat: EtatEnregistrement = "en_erreur"
-    elif not camera.enregistrement:
-        etat = "a_l_arret"
-    elif camera.etat == "offline":
-        etat = "en_erreur"
-    else:
-        etat = "enregistre"
-    return etat, chemin, age
+    if not camera.enregistrement:
+        return "a_l_arret", chemin, age
+    if plein or camera.etat == "offline" or (age is not None and age > AGE_MAX_DERNIER_SEGMENT_S):
+        return "en_erreur", chemin, age
+    return "enregistre", chemin, age
 
 
 def _age_dernier_segment(dossier: Path) -> float | None:

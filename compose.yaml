@@ -37,8 +37,8 @@ services:
         read_only: true
         volume:
           subpath: public
-      # Segments : lecture (indicateur, ticket suivant) et purge de camera-<id>/ à la suppression (ADR 0011).
-      # Pas :ro — unlink du dossier ; l'API n'écrit pas les segments (MediaMTX le fait).
+      # Segments : lecture (indicateur) et purge de camera-<id>/ à la suppression (ADR 0011).
+      # Écriture requise pour unlink ; l'API n'écrit pas les segments (MediaMTX le fait).
       - type: volume
         source: enregistrements
         target: /enregistrements

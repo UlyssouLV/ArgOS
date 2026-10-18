@@ -31,7 +31,7 @@ def test_compose_monte_le_volume_enregistrements_dans_api(tmp_path):
 
     assert montage["type"] == "volume"
     assert montage["source"] == "enregistrements"
-    # Inscriptible : la suppression d'une Caméra unlink camera-<id>/ (même uid que le pont).
+    # Écriture : purge unlink de camera-<id>/ à la suppression (ADR 0011) ; pas d'écriture de segments.
     assert not montage.get("read_only")
 
 

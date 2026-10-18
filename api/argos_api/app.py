@@ -280,7 +280,16 @@ def creer_app(
             configuration.reglage_detection(), configuration.port_https, adresses_d_argos, base, administrateur_connecte
         )
     )
-    app.include_router(_routes_essai(apercus, configuration, adresses_d_argos, base, administrateur_connecte))
+    app.include_router(
+        _routes_essai(
+            apercus,
+            configuration,
+            adresses_d_argos,
+            base,
+            administrateur_connecte,
+            Path(configuration.enregistrements),
+        )
+    )
     return app
 
 
@@ -470,6 +479,7 @@ def _routes_essai(
     adresses_d_argos: Callable[[], set[IPv4Address]],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
+    racine_enregistrements: Path,
 ) -> APIRouter:
     """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
     pas pour deviner des mots de passe.
@@ -552,7 +562,7 @@ def _routes_essai(
                 return cameras.creer(
                     base,
                     nouvelle,
-                    Path(configuration.enregistrements),
+                    racine_enregistrements,
                     mac=resultat.mac,
                     codec=resultat.codec,
                 )

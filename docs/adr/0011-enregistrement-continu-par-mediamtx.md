@@ -12,5 +12,5 @@ Le Live tire déjà le RTSP à la demande (`sourceOnDemand`, ADR 0001). L’enre
 
 - ADR 0001 reste vrai pour le Live et les Caméras sans enregistrement ; l’enregistrement ON est l’exception qui force le tirage continu.
 - Un volume `enregistrements` (nom Compose) grossit comme la DB : pas de quota à l’install.
-- L’API monte ce volume en lecture seule pour l’indicateur Admin et efface `camera-<id>/` à la suppression d’une Caméra.
+- L’API monte ce volume en **écriture** : lecture pour l’indicateur Admin, `unlink` de `camera-<id>/` à la suppression d’une Caméra. Seul MediaMTX écrit les segments ; l’API n’en crée pas.
 - Pas d’exposition HTTP des segments tant que la relecture (0.8.2) n’existe pas.
