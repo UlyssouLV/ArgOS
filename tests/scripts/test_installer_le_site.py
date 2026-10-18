@@ -13,6 +13,13 @@ SCRIPT = REPO_ROOT / "scripts" / "installer-le-site.sh"
 DELAI_S = 10
 
 
+def _argos_version_exemple() -> str:
+    for ligne in (REPO_ROOT / ".env.example").read_text().splitlines():
+        if ligne.startswith("ARGOS_VERSION="):
+            return ligne.removeprefix("ARGOS_VERSION=").strip()
+    raise AssertionError("ARGOS_VERSION manquant dans .env.example")
+
+
 @dataclass
 class Resultat:
     code: int
@@ -105,7 +112,7 @@ def test_le_dossier_du_site_a_le_compose_lenv_et_la_detection_sans_sources_ni_so
     assert not (resultat.racine / "compose.simulation.yaml").exists()
     env = (resultat.racine / ".env").read_text()
     assert "SONAR_" not in env
-    assert "ARGOS_VERSION=0.8.0" in env
+    assert f"ARGOS_VERSION={_argos_version_exemple()}" in env
 
 
 def test_compte_argos_dans_le_groupe_docker_et_unite_activee_au_boot(ubuntu):
