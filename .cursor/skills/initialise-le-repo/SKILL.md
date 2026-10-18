@@ -117,6 +117,14 @@ Ask in French, then **wait**:
 
   That copies `agents/templates/docs-site/`, fills owner/repo from `origin`, adds role **`docs-site`**, stubs under `docs/`, and `.github/workflows/deploy-docs.yml`. Do not invent Moduléo/poste scripts. Remind the user to enable **GitHub Pages → GitHub Actions** after the first push.
 
+Then, **o** or **n**, delete the template copy that came with the pack:
+
+```bash
+rm -rf agents/templates
+```
+
+The project never reads it again (`update-from-pack.sh --with-docs` reads the template from the pack clone). Leaving it duplicates `docs-site/` for Sonar.
+
 ## 8. Commit
 
 Run skill **`commit`** as if the user had typed **`/c -a -p`**. Still never `.env`, `*.db`, `.venv/`, secrets.

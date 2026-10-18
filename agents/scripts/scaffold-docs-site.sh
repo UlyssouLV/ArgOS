@@ -4,6 +4,8 @@
 #   scaffold-docs-site.sh <TARGET_REPO_ROOT> [--force-owned]
 # --force-owned : when docs-site already exists, overwrite PACK_OWNED.txt paths only
 # Without existing docs-site: full copy + stubs + workflow + roles.yml role.
+# --force-owned also repairs known defects left by older templates (see
+# repair_known_defects).
 set -euo pipefail
 
 TARGET="${1:-}"
@@ -31,6 +33,7 @@ WF_SRC="$PACK/agents/templates/github/workflows/deploy-docs.yml"
 
 if [ ! -d "$TMPL" ] || [ ! -f "$TMPL/package.json" ]; then
   echo "Template introuvable : $TMPL" >&2
+  echo "Lance ce script depuis un clone du pack (bash <pack>/agents/scripts/scaffold-docs-site.sh <cible>)." >&2
   exit 1
 fi
 
@@ -123,6 +126,11 @@ copy_stubs() {
       echo "créé   $dest"
     fi
   done
+  # An empty docs/adr/ leaves adrSidebar with nothing to link to: build fails.
+  if [ -z "$(find "$TARGET/docs/adr" -maxdepth 1 \( -name '*.md' -o -name '*.mdx' \) -print -quit)" ]; then
+    rsync -a "$STUBS/adr/index.md" "$TARGET/docs/adr/index.md"
+    echo "créé   docs/adr/index.md"
+  fi
   if [ ! -f "$TARGET/docs/glossaire.md" ]; then
     printf '%s\n' '# Glossary' > "$TARGET/docs/glossaire.md"
     echo "créé   docs/glossaire.md"
@@ -159,12 +167,77 @@ sync_owned_only() {
   echo "MAJ    .github/workflows/deploy-docs.yml"
 }
 
+# Known defects left by older templates in a project's docs-site/ (files
+# outside PACK_OWNED): tsconfig pointing outside docs-site or not extending
+# @docusaurus/tsconfig, data stubs with the wrong JSON shape, @font-face
+# reading a file outside docs-site, static/ without any file. Valid project
+# content is left alone.
+repair_known_defects() {
+  python3 - "$TARGET/docs-site" "$TMPL" <<'PY'
+import json, re, shutil, sys
+from pathlib import Path
+site, tmpl = Path(sys.argv[1]), Path(sys.argv[2])
+
+def report(rel):
+    print(f"réparé docs-site/{rel}")
+
+rel = "tsconfig.json"
+cfg = site / rel
+text = cfg.read_text() if cfg.exists() else ""
+if '"../' in text or "@docusaurus/tsconfig" not in text:
+    shutil.copyfile(tmpl / rel, cfg)
+    report(rel)
+
+shapes = {
+    "src/data/bugs.json": lambda d: isinstance(d, dict) and isinstance(d.get("bugs"), list),
+    "src/data/changelog.json": lambda d: isinstance(d, list),
+    "src/data/feuille-de-route.json": lambda d: isinstance(d, dict)
+        and isinstance(d.get("versions"), list) and isinstance(d.get("plusTard"), list),
+}
+for rel, valid in shapes.items():
+    data = site / rel
+    try:
+        ok = valid(json.loads(data.read_text()))
+    except (OSError, ValueError):
+        ok = False
+    if not ok:
+        data.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(tmpl / rel, data)
+        report(rel)
+
+# Docusaurus fails the build on a static/ without any file (git drops
+# empty dirs, so older scaffolds from a pack clone had none).
+static = site / "static"
+if not static.is_dir() or not any(p.is_file() for p in static.rglob("*")):
+    static.mkdir(exist_ok=True)
+    (static / ".nojekyll").touch()
+    report("static/.nojekyll")
+
+rel = "src/css/custom.css"
+css = site / rel
+if css.exists():
+    text = css.read_text()
+    cleaned = re.sub(r"@font-face\s*\{[^}]*url\(\s*[\"']?\.\./\.\./\.\./[^}]*\}\s*", "", text)
+    if cleaned != text:
+        css.write_text(cleaned)
+        report(rel)
+PY
+}
+
+print_next_steps() {
+  echo "Étapes suivantes :"
+  echo "  cd docs-site && npm install && npm run typecheck"
+  echo "  GitHub → Settings → Pages → Source : GitHub Actions (après le premier push)"
+}
+
 if [ -d "$TARGET/docs-site" ] && [ -f "$TARGET/docs-site/package.json" ]; then
   if [ "$MODE_FORCE_OWNED" -eq 1 ]; then
     echo "docs-site présent — sync chemins PACK_OWNED uniquement"
     sync_owned_only
+    repair_known_defects
     add_docs_site_role
     copy_stubs
+    print_next_steps
   else
     echo "docs-site déjà présent — rien (passe --force-owned pour rafraîchir les fichiers pack)"
   fi
@@ -179,4 +252,5 @@ apply_placeholders "$TARGET/docs-site/docusaurus.config.ts"
 copy_stubs
 copy_workflow
 add_docs_site_role
-echo "docs-site prêt. Activer GitHub Pages (Settings → Pages → GitHub Actions) après le premier push."
+echo "docs-site prêt."
+print_next_steps

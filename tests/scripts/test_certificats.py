@@ -35,6 +35,34 @@ def image() -> str:
     return IMAGE
 
 
+def _rendre_lisible_par_l_hote(image: str, autorite: Path, serveur: Path) -> None:
+    """Le service écrit en uid 101 (clés 0400, dossiers 0700) : l'hôte CI doit pouvoir lire sans retirer
+    la propriété à 101, pour qu'un second lancement puisse encore écrire."""
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "0",
+            "--entrypoint",
+            "chmod",
+            "-v",
+            f"{autorite}:/autorite",
+            "-v",
+            f"{serveur}:/certificats-serveur",
+            image,
+            "-R",
+            "a+rX",
+            "/autorite",
+            "/certificats-serveur",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=DELAI_S,
+    )
+
+
 @pytest.fixture
 def lancer(image, tmp_path: Path):
     autorite = tmp_path / "autorite"
@@ -63,6 +91,7 @@ def lancer(image, tmp_path: Path):
             text=True,
             timeout=DELAI_S,
         )
+        _rendre_lisible_par_l_hote(image, autorite, serveur)
         lancement = Lancement(proc.returncode, proc.stdout + proc.stderr, autorite, serveur)
         assert (proc.returncode != 0) == echec, lancement.sortie
         return lancement

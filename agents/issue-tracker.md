@@ -126,8 +126,7 @@ Plan et trace des tests humains pour VX.Y.Z (pas d’implémentation agent).
 
 - [ ] Plan de tests proposé après le dernier ticket d’implémentation
 - [ ] Scénarios joués / non joués documentés
-- [ ] Résultats publiés sur ce ticket (récit vérifié quand c’est possible)
-- [ ] Images si fournies ou demandées après vérif OK (`/th` + captures)
+- [ ] Résultats (et images si fournies) publiés sur ce ticket
 - [ ] Brouillon « Ce qu’on peut faire maintenant » prêt pour la release
 
 ## Blocked by
@@ -150,7 +149,7 @@ _(brouillon produit pour la release ; images sous `docs/img/changelog/vX.Y.Z/`)_
 
 - At version open: create with empty Plan / Résultats / product draft (placeholders above).
 - After the last implementation child closes: `encadrer-implement` writes the concrete plan into `## Plan de tests`.
-- After the human reports: skill **`tests-humains`** (`/th`) (1) records the récit, (2) **verifies** observable claims when possible (Playwright / stack locale — not a substitute for human judgment), (3) on verify **OK** and if the human asked for **captures** / preuves, takes screenshots under `docs/img/changelog/vX.Y.Z/` (chat attachments still accepted), (4) fills Résultats + product section, commits images if any, removes `ready-for-human`, closes the issue. On verify **Écart**: do not close, do not capture. Partial plans are OK (document non-joués). Closing this child is **`/th`**, not `/cci`.
+- After the human reports: skill **`tests-humains`** (`/th`) fills Résultats + product section, commits screenshots if any, removes `ready-for-human`, closes the issue. Partial plans are OK (document non-joués). Closing this child is **`/th`**, not `/cci`.
 
 ## Changes to earlier versions
 

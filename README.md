@@ -50,6 +50,8 @@ Version **0.6.4** : les Réglages d’une Caméra règlent aussi l’**Image** d
 
 Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) portent `ghcr.io/ulyssoulv/argos-<service>:<ARGOS_VERSION>`. Un Mac lance toujours depuis le clone (lanceur, Caméras simulées). Sur Ubuntu, `scripts/installer-le-site.sh` pose un Site dans `/opt/argos` sans les sources : images chargées par `docker save` / `docker load`, unité systemd `argos.service` (voir [ADR 0009](docs/adr/0009-images-du-depot-et-compose-autonome.md)).
 
+Version **0.7.1** : chaque pull request vers `main` lance automatiquement la suite de tests complète (équivalent `/t -a`, stack Docker comprise) via GitHub Actions. Le check affiché est **`ArgOS tests`** : à exiger dans la protection de branche de `main` pour qu’une PR rouge ne puisse pas être fusionnée (voir [checks requis sur main](agents/docs/checks-requis-sur-main.md)).
+
 ## Hébergement local
 
 PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Windows n’est pas documenté.
@@ -143,6 +145,8 @@ Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Adm
 ## Développer
 
 Pour `/t` : [uv](https://docs.astral.sh/uv/) (Python ≥ 3.12) et Chromium pour Playwright. Pour le front hors conteneur : Node 24 (npm). ffmpeg / ffprobe tournent dans des conteneurs.
+
+Protéger `main` (Settings GitHub, à la main, pas d’API) : exiger le check **`ArgOS tests`** parmi les checks requis. Toute CI ajoutée plus tard doit rejoindre cette liste. Tant qu’un check requis est rouge, la PR ne se fusionne pas. Même règle : [checks requis sur main](agents/docs/checks-requis-sur-main.md).
 
 ## Ouvrir le Site depuis un autre poste
 

@@ -66,6 +66,7 @@ Les bugs non encore numérotés en version vivent sous **`## Plus tard (pas enco
 - Lien issue GitHub (`#n`) dès qu’elle existe ; label **`bug`** côté tracker (pas `ready-for-agent`).
 - Titre d’issue = même libellé : `Bug — <description courte>`.
 - Nouvel bug → **`/cub`** (crée l’issue puis écrit la feuille). Pas d’entrée feuille sans `#n` pour un bug nouveau.
+- **Captures** (si fournies) → pièces jointes GitHub via `gh issue create|edit --attach` (voir `agents/issue-tracker.md` *Bugs*). Sur la feuille : renvoyer vers l’issue, ne pas coller les binaires.
 
 ### Corps (feuille **et** issue — mêmes titres)
 

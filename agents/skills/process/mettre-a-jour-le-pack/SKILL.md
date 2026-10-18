@@ -15,7 +15,7 @@ Triggered by **`/up`**, **« mets à jour le pack »**, or **« update le pack �
 
 This skill **orchestrates** an intelligent upgrade. The bash script
 `agents/scripts/update-from-pack.sh` remains the **sync-only** engine
-(skills/hooks/templates). Migrations (paths, roles, tracker) come from
+(skills/hooks/scripts; templates are read from the pack, never copied). Migrations (paths, roles, tracker) come from
 **`agents/docs/migrations-pack.md`** in the **pack source** (not only the
 local copy, which may be stale).
 
@@ -52,7 +52,8 @@ Against the **project** cwd, using the catalogue in
 `<pack>/agents/docs/migrations-pack.md`, evaluate each id:
 
 - `glossaire-path`, `feuille-path`, `roles-required`, `agents-tracker`,
-  `adapter-cycle`, `skills-sync` (always applicable), `opt-docs`, `opt-suivi`
+  `adapter-cycle`, `skills-sync` (always applicable), `opt-docs`,
+  `docs-site-sync`, `opt-suivi`
 
 Also list skill folder names under `agents/skills/meta|process/` that exist
 **only** in the project (not in the pack) — for information; never delete them.
@@ -88,17 +89,19 @@ Order:
    bash "$PACK/agents/scripts/update-from-pack.sh" [--with-docs] [--with-suivi]
    ```
 
-   Include `--with-docs` / `--with-suivi` only if accepted as **o**.  
+   Include `--with-docs` only if `opt-docs` was accepted as **o** or
+   `docs-site-sync` was accepted. Include `--with-suivi` only if accepted as **o**.  
    That script already runs `dispatch.py` + `--check`. If it fails → **stop**
    and report; still try to remove the temp clone.
 5. Write `agents/.pack-sha` with `PACK_SHA` (one line).
-6. Reminder: feuille body format (Prochaine / Ensuite) is **not** auto-rewritten  
-   → `/afr` if needed. Docs Pages: enable GitHub Actions if `opt-docs` just ran.
+6. Collect the reminders listed under « Rappels du résumé `/up` » in the
+   catalogue whose condition holds. They go in the reply (step 5).
 
 ## 5. Reply
 
 French summary: applied ids, skipped ids, local-only skills left untouched,
-`PACK_SHA`, and whether commit is still needed (`/c -a -p` on a feature
+`PACK_SHA`, the reminders from step 4.6 (a « À faire » list, never omitted
+when one applies), and whether commit is still needed (`/c -a -p` on a feature
 branch — or on `main` only if the user explicitly allows it for that repo).
 
 ## Not this skill
