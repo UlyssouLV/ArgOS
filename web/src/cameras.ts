@@ -2,6 +2,8 @@ import { appeler, NonConnecte } from "./api";
 
 export type Etat = "unknown" | "online" | "offline";
 
+export type EtatEnregistrement = "enregistre" | "a_l_arret" | "en_erreur";
+
 /** Pourquoi une Caméra est dans son état, quand ArgOS le sait. */
 export type RaisonEtat = "autre_appareil";
 
@@ -25,6 +27,11 @@ export type Camera = {
   chemin_flux: string | null;
   /** Enregistrement continu du Flux ; `false` à l'ajout. */
   enregistrement: boolean;
+  /** Preuve d'enregistrement lue sur le volume : enregistre / à l'arrêt / en erreur. */
+  etat_enregistrement: EtatEnregistrement;
+  dossier_enregistrement: string;
+  /** Âge du dernier segment en secondes ; `null` : aucun segment. */
+  age_dernier_segment_s: number | null;
 };
 
 /**
@@ -60,6 +67,25 @@ const RAISONS_ETAT: Record<RaisonEtat, string> = {
 /** Pourquoi la Caméra est dans cet état, à afficher à côté ; `null` si ArgOS ne le sait pas. */
 export function texteRaison(raison: RaisonEtat | null): string | null {
   return raison === null ? null : RAISONS_ETAT[raison];
+}
+
+const ETATS_ENREGISTREMENT: Record<EtatEnregistrement, string> = {
+  enregistre: "enregistre",
+  a_l_arret: "à l'arrêt",
+  en_erreur: "en erreur",
+};
+
+export function texteEtatEnregistrement(etat: EtatEnregistrement): string {
+  return ETATS_ENREGISTREMENT[etat];
+}
+
+/** Âge du dernier segment, ou « aucun segment ». */
+export function texteAgeSegment(age: number | null): string {
+  if (age === null) return "aucun segment";
+  const secondes = Math.round(age);
+  if (secondes < 60) return `${secondes} s`;
+  if (secondes < 3600) return `${Math.floor(secondes / 60)} min`;
+  return `${Math.floor(secondes / 3600)} h`;
 }
 
 /** Refus de l'API, à afficher tel quel dans le formulaire. */

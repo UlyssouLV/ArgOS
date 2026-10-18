@@ -306,22 +306,22 @@ def _routes_cameras(
 
     @routes.get("")
     def lister(base: Base) -> list[CameraLue]:
-        return cameras.lister(base)
+        return cameras.lister(base, racine_enregistrements)
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.creer(base, nouvelle)
+            return cameras.creer(base, nouvelle, racine_enregistrements)
 
     @routes.get("/{id_camera}")
     def lire(id_camera: int, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.lire(base, id_camera)
+            return cameras.lire(base, id_camera, racine_enregistrements)
 
     @routes.patch("/{id_camera}")
     def modifier(id_camera: int, modification: ModificationCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.modifier(base, id_camera, modification)
+            return cameras.modifier(base, id_camera, modification, racine_enregistrements)
 
     @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
     def supprimer(id_camera: int, base: Base) -> None:
@@ -549,7 +549,13 @@ def _routes_essai(
             # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
             nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=resultat.url, emplacement=ajout.emplacement)
             with _erreurs_cameras():
-                return cameras.creer(base, nouvelle, mac=resultat.mac, codec=resultat.codec)
+                return cameras.creer(
+                    base,
+                    nouvelle,
+                    Path(configuration.enregistrements),
+                    mac=resultat.mac,
+                    codec=resultat.codec,
+                )
 
         with _sans_apercu_404():
             return apercus.ajouter(creer)

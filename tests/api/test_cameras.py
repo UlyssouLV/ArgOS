@@ -98,6 +98,9 @@ def test_creation_201_unknown_active_hote_et_port_derives(creer_camera):
         "onvif_en_clair_accepte": False,
         # Enregistrement continu : OFF à l'ajout (docs/adr/0011-enregistrement-continu-par-mediamtx.md).
         "enregistrement": False,
+        "etat_enregistrement": "a_l_arret",
+        "dossier_enregistrement": f"/enregistrements/camera-{camera['id']}",
+        "age_dernier_segment_s": None,
     }
 
 

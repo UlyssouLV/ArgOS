@@ -5,7 +5,9 @@ import {
   messageEchec,
   modifierCamera,
   supprimerCamera,
+  texteAgeSegment,
   texteCodec,
+  texteEtatEnregistrement,
   texteMac,
   texteRaison,
   type Camera,
@@ -86,6 +88,7 @@ export function Administration() {
               <th>MAC</th>
               <th>URL RTSP</th>
               <th>Active</th>
+              <th>Enregistrement</th>
               <th>État</th>
               <th>Codec</th>
               <th>Dernière vérification</th>
@@ -96,7 +99,7 @@ export function Administration() {
             {cameras.map((camera) =>
               enEdition === camera.id ? (
                 <tr key={camera.id}>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <FormulaireCamera
                       titre={`Modifier ${camera.nom}`}
                       initiale={camera}
@@ -117,6 +120,12 @@ export function Administration() {
                     <td className="mac">{texteMac(camera.mac)}</td>
                     <td className="url">{camera.url_rtsp}</td>
                     <td>{camera.active ? "active" : "désactivée"}</td>
+                    <td>
+                      <IndicateurEnregistrement
+                        camera={camera}
+                        onChanger={(enregistrement) => agir(() => modifierCamera(camera.id, { enregistrement }))}
+                      />
+                    </td>
                     <td>
                       <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
                       <Raison raison={camera.raison_etat} />
@@ -139,7 +148,7 @@ export function Administration() {
                   </tr>
                   {enReglages === camera.id && camera.active && (
                     <tr>
-                      <td colSpan={10}>
+                      <td colSpan={11}>
                         <ReglagesCamera camera={camera} onFermer={() => setEnReglages(null)} />
                       </td>
                     </tr>
@@ -152,6 +161,34 @@ export function Administration() {
       )}
       <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
     </section>
+  );
+}
+
+function IndicateurEnregistrement({
+  camera,
+  onChanger,
+}: {
+  camera: Camera;
+  onChanger: (enregistrement: boolean) => void;
+}) {
+  return (
+    <div className="enregistrement">
+      <label>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Enregistrement"
+          checked={camera.enregistrement}
+          disabled={!camera.active}
+          onChange={(e) => onChanger(e.target.checked)}
+        />
+      </label>
+      <span className={`etat-enregistrement etat-enregistrement-${camera.etat_enregistrement}`}>
+        {texteEtatEnregistrement(camera.etat_enregistrement)}
+      </span>
+      <span className="dossier-enregistrement">{camera.dossier_enregistrement}</span>
+      <span>{texteAgeSegment(camera.age_dernier_segment_s)}</span>
+    </div>
   );
 }
 
