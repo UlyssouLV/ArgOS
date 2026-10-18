@@ -127,3 +127,17 @@ Certificat que l’Appareil présente quand le Site le règle en ONVIF chiffré 
 Réglages d’une Caméra dont l’Appareil ne propose pas ONVIF chiffré, envoyés sans chiffrement après accord de l’Administrateur.
 
 À éviter : mode HTTP, mode non sécurisé.
+
+## Staging {#staging}
+
+Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.
+
+À éviter : préproduction git, branche staging, serveur de test.
+
+## Production (canal) {#production-canal}
+
+Canal d’images du Site publié par une GitHub Release (`vX.Y.Z`) : même digest que le Staging au moment de la promotion. Les Sites Ubuntu « vrais » suivent ce semver.
+
+À éviter : branche production, prod git.
+
+Ne pas confondre avec le terme **Image** (réglages capteur d’un Appareil).
