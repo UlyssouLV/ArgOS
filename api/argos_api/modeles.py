@@ -57,3 +57,13 @@ class Camera(Base):
     onvif_en_clair_accepte: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Enregistrement continu du Flux (docs/adr/0011-enregistrement-continu-par-mediamtx.md) ; OFF à l'ajout.
     enregistrement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
+class ReglagesSite(Base):
+    """Réglages globaux du Site (une seule ligne, id = 1). Conservation : ADR 0012."""
+
+    __tablename__ = "reglages_site"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Durée de Conservation des Segments, en heures (1–24) ; poussée au pont en recordDeleteAfter.
+    conservation_h: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

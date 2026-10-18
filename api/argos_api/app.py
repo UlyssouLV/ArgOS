@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, essai, fuseaux, onvif, sessions, soi, sonde
+from argos_api import cameras, detection, essai, fuseaux, onvif, reglages_site, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
@@ -25,6 +25,7 @@ from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.ecoute import SortieSeulement
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
+from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
 from argos_api.surveillance import Surveillance
 
 COOKIE_SESSION = "argos_session"
@@ -172,7 +173,8 @@ def creer_app(
         def reconcilier() -> None:
             with ouvrir_base() as base:
                 actives = cameras.relais_actifs(base)
-            pont.reconcilier(actives)
+                conservation = reglages_site.conservation_h(base)
+            pont.reconcilier(actives, conservation)
 
         boucles = [
             BoucleDeFond("surveillance-cameras", surveillance.sonder_tout, configuration.intervalle_sonde),
@@ -265,6 +267,18 @@ def creer_app(
     def lister_fuseaux() -> list[str]:
         """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
+
+    @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
+    def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
+        """Réglages globaux du Site (Conservation des Segments, ADR 0012)."""
+        return reglages_site.lire(base)
+
+    @app.patch("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
+    def modifier_reglages_site(
+        modification: ModificationReglagesSite, base: Annotated[Session, Depends(base)]
+    ) -> ReglagesSiteLus:
+        """Met à jour les réglages Site ; la Conservation est poussée au pont au tour suivant."""
+        return reglages_site.modifier(base, modification)
 
     app.include_router(
         _routes_cameras(base, administrateur_connecte, horloge, Path(configuration.enregistrements))

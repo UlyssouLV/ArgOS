@@ -34,11 +34,17 @@ class Relais(NamedTuple):
     enregistrement: bool
 
 
-def _config_chemin(relais: Relais) -> dict:
+def duree_conservation(heures: int) -> str:
+    """Durée MediaMTX pour `recordDeleteAfter` (forme canonique renvoyée par le pont)."""
+    return f"{heures}h0m0s"
+
+
+def _config_chemin(relais: Relais, conservation_h: int) -> dict:
     return {
         "source": relais.url,
         "sourceOnDemand": not relais.enregistrement,
         "record": relais.enregistrement,
+        "recordDeleteAfter": duree_conservation(conservation_h),
     }
 
 
@@ -47,9 +53,12 @@ class Pont:
         self._url_api = url_api.rstrip("/")
         self._delai = delai
 
-    def reconcilier(self, cameras_actives: Mapping[int, Relais]) -> None:
+    def reconcilier(self, cameras_actives: Mapping[int, Relais], conservation_h: int) -> None:
         """`cameras_actives` : id → relais. Lève `OSError` si MediaMTX ne répond pas à la liste."""
-        voulus = {chemin_flux(id_camera): _config_chemin(relais) for id_camera, relais in cameras_actives.items()}
+        voulus = {
+            chemin_flux(id_camera): _config_chemin(relais, conservation_h)
+            for id_camera, relais in cameras_actives.items()
+        }
         presents = self._chemins_camera()
         operations = [("DELETE", f"delete/{nom}", None) for nom in presents.keys() - voulus.keys()]
         for nom, config in voulus.items():
@@ -97,6 +106,7 @@ class Pont:
                         "source": chemin["source"],
                         "sourceOnDemand": chemin["sourceOnDemand"],
                         "record": chemin.get("record", False),
+                        "recordDeleteAfter": chemin.get("recordDeleteAfter", duree_conservation(1)),
                     }
             page, pages = page + 1, liste["pageCount"]
         return chemins

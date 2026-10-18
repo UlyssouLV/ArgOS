@@ -57,29 +57,39 @@ def pont():
 
 
 def test_enregistrement_on_ajoute_un_chemin_avec_record_sans_source_a_la_demande(pont):
-    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)})
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)}, conservation_h=1)
 
     assert _Mtx.chemins["camera-3"] == {
         "source": "rtsp://cam.invalid/flux",
         "sourceOnDemand": False,
         "record": True,
+        "recordDeleteAfter": "1h0m0s",
     }
 
 
 def test_enregistrement_off_ajoute_un_chemin_a_la_demande_sans_record(pont):
-    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", False)})
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", False)}, conservation_h=1)
 
     assert _Mtx.chemins["camera-3"] == {
         "source": "rtsp://cam.invalid/flux",
         "sourceOnDemand": True,
         "record": False,
+        "recordDeleteAfter": "1h0m0s",
     }
 
 
 def test_passage_on_vers_off_met_a_jour_le_chemin(pont):
-    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)})
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)}, conservation_h=1)
 
-    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", False)})
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", False)}, conservation_h=1)
 
     assert _Mtx.chemins["camera-3"]["sourceOnDemand"] is True
     assert _Mtx.chemins["camera-3"]["record"] is False
+
+
+def test_changement_de_conservation_met_a_jour_record_delete_after(pont):
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)}, conservation_h=1)
+
+    pont.reconcilier({3: Relais("rtsp://cam.invalid/flux", True)}, conservation_h=6)
+
+    assert _Mtx.chemins["camera-3"]["recordDeleteAfter"] == "6h0m0s"

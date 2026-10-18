@@ -24,6 +24,7 @@ export function ZoneConnectee() {
         <span className="marque">ArgOS</span>
         <nav className="onglets">
           <NavLink to="/administration">Administration</NavLink>
+          <NavLink to="/enregistrement">Enregistrement</NavLink>
           <NavLink to="/live">Live</NavLink>
         </nav>
         <span className="identifiant">{session.identifiant}</span>
