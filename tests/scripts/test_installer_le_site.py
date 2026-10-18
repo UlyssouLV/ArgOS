@@ -105,7 +105,7 @@ def test_le_dossier_du_site_a_le_compose_lenv_et_la_detection_sans_sources_ni_so
     assert not (resultat.racine / "compose.simulation.yaml").exists()
     env = (resultat.racine / ".env").read_text()
     assert "SONAR_" not in env
-    assert "ARGOS_VERSION=0.7.2" in env
+    assert "ARGOS_VERSION=0.8.0" in env
 
 
 def test_compte_argos_dans_le_groupe_docker_et_unite_activee_au_boot(ubuntu):
