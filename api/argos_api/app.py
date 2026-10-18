@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from argos_api import cameras, detection, essai, fuseaux, onvif, reglages_site, sessions, soi, sonde
+from argos_api import cameras, detection, espace_enregistrements, essai, fuseaux, onvif, reglages_site, sessions, soi, sonde
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
@@ -25,6 +25,7 @@ from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.ecoute import SortieSeulement
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
+from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
 from argos_api.surveillance import Surveillance
 
@@ -270,7 +271,7 @@ def creer_app(
 
     @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
     def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
-        """Réglages globaux du Site (Conservation des Segments, ADR 0012)."""
+        """Réglages globaux du Site (Conservation et Seuil de place disque, ADR 0012)."""
         return reglages_site.lire(base)
 
     @app.patch("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
@@ -280,8 +281,15 @@ def creer_app(
         """Met à jour les réglages Site ; la Conservation est poussée au pont au tour suivant."""
         return reglages_site.modifier(base, modification)
 
+    racine_enregistrements = Path(configuration.enregistrements)
+
+    @app.get("/api/espace-enregistrements", dependencies=[Depends(administrateur_connecte)])
+    def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:
+        """Espace du volume des enregistrements ; signal `sous_seuil` sans couper l'enregistrement."""
+        return espace_enregistrements.lire(racine_enregistrements, base)
+
     app.include_router(
-        _routes_cameras(base, administrateur_connecte, horloge, Path(configuration.enregistrements))
+        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements)
     )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
@@ -301,7 +309,7 @@ def creer_app(
             adresses_d_argos,
             base,
             administrateur_connecte,
-            Path(configuration.enregistrements),
+            racine_enregistrements,
         )
     )
     return app

@@ -49,7 +49,10 @@ def test_regler_la_conservation_depuis_la_page(enregistrement: Page, api):
     expect(champ).to_have_value(str(CONSERVATION_DEFAUT), timeout=10_000)
 
     champ.fill("4")
-    enregistrement.get_by_role("button", name="Enregistrer").click()
+    with enregistrement.expect_response(
+        lambda r: r.url.endswith("/api/reglages-site") and r.request.method == "PATCH" and r.ok
+    ):
+        enregistrement.get_by_role("button", name="Enregistrer la conservation").click()
 
     expect(champ).to_have_value("4")
     assert api.get("/api/reglages-site").json()["conservation_h"] == 4

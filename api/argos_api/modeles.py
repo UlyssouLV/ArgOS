@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, Integer, String, false
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
@@ -60,10 +60,14 @@ class Camera(Base):
 
 
 class ReglagesSite(Base):
-    """Réglages globaux du Site (une seule ligne, id = 1). Conservation : ADR 0012."""
+    """Réglages globaux du Site (une seule ligne, id = 1). Conservation / seuil : ADR 0012."""
 
     __tablename__ = "reglages_site"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Durée de Conservation des Segments, en heures (1–24) ; poussée au pont en recordDeleteAfter.
     conservation_h: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Seuil de place disque : octets libres en dessous desquels le Site signale (sans couper).
+    seuil_octets_libres: Mapped[int] = mapped_column(
+        BigInteger, default=1_073_741_824, server_default="1073741824"
+    )
