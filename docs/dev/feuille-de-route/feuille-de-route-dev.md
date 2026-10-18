@@ -37,13 +37,19 @@ Contraintes transverses :
 
 **Objectif.** Enregistrer sur disque, sans réencodage, le Flux des Caméras choisies : MediaMTX enregistre en segments, l’API le pilote, un interrupteur par Caméra dans l’Administration l’active ; durée de conservation fixe, les plus anciens segments sont effacés. Une tranche de bout en bout, vérifiable par l’Administrateur.
 
-**Hors périmètre :** relecture depuis l’UI et réglages avancés (0.8.1).
+**Hors périmètre :** page de suivi stockage / débits (0.8.1), relecture depuis l’UI (0.8.2).
 
-## Ensuite : 0.8.1 — Relecture et réglages de l’enregistrement
+## Ensuite : 0.8.1 — Suivi du stockage et du débit d’écriture
 
-**Objectif.** Relire les enregistrements d’une Caméra depuis l’UI (choisir un moment, lire), et régler l’enregistrement : durée de conservation, place disque, plages horaires.
+**Objectif.** Une page **Enregistrement** montre l’espace disque disponible, le débit d’écriture par Caméra si possible et le débit global selon les Caméras configurées / actives, pour estimer jusqu’où tient la conservation (et donc à quelle cadence purger). L’Administrateur règle aussi la durée de conservation et un seuil de place disque à partir de ces indications.
 
-**Hors périmètre :** fil rouge 1.0.0 (à redéfinir).
+**Hors périmètre :** relecture des enregistrements (0.8.2), plages horaires d’enregistrement.
+
+## Ensuite : 0.8.2 — Relecture des enregistrements
+
+**Objectif.** Parcourir et relire les enregistrements de chaque Caméra depuis l’UI : choisir un moment, lire.
+
+**Hors périmètre :** plages horaires d’enregistrement, fil rouge 1.0.0 (à redéfinir).
 
 ## Ensuite : 1.0.0 — Fil rouge Site → Live RTSP
 
