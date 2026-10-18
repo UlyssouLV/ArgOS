@@ -155,6 +155,21 @@ input {
   word-break: break-all;
 }
 
+.cameras .enregistrement {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
+.cameras .dossier-enregistrement {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+
+.etat-enregistrement-en_erreur {
+  color: #8c1d18;
+}
+
 .cameras .actions {
   display: flex;
   flex-wrap: wrap;

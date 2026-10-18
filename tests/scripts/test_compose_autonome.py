@@ -17,6 +17,13 @@ IMAGES_DU_SITE = {
 VERSION = "9.9.9"
 
 
+def _argos_version_exemple() -> str:
+    for ligne in (REPO_ROOT / ".env.example").read_text().splitlines():
+        if ligne.startswith("ARGOS_VERSION="):
+            return ligne.removeprefix("ARGOS_VERSION=").strip()
+    raise AssertionError("ARGOS_VERSION manquant dans .env.example")
+
+
 def config_prod(dossier: Path, *fichiers: str, env: str = f"ARGOS_VERSION={VERSION}\n") -> dict:
     fichier_env = dossier / "exemple.env"
     fichier_env.write_text(env)
@@ -42,9 +49,10 @@ def config_prod(dossier: Path, *fichiers: str, env: str = f"ARGOS_VERSION={VERSI
 
 
 def test_le_repli_compose_sans_env_est_la_version_de_production_courante():
+    version = _argos_version_exemple()
     compose = (REPO_ROOT / "compose.yaml").read_text()
-    assert compose.count("${ARGOS_VERSION:-0.7.2}") == 4
-    assert "ARGOS_VERSION:-0.7.0" not in compose
+    assert compose.count(f"${{ARGOS_VERSION:-{version}}}") == 4
+    assert compose.count("${ARGOS_VERSION:-") == 4
 
 
 def test_les_quatre_images_du_site_portent_le_registre_et_argos_version(tmp_path):

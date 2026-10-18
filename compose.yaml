@@ -3,7 +3,7 @@
 # déjà chargé lance sans les sources (ARGOS_VERSION, docs/adr/0009-images-du-depot-et-compose-autonome.md).
 services:
   mediamtx:
-    image: ghcr.io/ulyssoulv/argos-pont:${ARGOS_VERSION:-0.7.2}
+    image: ghcr.io/ulyssoulv/argos-pont:${ARGOS_VERSION:-0.8.0}
     build: ./media
     restart: unless-stopped
     ports:
@@ -12,12 +12,15 @@ services:
       # republier (docs/securite.md, ADR 0006). La simulation de dev le republie sur 127.0.0.1 seulement.
       # 8888 (HLS) et 8889 (WHEP) non publiés : relayés par web sous l'origine HTTPS (/flux).
       # 9997 (API de contrôle, pilotée par api) volontairement non publié : réseau Compose seulement (docs/securite.md).
+    volumes:
+      # Segments fMP4 du pont (docs/adr/0011-enregistrement-continu-par-mediamtx.md) : volume nommé, comme la DB.
+      - enregistrements:/enregistrements
     environment:
       # localhost toujours ; IP de la machine (réseau local) depuis .env, voir .env.example.
       MTX_WEBRTCADDITIONALHOSTS: 127.0.0.1${MTX_WEBRTCADDITIONALHOSTS:+,${MTX_WEBRTCADDITIONALHOSTS}}
 
   api:
-    image: ghcr.io/ulyssoulv/argos-api:${ARGOS_VERSION:-0.7.2}
+    image: ghcr.io/ulyssoulv/argos-api:${ARGOS_VERSION:-0.8.0}
     build: ./api
     restart: unless-stopped
     depends_on:
@@ -34,6 +37,11 @@ services:
         read_only: true
         volume:
           subpath: public
+      # Segments : lecture (indicateur) et purge de camera-<id>/ à la suppression (ADR 0011).
+      # Écriture requise pour unlink ; l'API n'écrit pas les segments (MediaMTX le fait).
+      - type: volume
+        source: enregistrements
+        target: /enregistrements
     # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.
@@ -58,7 +66,7 @@ services:
 
   # Ponctuel, avant web : Autorité du Site et certificat serveur (docs/adr/0005-https-par-une-origine-unique-et-une-autorite-du-site.md).
   certificats:
-    image: ghcr.io/ulyssoulv/argos-certificats:${ARGOS_VERSION:-0.7.2}
+    image: ghcr.io/ulyssoulv/argos-certificats:${ARGOS_VERSION:-0.8.0}
     build: ./certificats
     restart: "no"
     environment:
@@ -79,7 +87,7 @@ services:
           create_host_path: false
 
   web:
-    image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.7.2}
+    image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.8.0}
     build: ./web
     restart: unless-stopped
     depends_on:
@@ -125,3 +133,4 @@ volumes:
   donnees-db:
   autorite:
   certificats-serveur:
+  enregistrements:

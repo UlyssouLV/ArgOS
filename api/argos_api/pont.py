@@ -14,6 +14,7 @@ import secrets
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
+from typing import NamedTuple
 
 journal = logging.getLogger(__name__)
 
@@ -26,18 +27,32 @@ def chemin_flux(id_camera: int) -> str:
     return f"{PREFIXE}{id_camera}"
 
 
+class Relais(NamedTuple):
+    """URL RTSP et Enregistrement d'une Caméra active à relayer."""
+
+    url: str
+    enregistrement: bool
+
+
+def _config_chemin(relais: Relais) -> dict:
+    return {
+        "source": relais.url,
+        "sourceOnDemand": not relais.enregistrement,
+        "record": relais.enregistrement,
+    }
+
+
 class Pont:
     def __init__(self, url_api: str, delai: float) -> None:
         self._url_api = url_api.rstrip("/")
         self._delai = delai
 
-    def reconcilier(self, cameras_actives: Mapping[int, str]) -> None:
-        """`cameras_actives` : id → URL RTSP. Lève `OSError` si MediaMTX ne répond pas à la liste."""
-        voulus = {chemin_flux(id_camera): url for id_camera, url in cameras_actives.items()}
+    def reconcilier(self, cameras_actives: Mapping[int, Relais]) -> None:
+        """`cameras_actives` : id → relais. Lève `OSError` si MediaMTX ne répond pas à la liste."""
+        voulus = {chemin_flux(id_camera): _config_chemin(relais) for id_camera, relais in cameras_actives.items()}
         presents = self._chemins_camera()
         operations = [("DELETE", f"delete/{nom}", None) for nom in presents.keys() - voulus.keys()]
-        for nom, source in voulus.items():
-            config = {"source": source, "sourceOnDemand": True}
+        for nom, config in voulus.items():
             if nom not in presents:
                 operations.append(("POST", f"add/{nom}", config))
             elif presents[nom] != config:
@@ -81,6 +96,7 @@ class Pont:
                     chemins[chemin["name"]] = {
                         "source": chemin["source"],
                         "sourceOnDemand": chemin["sourceOnDemand"],
+                        "record": chemin.get("record", False),
                     }
             page, pages = page + 1, liste["pageCount"]
         return chemins

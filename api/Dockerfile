@@ -13,7 +13,9 @@ COPY migrations ./migrations
 COPY argos_api ./argos_api
 
 # Sans root : l'API ne fait que des connexions sortantes et lit /proc/net/arp, lisible par tous.
-RUN useradd --system --no-create-home argos
+# Même uid que le pont (65532) : à la suppression d'une Caméra, rmtree peut effacer camera-<id>/.
+RUN groupadd --system --gid 65532 argos && useradd --system --no-create-home --uid 65532 --gid 65532 argos
+RUN mkdir -p /enregistrements && chown 65532:65532 /enregistrements
 USER argos
 
 EXPOSE 8000

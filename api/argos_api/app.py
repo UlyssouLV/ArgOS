@@ -5,6 +5,7 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from time import monotonic
 from ipaddress import IPv4Address, IPv4Network
 from typing import Annotated
@@ -170,7 +171,7 @@ def creer_app(
 
         def reconcilier() -> None:
             with ouvrir_base() as base:
-                actives = cameras.urls_actives(base)
+                actives = cameras.relais_actifs(base)
             pont.reconcilier(actives)
 
         boucles = [
@@ -265,7 +266,9 @@ def creer_app(
         """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
 
-    app.include_router(_routes_cameras(base, administrateur_connecte, horloge))
+    app.include_router(
+        _routes_cameras(base, administrateur_connecte, horloge, Path(configuration.enregistrements))
+    )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
     def adresses_d_argos() -> set[IPv4Address]:
@@ -277,7 +280,16 @@ def creer_app(
             configuration.reglage_detection(), configuration.port_https, adresses_d_argos, base, administrateur_connecte
         )
     )
-    app.include_router(_routes_essai(apercus, configuration, adresses_d_argos, base, administrateur_connecte))
+    app.include_router(
+        _routes_essai(
+            apercus,
+            configuration,
+            adresses_d_argos,
+            base,
+            administrateur_connecte,
+            Path(configuration.enregistrements),
+        )
+    )
     return app
 
 
@@ -292,7 +304,10 @@ def _journaux_sur_la_sortie() -> None:
 
 
 def _routes_cameras(
-    base: Callable[[], Iterator[Session]], administrateur_connecte: Callable, horloge: Horloge
+    base: Callable[[], Iterator[Session]],
+    administrateur_connecte: Callable,
+    horloge: Horloge,
+    racine_enregistrements: Path,
 ) -> APIRouter:
     """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
     Base = Annotated[Session, Depends(base)]
@@ -300,27 +315,27 @@ def _routes_cameras(
 
     @routes.get("")
     def lister(base: Base) -> list[CameraLue]:
-        return cameras.lister(base)
+        return cameras.lister(base, racine_enregistrements)
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.creer(base, nouvelle)
+            return cameras.creer(base, nouvelle, racine_enregistrements)
 
     @routes.get("/{id_camera}")
     def lire(id_camera: int, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.lire(base, id_camera)
+            return cameras.lire(base, id_camera, racine_enregistrements)
 
     @routes.patch("/{id_camera}")
     def modifier(id_camera: int, modification: ModificationCamera, base: Base) -> CameraLue:
         with _erreurs_cameras():
-            return cameras.modifier(base, id_camera, modification)
+            return cameras.modifier(base, id_camera, modification, racine_enregistrements)
 
     @routes.delete("/{id_camera}", status_code=status.HTTP_204_NO_CONTENT)
     def supprimer(id_camera: int, base: Base) -> None:
         with _erreurs_cameras():
-            cameras.supprimer(base, id_camera)
+            cameras.supprimer(base, id_camera, racine_enregistrements)
 
     @routes.get(
         "/{id_camera}/reglages",
@@ -464,6 +479,7 @@ def _routes_essai(
     adresses_d_argos: Callable[[], set[IPv4Address]],
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
+    racine_enregistrements: Path,
 ) -> APIRouter:
     """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
     pas pour deviner des mots de passe.
@@ -543,7 +559,13 @@ def _routes_essai(
             # Doublon : l'essai reste ouvert, l'Administrateur corrige le nom.
             nouvelle = NouvelleCamera(nom=ajout.nom, url_rtsp=resultat.url, emplacement=ajout.emplacement)
             with _erreurs_cameras():
-                return cameras.creer(base, nouvelle, mac=resultat.mac, codec=resultat.codec)
+                return cameras.creer(
+                    base,
+                    nouvelle,
+                    racine_enregistrements,
+                    mac=resultat.mac,
+                    codec=resultat.codec,
+                )
 
         with _sans_apercu_404():
             return apercus.ajouter(creer)
@@ -577,6 +599,10 @@ def _erreurs_cameras() -> Iterator[None]:
     except cameras.CameraActive:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Désactiver la Caméra avant de la supprimer."
+        ) from None
+    except cameras.EnregistrementRefuse:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Une Caméra désactivée ne peut pas enregistrer."
         ) from None
     except cameras.CertificatNonPresente:
         raise HTTPException(

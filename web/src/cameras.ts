@@ -2,6 +2,8 @@ import { appeler, NonConnecte } from "./api";
 
 export type Etat = "unknown" | "online" | "offline";
 
+export type EtatEnregistrement = "enregistre" | "a_l_arret" | "en_erreur";
+
 /** Pourquoi une Caméra est dans son état, quand ArgOS le sait. */
 export type RaisonEtat = "autre_appareil";
 
@@ -23,6 +25,13 @@ export type Camera = {
   codec: string | null;
   /** Chemin MediaMTX qui relaie le Flux (`camera-<id>`) ; `null` si la Caméra est désactivée. */
   chemin_flux: string | null;
+  /** Enregistrement continu du Flux ; `false` à l'ajout. */
+  enregistrement: boolean;
+  /** Preuve d'enregistrement lue sur le volume : enregistre / à l'arrêt / en erreur. */
+  etat_enregistrement: EtatEnregistrement;
+  dossier_enregistrement: string;
+  /** Âge du dernier segment en secondes ; `null` : aucun segment. */
+  age_dernier_segment_s: number | null;
 };
 
 /**
@@ -60,6 +69,25 @@ export function texteRaison(raison: RaisonEtat | null): string | null {
   return raison === null ? null : RAISONS_ETAT[raison];
 }
 
+const ETATS_ENREGISTREMENT: Record<EtatEnregistrement, string> = {
+  enregistre: "enregistre",
+  a_l_arret: "à l'arrêt",
+  en_erreur: "en erreur",
+};
+
+export function texteEtatEnregistrement(etat: EtatEnregistrement): string {
+  return ETATS_ENREGISTREMENT[etat];
+}
+
+/** Âge du dernier segment, ou « aucun segment ». */
+export function texteAgeSegment(age: number | null): string {
+  if (age === null) return "aucun segment";
+  const secondes = Math.round(age);
+  if (secondes < 60) return `${secondes} s`;
+  if (secondes < 3600) return `${Math.floor(secondes / 60)} min`;
+  return `${Math.floor(secondes / 3600)} h`;
+}
+
 /** Refus de l'API, à afficher tel quel dans le formulaire. */
 export class Refus extends Error {}
 
@@ -91,7 +119,10 @@ export async function listerCameras(): Promise<Camera[]> {
 }
 
 /** L'URL masquée renvoyée telle quelle désigne l'URL stockée : le mot de passe RTSP est conservé. */
-export async function modifierCamera(id: number, modification: Partial<SaisieCamera & { active: boolean }>): Promise<void> {
+export async function modifierCamera(
+  id: number,
+  modification: Partial<SaisieCamera & { active: boolean; enregistrement: boolean }>,
+): Promise<void> {
   await envoyer(`/api/cameras/${id}`, "PATCH", modification);
 }
 
