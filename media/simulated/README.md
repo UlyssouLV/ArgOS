@@ -2,7 +2,7 @@
 
 Fichiers de **dev**, utilisés seulement par `compose.simulation.yaml` (jamais par la stack de prod). Ce ne sont pas des enregistrements produit : à remplacer plus tard par de vraies caméras IP.
 
-Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : un MediaMTX ([`camera-simulee.yml`](camera-simulee.yml)) où ffmpeg diffuse sa vidéo en boucle, sans réencodage, en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra (variable `CHEMIN_FLUX` dans `compose.simulation.yaml`, qui remplit le gabarit `camera-simulee.yml`). Les Caméras simulées vivent sur le réseau Compose `cameras-simulees` (`172.30.0.0/24`), chacune à une IP et une MAC **fixes** (comme le bail et l’étiquette d’une vraie caméra ; les autres conteneurs y prennent leur IP dans `172.30.0.128/26`), et ne sont **pas publiées** sur la machine hôte : on les déclare comme Caméras (Administration), puis on les regarde dans le Live.
+Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : un MediaMTX ([`camera-simulee.yml`](camera-simulee.yml)) où ffmpeg ([`diffuser.sh`](diffuser.sh)) diffuse sa vidéo en boucle en RTSP sur le port **554**, sur un seul chemin, celui d’une vraie caméra (variable `CHEMIN_FLUX` dans `compose.simulation.yaml`, qui remplit le gabarit `camera-simulee.yml`). Les Caméras simulées vivent sur le réseau Compose `cameras-simulees` (`172.30.0.0/24`), chacune à une IP et une MAC **fixes** (comme le bail et l’étiquette d’une vraie caméra ; les autres conteneurs y prennent leur IP dans `172.30.0.128/26`), et ne sont **pas publiées** sur la machine hôte : on les déclare comme Caméras (Administration), puis on les regarde dans le Live.
 
 | Caméra simulée     | IP / MAC | URL RTSP (vue de `api` et du pont) | Style du chemin | Vidéo      | Origine (source déposée)                                       |
 |--------------------|----------|------------------------------------|-----------------|------------|----------------------------------------------------------------|
@@ -12,6 +12,10 @@ Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : u
 | `camera-simulee-4` | `172.30.0.14` / `02:a6:05:00:00:04` | `rtsp://camera-simulee-4/Streaming/Channels/101` | Hikvision, en **H.265** | `cam4.mp4` | `cam1.mp4` réencodée en H.265 (voir plus bas) |
 
 Les Caméras simulées 2 et 4 répondent aussi en **ONVIF** (Réglages de la Caméra) : voir [`simulation/onvif/`](../../simulation/onvif/README.md).
+
+## Date incrustée des Caméras simulées ONVIF
+
+Les 1 et 3 diffusent leur vidéo **sans réencodage** (`-c copy`). Les 2 et 4 incrustent en bas à gauche la date et l'heure de leur horloge ONVIF (7 minutes d'avance au démarrage, puis calée en NTP), que leur interface ONVIF écrit dans un fichier partagé (`FICHIER_DATE`, volume `camera-simulee-N-horloge`) et que `drawtext` relit à chaque image : leur vidéo est alors **réencodée à la volée** dans son codec (H.264 pour la 2, H.265 `hvc1` pour la 4), `ultrafast`, keyframe toutes les 2 s, sans B-frames. L'image des Caméras simulées ([`Dockerfile`](Dockerfile)) est `bluenviron/mediamtx:1.21.1-ffmpeg` plus une police (DejaVu).
 
 ## Identifiants de `camera-simulee-2`
 
@@ -26,7 +30,7 @@ Identifiants **de dev**, publics dans le dépôt (définis dans `compose.simulat
 
 - H.264 (`cam4.mp4` : H.265, tag `hvc1`), 1280×720, 15 i/s, **sans audio**, sans B-frames
 - Keyframe ~2 s, ≤ 50 Mo
-- Diffusion en **copie de flux** (`-c copy`), sans réencodage à la volée
+- Diffusion en **copie de flux** (`-c copy`), sans réencodage à la volée, sauf pour incruster la date des Caméras simulées ONVIF
 
 La conversion est faite **une fois**, avant commit (ffmpeg en conteneur, seul prérequis : Docker). État : `cam1.mp4`, `cam2.mp4` et `cam3.mp4` convertis ; `cam4.mp4` encodée depuis `cam1.mp4`.
 

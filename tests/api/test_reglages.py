@@ -22,7 +22,9 @@ from test_essai import IP_SANS_CAMERA
 
 # La sonde de chaque port, puis la lecture : délais courts, mais une caméra éteinte se fait attendre.
 DELAI_LECTURE_S = 30
-VINGT_CINQ_ANS_S = 25 * 365 * 24 * 3600
+# Horloge d'usine des Caméras simulées ONVIF : 7 minutes d'avance (requêtes et secondes tronquées en plus).
+AVANCE_D_USINE_S = 7 * 60
+MARGE_USINE_S = 5
 
 USINE_INCRUSTATIONS = {
     "nom": {"affichee": True, "texte": "CAM01", "position": "UpperLeft", "peut_etre_reaffichee": True},
@@ -82,8 +84,7 @@ def port_onvif(client, id_camera: int) -> int | None:
 
 def assert_usine(reglages: dict) -> None:
     horloge = reglages["horloge"]
-    assert horloge["date_heure_utc"].startswith("1999-12-31T")
-    assert horloge["ecart_s"] < -VINGT_CINQ_ANS_S
+    assert abs(horloge["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
     assert {cle: horloge[cle] for cle in ("fuseau_posix", "fuseau", "mode", "serveur_ntp")} == {
         "fuseau_posix": "AWST-8",
         "fuseau": None,
@@ -508,7 +509,7 @@ def test_fuseau_europe_paris_pris_sans_toucher_a_l_heure(connecte, camera_simule
     horloge = lire(connecte, id_camera).json()["horloge"]
     assert (horloge["fuseau_posix"], horloge["fuseau"], horloge["mode"]) == (PARIS_POSIX, "Europe/Paris", "manuel")
     # Le mode manuel est gardé avec l'heure de la caméra : pas de mise à l'heure.
-    assert horloge["date_heure_utc"].startswith("1999-12-31T")
+    assert abs(horloge["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
 
 
 def test_fuseau_et_incrustation_envoyes_ensemble(connecte, camera_simulee, remise_en_usine):
@@ -541,7 +542,7 @@ def test_fuseau_inconnu_422(connecte, camera_simulee, fuseau):
 
 def test_mise_a_l_heure_du_site_garde_le_fuseau(connecte, camera_simulee, remise_en_usine):
     id_camera = camera_simulee(2)
-    assert lire(connecte, id_camera).json()["horloge"]["ecart_s"] < -VINGT_CINQ_ANS_S
+    assert abs(lire(connecte, id_camera).json()["horloge"]["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
 
     reponse = mettre_a_l_heure(connecte, id_camera)
 
@@ -565,7 +566,7 @@ def test_lire_ne_remet_jamais_a_l_heure(connecte, camera_simulee):
     id_camera = camera_simulee(4)
 
     for _ in range(2):
-        assert lire(connecte, id_camera).json()["horloge"]["ecart_s"] < -VINGT_CINQ_ANS_S
+        assert abs(lire(connecte, id_camera).json()["horloge"]["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
 
 
 def test_mise_a_l_heure_sans_session_401(client):

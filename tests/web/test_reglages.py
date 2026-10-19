@@ -6,7 +6,7 @@ chaque test qui les modifie.
 """
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -38,8 +38,8 @@ from test_live import (  # noqa: F401 (fixtures)
 
 # La recherche du port ONVIF, puis la lecture ; une caméra éteinte se fait attendre.
 DELAI_LECTURE_MS = 30_000
-# Horloge d'usine des Caméras simulées ONVIF.
-USINE = datetime(1999, 12, 31, tzinfo=UTC)
+# Horloge d'usine des Caméras simulées ONVIF : 7 minutes d'avance (6 affichées si la lecture tronque la seconde).
+ECART_D_USINE = re.compile(r"^en avance de [67] min$")
 # Aucun conteneur à cette adresse du réseau des Caméras simulées.
 IP_SANS_CAMERA = "172.30.0.250"
 
@@ -81,9 +81,7 @@ def test_reglages_d_une_camera_active_valeurs_usine_et_ecart(administration: Pag
 
     horloge = reglages.get_by_role("region", name="Horloge")
     expect(horloge).to_be_visible(timeout=DELAI_LECTURE_MS)
-    annees = int((datetime.now(UTC) - USINE).days // 365.25)
-    expect(valeur(horloge, "Écart avec le Site")).to_have_text(f"en retard de {annees} ans")
-    expect(valeur(horloge, "Date et heure de la caméra (UTC)")).to_contain_text("31/12/1999")
+    expect(valeur(horloge, "Écart avec le Site")).to_have_text(ECART_D_USINE)
     # Fuseau qu'ArgOS ne reconnaît pas : montré tel quel.
     fuseau = horloge.get_by_label("Fuseau", exact=True)
     expect(fuseau).to_have_value("AWST-8")
@@ -530,7 +528,7 @@ def test_fuseau_inconnu_montre_tant_qu_il_n_est_pas_change(administration: Page,
 def test_mettre_a_l_heure_du_site_rafraichit_l_ecart(administration: Page, api, noms, remise_en_usine):
     _, reglages = ouvrir_formulaire(administration, api, noms, 2)
     horloge = reglages.get_by_role("region", name="Horloge")
-    expect(valeur(horloge, "Écart avec le Site")).to_contain_text("ans")
+    expect(valeur(horloge, "Écart avec le Site")).to_have_text(ECART_D_USINE)
 
     with administration.expect_request(lambda r: r.method == "POST" and r.url.endswith("/mise-a-l-heure")):
         horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
@@ -577,7 +575,7 @@ def test_mise_a_l_heure_confirmee_quand_la_camera_est_en_ntp(administration: Pag
     expect(valeur(horloge, "Serveur de temps (NTP)")).to_have_text(
         "non utilisé (serveur : NTP)", timeout=DELAI_LECTURE_MS
     )
-    expect(valeur(horloge, "Écart avec le Site")).not_to_contain_text("ans")
+    expect(valeur(horloge, "Écart avec le Site")).not_to_have_text(ECART_D_USINE)
 
 
 # --- Image ------------------------------------------------------------------------------------------------------

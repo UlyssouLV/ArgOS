@@ -8,14 +8,14 @@ Les Réglages de la Caméra (Incrustations, Horloge, Image, Encodage) passent pa
 
 `camera_onvif.py`, en bibliothèque standard Python, implémente **seulement** les opérations dont ArgOS se sert :
 
-- appareil (`/onvif/device_service`) : `GetSystemDateAndTime`, `SetSystemDateAndTime`, `GetNTP`, `GetCapabilities`, qui annonce l'adresse du service média (et du service image), et `GetServices`, qui annonce chaque service, média 2 compris ;
+- appareil (`/onvif/device_service`) : `GetSystemDateAndTime`, `SetSystemDateAndTime`, `GetNTP`, `SetNTP`, `GetCapabilities`, qui annonce l'adresse du service média (et du service image), et `GetServices`, qui annonce chaque service, média 2 compris ;
 - média (`/onvif/media_service`) : `GetProfiles`, `GetOSDs`, `GetOSDOptions`, `SetOSD`, `CreateOSD`, `DeleteOSD`, et pour l'Encodage (le repli d'une caméra sans média 2) `GetStreamUri`, `GetVideoEncoderConfigurations`, `GetVideoEncoderConfigurationOptions`, `SetVideoEncoderConfiguration` ;
 - image (`/onvif/imaging_service`, seulement avec `ONVIF_SERVICES=…image…`) : `GetImagingSettings`, `GetOptions`, `SetImagingSettings` ;
 - média 2 (`/onvif/media2_service`, seulement avec `ONVIF_SERVICES=…media2…`) : `GetProfiles`, `GetStreamUri`, `GetVideoEncoderConfigurations`, `GetVideoEncoderConfigurationOptions`, `SetVideoEncoderConfiguration`.
 
-Toute autre opération reçoit une faute SOAP `ter:ActionNotSupported`. L'état vit en mémoire : chaque démarrage remet la caméra « sortie d'usine », comme la caméra de dev XiongMai :
+Toute autre opération reçoit une faute SOAP `ter:ActionNotSupported`. L'état vit en mémoire : chaque démarrage remet la caméra « sortie d'usine », comme la caméra de dev XiongMai (sauf l'horloge) :
 
-- Horloge au 31/12/1999 (UTC), en mode manuel, fuseau `AWST-8`, serveur NTP `NTP` ;
+- Horloge en avance de 7 minutes sur l'heure réelle, en mode manuel, fuseau `AWST-8`, serveur NTP `NTP` (un nom qui ne mène nulle part) ;
 - une source vidéo (un profil) ;
 - Incrustation du nom `CAM01` en haut à gauche, Incrustation de la date et de l'heure (`yyyy-MM-dd HH:mm:ss`) en bas à gauche ;
 - `GetOSDOptions` annonce la création des deux types (un de chaque au plus) : une Incrustation cachée (`DeleteOSD`) peut revenir (`CreateOSD`).
@@ -32,6 +32,16 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
+## Horloge et serveur de temps
+
+`SetNTP` retient un serveur manuel (`IPv4`, `IPv6` ou `DNS`, le premier reçu) ; `FromDHCP` à `true` est refusé (faute `ter:InvalidArgVal`) : il n'y a pas de DHCP sur le réseau des Caméras simulées. En mode NTP (`SetSystemDateAndTime`), la caméra **interroge vraiment** ce serveur (client SNTP, UDP 123, réponse attendue 2 s) dès qu'elle reçoit le serveur ou le mode, puis toutes les 64 s, et cale son horloge sur l'heure reçue : `GetSystemDateAndTime` relit l'heure corrigée, `GetNTP` le serveur, et le fuseau envoyé est gardé. Serveur injoignable ou nom inconnu : l'horloge reste telle quelle, le service ONVIF continue de répondre. Chaque interrogation est journalisée (`NTP : calée sur 172.30.0.10 (corrigée de -420.012 s)`, `NTP : … injoignable`). En mode manuel, le serveur reçu n'est pas interrogé.
+
+Dans la stack de dev, les Caméras simulées joignent le Serveur de temps du Site (`temps`) à son IP fixe sur leur réseau, `172.30.0.10` (`compose.simulation.yaml`).
+
+## Date incrustée dans le Flux
+
+Avec `ONVIF_FICHIER_DATE`, le service réécrit dans ce fichier, toutes les 0,2 s, la date et l'heure de la caméra **à son fuseau** (fuseau POSIX lu par la libc, `yyyy-MM-dd HH:mm:ss`), remplacé d'un bloc. Sa Caméra simulée le relit à chaque image et l'incruste en bas à gauche de son Flux ([`media/simulated/diffuser.sh`](../../media/simulated/diffuser.sh)) : la date incrustée suit l'heure corrigée et le fuseau. Seule cette date est dessinée, toujours au même endroit et au même format : les Incrustations réglées en ONVIF (nom, position, format, Incrustation cachée) ne sont pas dessinées.
+
 ## HTTP, HTTPS ou les deux
 
 Le service écoute en HTTP sur `ONVIF_PORT`, en HTTPS sur `ONVIF_PORT_HTTPS`, ou les deux (HTTP sur `80` si aucun n'est renseigné) : une seule caméra, même état, mêmes identifiants. En HTTPS, `ONVIF_CERTIFICAT` et `ONVIF_CLE` donnent les chemins du certificat et de sa clé ; s'ils n'existent pas, un certificat auto-signé est créé (`openssl`), puis gardé : la clé ne change que si les fichiers disparaissent. Les tests s'en servent pour lancer une caméra avec une autre clé.
@@ -46,7 +56,7 @@ Chaque requête reçue est journalisée (sortie d'erreur, `docker compose logs`)
 
 ## Identifiants
 
-Avec des identifiants (`ONVIF_IDENTIFIANT`, `ONVIF_MOT_DE_PASSE`), toute opération sauf `GetSystemDateAndTime` exige un WS-Security UsernameToken en empreinte ; sinon, faute `ter:NotAuthorized` (HTTP 400). La date `Created` du jeton n'est pas comparée à l'Horloge : celle de la caméra est fausse au démarrage. Les Incrustations ne sont pas dessinées dans la vidéo simulée.
+Avec des identifiants (`ONVIF_IDENTIFIANT`, `ONVIF_MOT_DE_PASSE`), toute opération sauf `GetSystemDateAndTime` exige un WS-Security UsernameToken en empreinte ; sinon, faute `ter:NotAuthorized` (HTTP 400). La date `Created` du jeton n'est pas comparée à l'Horloge : celle de la caméra est fausse au démarrage.
 
 ## Pourquoi il ne dépend pas de l'API
 
@@ -54,7 +64,7 @@ Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est imp
 
 ## Dans la stack de dev
 
-`compose.simulation.yaml` lance un service par Caméra simulée ONVIF, qui **partage le réseau** de sa Caméra simulée (`network_mode: service:camera-simulee-N`) : même IP, même MAC, comme l'interface ONVIF d'une vraie caméra.
+`compose.simulation.yaml` lance un service par Caméra simulée ONVIF, qui **partage le réseau** de sa Caméra simulée (`network_mode: service:camera-simulee-N`) : même IP, même MAC, comme l'interface ONVIF d'une vraie caméra. Un volume par caméra (`camera-simulee-N-horloge`) porte le fichier de la date incrustée, de l'interface ONVIF vers le Flux.
 
 | Caméra simulée     | Service ONVIF            | Adresses                                                                                       | Identifiants                              |
 |--------------------|--------------------------|------------------------------------------------------------------------------------------------|-------------------------------------------|
@@ -77,7 +87,7 @@ uv sync
 .venv/bin/python -m pytest
 ```
 
-Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé ; silence après un changement d'Encodage) lancent `camera_onvif.py` comme le conteneur.
+Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP, calage sur un petit serveur NTP de test (port libre à la place de 123) ou serveur injoignable, date incrustée. `tests/flux/` vérifie le calage sur `temps` dans la stack. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé ; silence après un changement d'Encodage ; fichier de la date incrustée) lancent `camera_onvif.py` comme le conteneur.
 
 ## Plus tard
 
