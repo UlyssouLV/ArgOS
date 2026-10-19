@@ -199,11 +199,12 @@ def test_indicateur_en_erreur_si_le_dernier_segment_est_trop_vieux(connecte, cre
     assert allumee["age_dernier_segment_s"] > 120
 
 
-def test_aucun_endpoint_de_telechargement_ni_de_lecture_des_segments(connecte, creer_camera):
+def test_aucun_endpoint_de_telechargement_ni_fichier_de_segment_servi(connecte, creer_camera):
+    """La Relecture (ADR 0013) passe par la liste des Segments fermés et le playback du pont ; pas de
+    téléchargement ni d'export (Plus tard), et le volume n'est pas servi tel quel."""
     camera = creer_camera().json()
     identifiant = camera["id"]
     absents = (
-        f"/api/cameras/{identifiant}/segments",
         f"/api/cameras/{identifiant}/enregistrements",
         f"/api/cameras/{identifiant}/enregistrement",
         "/api/enregistrements",
@@ -216,7 +217,8 @@ def test_aucun_endpoint_de_telechargement_ni_de_lecture_des_segments(connecte, c
     assert "video" not in type_contenu
     assert "octet-stream" not in type_contenu
     chemins = connecte.get("/api/openapi.json").json()["paths"]
-    assert not any("segment" in chemin for chemin in chemins)
+    assert [chemin for chemin in chemins if "segment" in chemin] == ["/api/cameras/{id_camera}/segments"]
+    assert not any("telecharg" in chemin or "export" in chemin for chemin in chemins)
     assert "/api/enregistrements" not in chemins
 
 

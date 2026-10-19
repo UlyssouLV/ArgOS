@@ -1,7 +1,7 @@
 """Flux réservés à une session ArgOS (docs/adr/0006-flux-authentifies-par-nginx.md), vus de l'extérieur de la stack.
 
-Sous l'origine HTTPS du Site, WHEP (`/flux/webrtc/…`) et LL-HLS (`/flux/hls/…`) ne sont relayés vers le pont que
-pour une session valide : sans elle, `401` à chaque requête, pour tout chemin (`camera-<id>`, `apercu-<jeton>`).
+Sous l'origine HTTPS du Site, WHEP (`/flux/webrtc/…`), LL-HLS (`/flux/hls/…`) et la Relecture (`/flux/relecture/…`,
+ADR 0013) ne sont relayés vers le pont que pour une session valide : sans elle, `401` à chaque requête, pour tout chemin (`camera-<id>`, `apercu-<jeton>`).
 """
 
 import re
@@ -17,6 +17,7 @@ from test_essai import essai  # noqa: F401 (fixture)
 from test_etat_cameras import url_simulee
 from test_https import OFFRE_SDP
 from test_mediamtx_en_pont import CHEMIN_HLS, attendre_playlist
+from test_relecture import url_relecture
 
 COOKIE_INVALIDE = "jeton-qui-n-existe-pas"
 
@@ -30,11 +31,12 @@ class RequeteDeFlux(NamedTuple):
 
 
 def requetes_de_flux(chemin: str) -> list[RequeteDeFlux]:
-    """Ce qu'un lecteur demande pour lire un chemin : offre WHEP, playlist et segment HLS."""
+    """Ce qu'un lecteur demande pour lire un chemin : offre WHEP, playlist et segment HLS, Relecture."""
     return [
         RequeteDeFlux("POST", f"/flux/webrtc/{chemin}/whep", OFFRE_SDP.encode()),
         RequeteDeFlux("GET", f"{CHEMIN_HLS}/{chemin}/index.m3u8"),
         RequeteDeFlux("GET", f"{CHEMIN_HLS}/{chemin}/seg0.mp4"),
+        RequeteDeFlux("GET", str(url_relecture(chemin, "2026-01-01T00:00:00Z", 60))),
     ]
 
 
