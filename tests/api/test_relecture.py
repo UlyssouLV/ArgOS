@@ -1,17 +1,16 @@
 """Relecture d'un Segment fermé par le serveur playback du pont, relayé par nginx derrière la session (ADR 0013).
 
 Le pont coupe ses Segments à 1 min : le test raccourcit ceux du chemin de sa Caméra par l'API de contrôle, pour
-qu'un Segment se ferme en quelques secondes. L'API du Site ne touche pas à `recordSegmentDuration`.
+qu'un Segment se ferme en quelques secondes.
 """
 
-import subprocess
 import time
 from datetime import datetime
 
 import httpx
 import pytest
 
-from stack_compose import client_du_site, compose
+from stack_compose import client_du_site, raccourcir_les_segments
 from test_cameras import connecte, creer_camera  # noqa: F401 (fixtures)
 from test_enregistrement import DELAI_PONT_S
 from test_etat_cameras import url_simulee
@@ -26,29 +25,6 @@ def url_relecture(chemin: str, debut: str, duree_s: float) -> httpx.URL:
     return httpx.URL(
         CHEMIN_RELECTURE, params={"path": chemin, "start": debut, "duration": f"{duree_s:.3f}", "format": "mp4"}
     )
-
-
-def _raccourcir_les_segments(chemin: str) -> None:
-    """Attend que la réconciliation ait ajouté le chemin au pont, puis y coupe les Segments toutes les 2 s."""
-    echeance = time.monotonic() + DELAI_PONT_S
-    while True:
-        try:
-            compose(
-                "exec",
-                "-T",
-                "api",
-                "python",
-                "-c",
-                "import json, urllib.request; "
-                f"urllib.request.urlopen(urllib.request.Request('http://mediamtx:9997/v3/config/paths/patch/{chemin}', "
-                "data=json.dumps({'recordSegmentDuration': '2s'}).encode(), method='PATCH', "
-                "headers={'Content-Type': 'application/json'}), timeout=5)",
-            )
-            return
-        except subprocess.CalledProcessError:
-            if time.monotonic() > echeance:
-                raise
-            time.sleep(1)
 
 
 def _attendre_un_segment_ferme(client: httpx.Client, id_camera: int) -> dict:
@@ -69,7 +45,7 @@ def segment_ferme(connecte, creer_camera):
     def _segment(numero: int) -> tuple[str, dict]:
         camera = creer_camera(url_rtsp=url_simulee(numero)).json()
         assert connecte.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
-        _raccourcir_les_segments(camera["chemin_flux"])
+        raccourcir_les_segments(camera["chemin_flux"], DELAI_PONT_S)
         return camera["chemin_flux"], _attendre_un_segment_ferme(connecte, camera["id"])
 
     return _segment

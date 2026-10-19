@@ -588,3 +588,73 @@ button.danger {
   display: flex;
   gap: 0.5rem;
 }
+
+.enregistrement-site .resume-cameras .selectionnable {
+  cursor: pointer;
+}
+
+.enregistrement-site .resume-cameras .selectionnable:hover,
+.enregistrement-site .resume-cameras [aria-selected="true"] {
+  background: #eef3f8;
+}
+
+.relecture {
+  margin: 1.5rem 0 0;
+  max-width: 60rem;
+}
+
+/* Trous en gris clair, plages enregistrées en couleur (docs/glossaire.md, Timeline d’enregistrement). */
+.timeline-enregistrement {
+  position: relative;
+  height: 2rem;
+  background: #e4e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.plage-enregistree {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  background: #2f7d4f;
+}
+
+.plage-courante {
+  background: #1f5fa8;
+}
+
+.bornes-timeline {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.25rem 0 0.75rem;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.segment-courant {
+  margin: 0 0 0.5rem;
+}
+
+.commandes-relecture {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.commandes-relecture progress {
+  flex: 1 1 10rem;
+}
+
+.commandes-relecture .vitesses {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.commandes-relecture .vitesses [aria-pressed="true"] {
+  font-weight: bold;
+  outline: 2px solid #1f5fa8;
+}

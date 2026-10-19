@@ -167,6 +167,32 @@ def redemarrer_api() -> None:
     attendre_api()
 
 
+def raccourcir_les_segments(chemin: str, delai_s: float = 20) -> None:
+    """Attend (`delai_s`) que la réconciliation ait ajouté le chemin au pont, puis y coupe les Segments toutes les 2 s.
+
+    Le pont coupe ses Segments à 1 min ; l'API du Site ne touche pas à `recordSegmentDuration`.
+    """
+    echeance = time.monotonic() + delai_s
+    while True:
+        try:
+            compose(
+                "exec",
+                "-T",
+                "api",
+                "python",
+                "-c",
+                "import json, urllib.request; "
+                f"urllib.request.urlopen(urllib.request.Request('http://mediamtx:9997/v3/config/paths/patch/{chemin}', "
+                "data=json.dumps({'recordSegmentDuration': '2s'}).encode(), method='PATCH', "
+                "headers={'Content-Type': 'application/json'}), timeout=5)",
+            )
+            return
+        except subprocess.CalledProcessError:
+            if time.monotonic() > echeance:
+                raise
+            time.sleep(1)
+
+
 def hotes_declares() -> list[str]:
     """IP (ou noms) du Site sur le réseau local, déclarées dans `.env` : nommées par le certificat serveur."""
     return [hote.strip() for hote in _lire_env().get("MTX_WEBRTCADDITIONALHOSTS", "").split(",") if hote.strip()]
