@@ -38,7 +38,7 @@ def test_le_workflow_promouvoit_staging_vers_la_release_sans_rebuild():
     assert ":staging" in script
     assert ":latest" in script
     assert "ghcr.io/ulyssoulv/argos-" in script
-    for service in ("api", "web", "pont", "certificats"):
+    for service in ("api", "web", "pont", "certificats", "temps"):
         assert service in script
 
 
@@ -62,7 +62,7 @@ def test_promouvoir_retaggue_le_digest_staging_vers_la_version_et_latest(tmp_pat
     assert proc.returncode == 0, proc.stdout + proc.stderr
     commandes = journal.read_text()
     assert "buildx build" not in commandes
-    for service in ("api", "web", "pont", "certificats"):
+    for service in ("api", "web", "pont", "certificats", "temps"):
         assert f"--tag ghcr.io/ulyssoulv/argos-{service}:0.7.3" in commandes
         assert f"--tag ghcr.io/ulyssoulv/argos-{service}:latest" in commandes
         assert f"ghcr.io/ulyssoulv/argos-{service}:staging" in commandes

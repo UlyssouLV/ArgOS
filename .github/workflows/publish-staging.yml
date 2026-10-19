@@ -1,6 +1,6 @@
 # Canal staging : après une suite verte sur main, pousse :staging (pas de rebuild à la Release).
 # Paquets publics : GHCR crée les images en privé ; après la première poussée, Danger Zone →
-# Change visibility → Public pour argos-api, argos-web, argos-pont, argos-certificats
+# Change visibility → Public pour argos-api, argos-web, argos-pont, argos-certificats, argos-temps
 # (tirables ensuite sans authentification). L'API GitHub ne change pas cette visibilité.
 name: Publier images staging
 

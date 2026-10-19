@@ -19,6 +19,6 @@ promouvoir() {
         "ghcr.io/ulyssoulv/argos-${image}:staging"
 }
 
-for image in api web pont certificats; do
+for image in api web pont certificats temps; do
     promouvoir "$image"
 done

@@ -5,8 +5,9 @@
 # Chaque lancement : recalcule le(s) sous-réseau(x) de ces prises et les écrit dans .env
 # (ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX). Sans terminal (démarrage automatique) : aucune question.
 # Linux seulement, réseau des caméras (macvlan, ADR 0003) sur la première prise retenue : propose une fois
-# en terminal une IP libre pour ArgOS (vérifiée par ARP), la retient (ARGOS_RESEAU_CAMERAS_IP), et ajoute
-# compose.reseau-cameras.yaml à COMPOSE_FILE ; avertit et le retire si l'IP retenue ne convient plus.
+# en terminal une IP libre pour ArgOS (vérifiée par ARP), la retient (ARGOS_RESEAU_CAMERAS_IP), puis une
+# seconde pour le Serveur de temps du Site (ARGOS_RESEAU_CAMERAS_TEMPS_IP, ADR 0014), et ajoute
+# compose.reseau-cameras.yaml à COMPOSE_FILE ; avertit et le retire si une IP retenue ne convient plus.
 # Sous macOS (Docker Desktop, pas de macvlan) : rien de tout cela.
 # Voir ADR 0002 et 0003. Fichier .env : ARGOS_FICHIER_ENV, sinon celui de la racine du dépôt.
 set -u
@@ -18,10 +19,11 @@ CLE_SOUS_RESEAUX=ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX
 # Même plafond que l'API : au-delà, une Détection ne tiendrait pas en une dizaine de secondes.
 PLAFOND=1024
 CLE_IP_CAMERAS=ARGOS_RESEAU_CAMERAS_IP
+CLE_IP_TEMPS=ARGOS_RESEAU_CAMERAS_TEMPS_IP
 CLE_PRISE_CAMERAS=ARGOS_RESEAU_CAMERAS_PRISE
 CLE_SOUS_RESEAU_CAMERAS=ARGOS_RESEAU_CAMERAS_SOUS_RESEAU
 FICHIER_COMPOSE_CAMERAS=compose.reseau-cameras.yaml
-# Adresses essayées au plus, depuis le haut du sous-réseau, pour proposer une IP libre à ArgOS.
+# Adresses essayées au plus, depuis le haut du sous-réseau, pour proposer une IP libre (ArgOS, temps).
 ESSAIS_IP=16
 
 valeur_env() {
@@ -166,14 +168,15 @@ repond_en_arp() {
     ip neigh show to "$1" dev "$2" | grep -q lladdr
 }
 
-# Première adresse libre du sous-réseau $2 de la prise $1, depuis le haut (loin des baux DHCP courants).
+# Première adresse libre du sous-réseau $2 de la prise $1, depuis le haut (loin des baux DHCP courants),
+# ni de la machine ni déjà retenue ($ADRESSES_PRISES).
 proposer_ip() {
     local prise="$1" reseau="$2" entier essai adresse
     entier=$(($(en_entier "${reseau%/*}") + (1 << (32 - ${reseau#*/})) - 2))
     for ((essai = 0; essai < ESSAIS_IP; essai++)); do
         adresse="$(en_adresse $((entier - essai)))"
         hote_du_sous_reseau "$adresse" "$reseau" || return 1
-        if ! grep -qxF "$adresse" <<< "$ADRESSES_MACHINE" && ! repond_en_arp "$adresse" "$prise"; then
+        if ! grep -qxF "$adresse" <<< "$ADRESSES_PRISES" && ! repond_en_arp "$adresse" "$prise"; then
             echo "$adresse"
             return
         fi
@@ -181,12 +184,17 @@ proposer_ip() {
     return 1
 }
 
+# Demande l'IP $1 (« d'ArgOS », « du Serveur de temps du Site ») sur le réseau des caméras, proposée $4 ;
+# la réponse va dans IP_CAMERAS.
 demander_ip() {
-    local prise="$1" reseau="$2" proposee="$3" reponse
-    echo "ArgOS rejoint le réseau des caméras ($prise, $reseau) à une IP fixe pour y lire leurs MAC."
+    local nom="$1" prise="$2" reseau="$3" proposee="$4" reponse
+    case "$nom" in
+        "d'ArgOS") echo "ArgOS rejoint le réseau des caméras ($prise, $reseau) à une IP fixe pour y lire leurs MAC." ;;
+        *) echo "Le Serveur de temps du Site sert l'heure aux caméras ($prise, $reseau) à une seconde IP fixe." ;;
+    esac
     echo "Choisis-la hors de la plage DHCP de ta box ou de ton routeur."
     while true; do
-        if ! read -r -p "IP d'ArgOS sur le réseau des caméras${proposee:+ [$proposee]} : " reponse; then
+        if ! read -r -p "IP $nom sur le réseau des caméras${proposee:+ [$proposee]} : " reponse; then
             echo
             echo "[AVERTISSEMENT] Aucune réponse : réseau des caméras non activé (pas de MAC pour les vraies caméras)."
             return 1
@@ -195,6 +203,8 @@ demander_ip() {
         reponse="${reponse:-$proposee}"
         if ! hote_du_sous_reseau "$reponse" "$reseau"; then
             echo "Réponse invalide : une adresse de $reseau, ni la première ni la dernière."
+        elif grep -qxF "$reponse" <<< "$ADRESSES_PRISES"; then
+            echo "$reponse est déjà prise par cette machine ou par ArgOS : choisis-en une autre."
         elif [ "$reponse" != "$proposee" ] && repond_en_arp "$reponse" "$prise"; then
             echo "$reponse répond déjà en ARP : un autre appareil l'occupe, choisis-en une autre."
         else
@@ -229,9 +239,43 @@ desactiver_reseau_cameras() {
     esac
 }
 
+# IP fixe de la clé $1 (libellé $2) sur la prise $3, sous-réseau $4 : celle de .env si elle convient encore,
+# sinon proposée et demandée en terminal, puis retenue dans .env. Dans IP_RETENUE ; échec : réseau désactivé.
+retenir_ip() {
+    local cle="$1" nom="$2" prise="$3" reseau="$4" ip_retenue
+    ip_retenue="$(valeur_env "$cle")"
+    if [ -n "$ip_retenue" ] && ! hote_du_sous_reseau "$ip_retenue" "$reseau"; then
+        echo "[AVERTISSEMENT] IP $nom sur le réseau des caméras $ip_retenue : hors du sous-réseau $reseau de la prise $prise."
+        if [ ! -t 0 ]; then
+            echo "                Réseau des caméras désactivé : relance le script dans un terminal pour en choisir une autre."
+            return 1
+        fi
+        ip_retenue=""
+    elif [ -n "$ip_retenue" ] && grep -qxF "$ip_retenue" <<< "$ADRESSES_PRISES"; then
+        echo "[AVERTISSEMENT] IP $nom sur le réseau des caméras $ip_retenue : déjà prise par cette machine ou par ArgOS."
+        echo "                Réseau des caméras désactivé : retire $cle de .env, puis relance le script dans un terminal."
+        return 1
+    elif [ -n "$ip_retenue" ] && repond_en_arp "$ip_retenue" "$prise"; then
+        echo "[AVERTISSEMENT] IP $nom sur le réseau des caméras $ip_retenue : répond déjà en ARP, un autre appareil l'occupe."
+        echo "                Réseau des caméras désactivé : retire $cle de .env, puis relance le script dans un terminal."
+        return 1
+    fi
+    if [ -z "$ip_retenue" ]; then
+        if [ ! -t 0 ]; then
+            echo "[AVERTISSEMENT] Réseau des caméras non activé (pas de MAC pour les vraies caméras) : aucune IP $nom retenue."
+            echo "                Lance une fois scripts/cameras/configurer-detection.sh dans un terminal pour la choisir."
+            return 1
+        fi
+        demander_ip "$nom" "$prise" "$reseau" "$(proposer_ip "$prise" "$reseau")" || return 1
+        ip_retenue="$IP_CAMERAS"
+        ecrire_env "$cle" "$ip_retenue"
+    fi
+    IP_RETENUE="$ip_retenue"
+}
+
 # Réseau des caméras (Linux) : macvlan sur la première prise retenue qui a une adresse.
 configurer_reseau_cameras() {
-    local prise premiere="" reseau="" trouve ip_retenue
+    local prise premiere="" reseau="" trouve ip_argos
     for prise in ${RETENUES//,/ }; do
         trouve="$(sous_reseaux_de "$prise" | head -n 1)"
         [ -n "$trouve" ] || continue
@@ -250,37 +294,19 @@ configurer_reseau_cameras() {
     ecrire_env "$CLE_SOUS_RESEAU_CAMERAS" "$reseau"
     ADRESSES_MACHINE="$(adresses | awk '{ print $2 }')"
 
-    ip_retenue="$(valeur_env "$CLE_IP_CAMERAS")"
-    if [ -n "$ip_retenue" ] && ! hote_du_sous_reseau "$ip_retenue" "$reseau"; then
-        echo "[AVERTISSEMENT] IP d'ArgOS sur le réseau des caméras $ip_retenue : hors du sous-réseau $reseau de la prise $premiere."
-        if [ ! -t 0 ]; then
-            echo "                Réseau des caméras désactivé : relance le script dans un terminal pour en choisir une autre."
-            desactiver_reseau_cameras
-            return
-        fi
-        ip_retenue=""
-    elif [ -n "$ip_retenue" ] && repond_en_arp "$ip_retenue" "$premiere"; then
-        echo "[AVERTISSEMENT] IP d'ArgOS sur le réseau des caméras $ip_retenue : répond déjà en ARP, un autre appareil l'occupe."
-        echo "                Réseau des caméras désactivé : retire $CLE_IP_CAMERAS de .env, puis relance le script dans un terminal."
+    ADRESSES_PRISES="$ADRESSES_MACHINE"
+    if ! retenir_ip "$CLE_IP_CAMERAS" "d'ArgOS" "$premiere" "$reseau"; then
         desactiver_reseau_cameras
         return
     fi
-    if [ -z "$ip_retenue" ]; then
-        if [ ! -t 0 ]; then
-            echo "[AVERTISSEMENT] Réseau des caméras non activé (pas de MAC pour les vraies caméras) : aucune IP d'ArgOS retenue."
-            echo "                Lance une fois scripts/cameras/configurer-detection.sh dans un terminal pour la choisir."
-            desactiver_reseau_cameras
-            return
-        fi
-        if ! demander_ip "$premiere" "$reseau" "$(proposer_ip "$premiere" "$reseau")"; then
-            desactiver_reseau_cameras
-            return
-        fi
-        ip_retenue="$IP_CAMERAS"
-        ecrire_env "$CLE_IP_CAMERAS" "$ip_retenue"
+    ip_argos="$IP_RETENUE"
+    ADRESSES_PRISES="$ADRESSES_MACHINE"$'\n'"$ip_argos"
+    if ! retenir_ip "$CLE_IP_TEMPS" "du Serveur de temps du Site" "$premiere" "$reseau"; then
+        desactiver_reseau_cameras
+        return
     fi
     activer_reseau_cameras
-    echo "Réseau des caméras : ArgOS à $ip_retenue sur la prise $premiere ($reseau)."
+    echo "Réseau des caméras : ArgOS à $ip_argos, Serveur de temps du Site à $IP_RETENUE, sur la prise $premiere ($reseau)."
 }
 
 if [ ! -f "$FICHIER_ENV" ]; then

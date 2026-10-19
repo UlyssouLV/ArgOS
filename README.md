@@ -98,12 +98,12 @@ Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement
 
 ## Hébergement Ubuntu
 
-Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
+Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
 
 ### Prérequis
 
 - Ubuntu, avec Docker Engine et le plugin Compose
-- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
+- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`, `argos-temps`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
 - le clone (ou une copie de `compose.yaml`, `compose.reseau-cameras.yaml`, `.env.example` et `scripts/`) le temps de lancer le script d’installation
 
 Postgres reste l’image officielle `postgres:18.6-alpine3.24` : Compose la tire au premier lancement. Rien à construire sur la machine Ubuntu.
@@ -149,6 +149,7 @@ docker save \
   ghcr.io/ulyssoulv/argos-web:0.8.1 \
   ghcr.io/ulyssoulv/argos-pont:0.8.1 \
   ghcr.io/ulyssoulv/argos-certificats:0.8.1 \
+  ghcr.io/ulyssoulv/argos-temps:0.8.1 \
   -o argos-images-0.8.1.tar
 ```
 

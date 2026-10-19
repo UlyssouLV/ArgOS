@@ -18,6 +18,7 @@ DELAI_S = 10
 
 QUESTION = "Quelle(s) prise(s)"
 QUESTION_IP = "IP d'ArgOS sur le réseau des caméras"
+QUESTION_IP_TEMPS = "IP du Serveur de temps du Site sur le réseau des caméras"
 
 
 @dataclass

@@ -33,3 +33,5 @@ def test_le_workflow_publie_staging_multi_arch_apres_tests_verts_sur_main():
     assert "publier ghcr.io/ulyssoulv/argos-web:staging web" in script
     assert "publier ghcr.io/ulyssoulv/argos-pont:staging media" in script
     assert "publier ghcr.io/ulyssoulv/argos-certificats:staging certificats" in script
+    assert "publier ghcr.io/ulyssoulv/argos-temps:staging temps" in script
+    assert "argos-temps" in yaml
