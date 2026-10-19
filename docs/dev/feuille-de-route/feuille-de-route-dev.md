@@ -111,6 +111,10 @@ Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui s
 
 Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.
 
+### Téléchargement / export des enregistrements
+
+Après la relecture in-browser (0.8.2) : permettre à l’Administrateur de **télécharger** ou **exporter** des segments / une plage d’enregistrement (fichier utilisable hors ArgOS), derrière la session. Hors 0.8.2 : la relecture UI suffit.
+
 ### Bug — Modifier l'URL d'une Caméra sans retaper son mot de passe enregistre *** comme mot de passe (#86)
 
 **Constat :** Dans **Modifier**, le champ « URL RTSP » d'une Caméra protégée par mot de passe s'affiche masqué (`rtsp://admin:***@…`). Si l'on change autre chose dans ce champ (chemin, requête, port) sans retaper le mot de passe, ArgOS enregistre `***` comme mot de passe : la Caméra passe `offline` et ses Réglages affichent « La caméra refuse ces identifiants en ONVIF. ».

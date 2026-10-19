@@ -20,3 +20,4 @@ Ce n’est ni une spec produit, ni un tutoriel. C’est le journal des choix str
 | [0010](./0010-canaux-staging-et-production-par-retag.md) | Canaux staging et production par retag de digest |
 | [0011](./0011-enregistrement-continu-par-mediamtx.md) | Enregistrement continu par MediaMTX |
 | [0012](./0012-suivi-stockage-et-conservation-reglable.md) | Suivi stockage et conservation réglable sur le volume actuel |
+| [0013](./0013-relecture-des-enregistrements.md) | Relecture des enregistrements (transport et granularité) |
