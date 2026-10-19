@@ -110,13 +110,23 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
     video.current.playbackRate = vitesse;
   }, [vitesse]);
 
-  function viser(event: MouseEvent<HTMLDivElement>) {
-    if (fenetre === null) return;
+  function debutVise(event: MouseEvent<HTMLButtonElement>, lue: SegmentsFermes): string | null {
+    const { segments } = lue;
+    // Au clavier (Entrée, Espace), pas de position : on passe au Segment suivant, ou au premier.
+    if (event.detail === 0) {
+      const suivant = courant === null ? null : segmentSuivant(segments, courant);
+      return (suivant ?? segments[0]).debut;
+    }
     const boite = event.currentTarget.getBoundingClientRect();
     const fraction = (event.clientX - boite.left) / boite.width;
-    const vise = segmentVise(fenetre.segments, instantSurLaFenetre(fenetre, fraction));
-    if (vise === null) return;
-    const debut = fenetre.segments[vise].debut;
+    const vise = segmentVise(segments, instantSurLaFenetre(lue, fraction));
+    return vise === null ? null : segments[vise].debut;
+  }
+
+  function viser(event: MouseEvent<HTMLButtonElement>) {
+    if (fenetre === null) return;
+    const debut = debutVise(event, fenetre);
+    if (debut === null) return;
     if (debut === courant && video.current !== null) video.current.currentTime = 0;
     setAcheve(null);
     setCourant(debut);
@@ -145,10 +155,10 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
           {erreur}
         </p>
       )}
-      {fenetre && fenetre.segments.length === 0 && <p className="aide">Aucun enregistrement sur cette période</p>}
+      {fenetre?.segments.length === 0 && <p className="aide">Aucun enregistrement sur cette période</p>}
       {fenetre && fenetre.segments.length > 0 && (
         <>
-          <div className="timeline-enregistrement" role="group" aria-label="Timeline d’enregistrement" onClick={viser}>
+          <button type="button" className="timeline-enregistrement" aria-label="Timeline d’enregistrement" onClick={viser}>
             {fenetre.segments.map((s) => {
               const { gauche, largeur } = placeSurLaFenetre(fenetre, s);
               return (
@@ -160,7 +170,7 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
                 />
               );
             })}
-          </div>
+          </button>
           <p className="bornes-timeline">
             <span>{jourEtHeure(fenetre.debut)}</span>
             <span>{jourEtHeure(fenetre.fin)}</span>
@@ -203,13 +213,14 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
               <span className="position">
                 {minutesSecondes(position)} / {minutesSecondes(dureeS(segment))}
               </span>
-              <span role="group" aria-label="Vitesse de lecture" className="vitesses">
+              <fieldset className="vitesses">
+                <legend>Vitesse de lecture</legend>
                 {VITESSES.map((v) => (
                   <button key={v} type="button" aria-pressed={v === vitesse} onClick={() => setVitesse(v)}>
                     ×{v}
                   </button>
                 ))}
-              </span>
+              </fieldset>
             </div>
           )}
         </>

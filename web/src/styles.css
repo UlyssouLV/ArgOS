@@ -611,6 +611,10 @@ button.danger {
 /* Trous en gris clair, plages enregistrées en couleur (docs/glossaire.md, Timeline d’enregistrement). */
 .timeline-enregistrement {
   position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
   height: 2rem;
   background: #e4e7eb;
   border-radius: 4px;
@@ -657,6 +661,19 @@ button.danger {
 .commandes-relecture .vitesses {
   display: flex;
   gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Nom du groupe pour les lecteurs d’écran ; les boutons ×1…×16 se lisent seuls à l’écran. */
+.commandes-relecture .vitesses legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .commandes-relecture .vitesses [aria-pressed="true"] {

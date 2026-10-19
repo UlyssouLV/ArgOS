@@ -38,7 +38,7 @@ export async function sessionValide(): Promise<boolean> {
   try {
     await appeler("/api/session");
     return true;
-  } catch (erreur) {
-    return !(erreur instanceof NonConnecte);
+  } catch (error_) {
+    return !(error_ instanceof NonConnecte);
   }
 }

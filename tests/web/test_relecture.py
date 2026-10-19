@@ -102,12 +102,14 @@ def test_selectionner_une_camera_montre_sa_timeline_avec_plages_et_trous(enregis
 
     relecture = _selectionner(enregistrement, camera["nom"])
 
-    timeline = relecture.get_by_role("group", name="Timeline d’enregistrement")
+    timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
     plages = timeline.locator(".plage-enregistree")
     expect(plages).to_have_count(2)
     boite = timeline.bounding_box()
     premiere, seconde = plages.nth(0).bounding_box(), plages.nth(1).bounding_box()
-    assert boite and premiere and seconde
+    assert boite
+    assert premiere
+    assert seconde
     # 10 min sur 60 commencent après 10 min, 5 min colorées, puis un trou de 25 min avant la seconde plage.
     assert premiere["x"] - boite["x"] == pytest.approx(boite["width"] * 10 / 60, abs=2)
     assert premiere["width"] == pytest.approx(boite["width"] * 5 / 60, abs=2)
@@ -134,7 +136,7 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
     recent = (maintenant - timedelta(minutes=20), maintenant - timedelta(minutes=10))
     _simuler_segments(enregistrement, camera["id"], fenetre, [ancien, recent])
     relecture = _selectionner(enregistrement, camera["nom"])
-    timeline = relecture.get_by_role("group", name="Timeline d’enregistrement")
+    timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
     # Dans le Segment ancien (à 47 min d'ici) : son début, pas l'instant cliqué.
     _cliquer_a(timeline, 13 / 60)
@@ -145,6 +147,25 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
 
     # Dans le trou, plus près du Segment récent (à 30 min d'ici : 10 min de son début, 15 min de la fin de l'ancien).
     _cliquer_a(timeline, 30 / 60)
+    _attendre(enregistrement, lambda: len(relectures) >= 2)
+    assert datetime.fromisoformat(_debut_demande(relectures[-1])) == recent[0]
+
+
+def test_au_clavier_la_timeline_passe_au_segment_suivant(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = datetime.now(UTC)
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    ancien = (maintenant - timedelta(minutes=50), maintenant - timedelta(minutes=45))
+    recent = (maintenant - timedelta(minutes=20), maintenant - timedelta(minutes=10))
+    _simuler_segments(enregistrement, camera["id"], fenetre, [ancien, recent])
+    relecture = _selectionner(enregistrement, camera["nom"])
+    timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
+
+    # Sans Segment courant, Entrée part du premier ; puis Espace passe au suivant.
+    timeline.press("Enter")
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+    assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ancien[0]
+    timeline.press("Space")
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == recent[0]
 
@@ -169,7 +190,7 @@ def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ens
 
     enregistrement.route(f"**/api/cameras/{camera['id']}/segments", segments)
     relecture = _selectionner(enregistrement, camera["nom"])
-    _cliquer_a(relecture.get_by_role("group", name="Timeline d’enregistrement"), 57.5 / 60)
+    _cliquer_a(relecture.get_by_role("button", name="Timeline d’enregistrement"), 57.5 / 60)
     _attendre(enregistrement, lambda: len(relectures) >= 1)
 
     # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis.
@@ -198,7 +219,7 @@ def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enreg
     enregistrement.add_init_script(SANS_HEVC)
     relecture = _selectionner(enregistrement, camera["nom"])
 
-    _cliquer_a(relecture.get_by_role("group", name="Timeline d’enregistrement"), 30.5 / 60)
+    _cliquer_a(relecture.get_by_role("button", name="Timeline d’enregistrement"), 30.5 / 60)
 
     expect(relecture.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()
     expect(relecture.get_by_text("Enregistrement indisponible")).to_have_count(0)
@@ -247,9 +268,10 @@ def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: P
     video = relecture.locator("video")
 
     # Au milieu du premier Segment : la vidéo part de son début et joue.
-    timeline = relecture.get_by_role("group", name="Timeline d’enregistrement")
+    timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
     boite, premiere = timeline.bounding_box(), relecture.locator(".plage-enregistree").first.bounding_box()
-    assert boite and premiere
+    assert boite
+    assert premiere
     _cliquer_a(timeline, (premiere["x"] - boite["x"] + premiere["width"] / 2) / boite["width"])
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
