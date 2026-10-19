@@ -18,3 +18,7 @@ Le Live tire déjà le RTSP à la demande (`sourceOnDemand`, ADR 0001). L’enre
 - Un volume `enregistrements` (nom Compose) grossit comme la DB : pas de quota à l’install.
 - L’API monte ce volume en **écriture** : lecture pour l’indicateur Admin, `unlink` de `camera-<id>/` à la suppression d’une Caméra. Seul MediaMTX écrit les segments ; l’API n’en crée pas.
 - Pas d’exposition HTTP des segments tant que la relecture (0.8.2) n’existe pas.
+
+> **Modifié en V0.8.2** ([#127](https://github.com/UlyssouLV/ArgOS/issues/127)) — Exposition HTTP des segments
+> Avant : Pas d’exposition HTTP ; inspection volume seulement
+> Après : Relecture UI authentifiée (ADR 0013)

@@ -58,6 +58,8 @@ Version **0.8.0** : l’Administrateur active l’**enregistrement continu** d�
 
 Version **0.8.1** : l’onglet **Enregistrement** montre l’espace du volume (total / libre / utilisé), les **débits d’écriture** (mesurés ou estimés) et une estimation de tenue face à la **Conservation** Site (1–24 h, défaut 1 h) ; un **Seuil de place disque** (défaut 1 Go) signale sans couper l’enregistrement. L’interrupteur reste dans l’Administration (voir [ADR 0012](docs/adr/0012-suivi-stockage-et-conservation-reglable.md)).
 
+Version **0.8.2** : la **[Relecture](docs/glossaire.md#relecture)** se fait dans l’UI. Sur l’onglet **Enregistrement**, un clic sur une Caméra du résumé ouvre sa **timeline** sur la Conservation (plages enregistrées en couleur, trous visibles) ; un clic sur la timeline lit le Segment fermé qui couvre l’instant, depuis son début (ou le plus proche), avec lecture / pause, enchaînement au Segment suivant et vitesses ×1 à ×16. La vidéo vient du pont sans réencodage, derrière la session comme le Live (voir [ADR 0013](docs/adr/0013-relecture-des-enregistrements.md)).
+
 ## Hébergement local
 
 PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Pour Windows (Docker Desktop seulement) ou un essai du canal Staging sans Ubuntu : [Essayer staging](#essayer-staging).
@@ -92,7 +94,7 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
 
-Les segments d’enregistrement (volume Docker `enregistrements`) se listent depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
+Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; en labo, le volume Docker `enregistrements` se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
 
 ## Hébergement Ubuntu
 
@@ -128,7 +130,7 @@ Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et d
 
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
-Les segments d’enregistrement (volume Docker `enregistrements` sous `/opt/argos`) se listent depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
+Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
 
 **2. Mettre à jour** : au démarrage ou au restart de `argos.service`, `ExecStartPre` lance `/opt/argos/scripts/mettre-a-jour-le-site.sh`. La même commande unique s’exécute à la main, sans attendre un reboot :
 

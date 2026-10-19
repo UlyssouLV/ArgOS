@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { messageEchec } from "../cameras";
+import { RelectureCamera } from "../RelectureCamera";
 import {
   CONSERVATION_MAX,
   CONSERVATION_MIN,
@@ -16,6 +17,7 @@ import {
   lireEspaceEnregistrements,
   lireReglagesSite,
   modifierReglagesSite,
+  type DebitCamera,
   type DebitsEcriture,
   type EspaceEnregistrements,
 } from "../reglagesSite";
@@ -29,6 +31,7 @@ export function Enregistrement() {
   const [debits, setDebits] = useState<DebitsEcriture | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
+  const [selectionnee, setSelectionnee] = useState<DebitCamera | null>(null);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -164,7 +167,19 @@ export function Enregistrement() {
             </thead>
             <tbody>
               {debits.cameras.map((camera) => (
-                <tr key={camera.id}>
+                <tr
+                  key={camera.id}
+                  className="selectionnable"
+                  aria-selected={camera.id === selectionnee?.id}
+                  tabIndex={0}
+                  onClick={() => setSelectionnee(camera)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectionnee(camera);
+                    }
+                  }}
+                >
                   <td>{camera.nom}</td>
                   <td>{libelleEtatEnregistrement(camera.etat_enregistrement)}</td>
                   <td>
@@ -224,6 +239,13 @@ export function Enregistrement() {
           Enregistrer le seuil
         </button>
       </form>
+      {selectionnee ? (
+        <RelectureCamera key={selectionnee.id} idCamera={selectionnee.id} nom={selectionnee.nom} />
+      ) : (
+        debits && (
+          <p className="aide invite-relecture">Cliquez sur une Caméra du résumé pour relire ses enregistrements.</p>
+        )
+      )}
     </section>
   );
 }

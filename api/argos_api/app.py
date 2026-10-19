@@ -26,6 +26,7 @@ from argos_api import (
     fuseaux,
     onvif,
     reglages_site,
+    segments_fermes,
     sessions,
     soi,
     sonde,
@@ -40,6 +41,7 @@ from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.frein import FreinForceBrute, TropDEchecs
 from argos_api.pont import Pont
 from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
+from argos_api.segments_fermes import SegmentsFermes
 from argos_api.surveillance import Surveillance
 
 COOKIE_SESSION = "argos_session"
@@ -377,6 +379,19 @@ def _routes_cameras(
     def supprimer(id_camera: int, base: Base) -> None:
         with _erreurs_cameras():
             cameras.supprimer(base, id_camera, racine_enregistrements)
+
+    @routes.get("/{id_camera}/segments")
+    def lire_segments(id_camera: int, base: Base) -> SegmentsFermes:
+        """Relecture : Segments fermés sur la Conservation du Site ; le Segment encore en écriture est exclu."""
+        with _erreurs_cameras():
+            camera = cameras.lire(base, id_camera, racine_enregistrements)
+        return segments_fermes.lire(
+            racine_enregistrements,
+            camera.id,
+            camera.enregistrement,
+            reglages_site.conservation_h(base),
+            horloge(),
+        )
 
     @routes.get(
         "/{id_camera}/reglages",

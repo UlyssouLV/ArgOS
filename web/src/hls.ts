@@ -3,7 +3,7 @@
 
 import Hls from "hls.js";
 
-import { appeler, NonConnecte, signalerNonConnecte } from "./api";
+import { sessionValide, signalerNonConnecte } from "./api";
 
 /** HLS relayé par l'origine du Site vers MediaMTX, sans mise en tampon (docs/adr/0005-…), après la session (docs/adr/0006-…). */
 const PREFIXE_HLS = "/flux/hls";
@@ -23,16 +23,6 @@ export function urlHls(cheminFlux: string): string {
 /** hls.js (Media Source Extensions) d'abord ; HLS natif (Safari sur iPhone) sinon. */
 function natif(): boolean {
   return !Hls.isSupported();
-}
-
-/** Faux si l'API refuse la session (et l'UI revient alors à la connexion) ; vrai sinon, même si l'API ne répond pas. */
-async function sessionValide(): Promise<boolean> {
-  try {
-    await appeler("/api/session");
-    return true;
-  } catch (erreur) {
-    return !(erreur instanceof NonConnecte);
-  }
 }
 
 /** Vrai si le navigateur dit décoder le HEVC, par le chemin de lecture qu'il prendra. */

@@ -31,7 +31,7 @@ flowchart LR
             WEB["web · nginx<br/>HTTPS :443 · origine unique<br/>HTTP :8080 → 301 + /argos-ca.crt"]
             API["api · FastAPI :8000<br/>non publiée<br/>sonde 10 s · pont 10 s"]
             subgraph MTX["mediamtx"]
-                PONT["camera-&lt;id&gt; · une par Caméra active<br/>apercu-&lt;jeton&gt; · pendant un ajout<br/>RTSP :8554 · WHEP :8889 · HLS :8888 non publiés"]
+                PONT["camera-&lt;id&gt; · une par Caméra active<br/>apercu-&lt;jeton&gt; · pendant un ajout<br/>RTSP :8554 · WHEP :8889 · HLS :8888 · playback :9996 non publiés"]
                 CTRL["API de contrôle :9997<br/>non publiée"]
             end
             DB[("db · PostgreSQL :5432<br/>non publiée")]
@@ -51,7 +51,7 @@ flowchart LR
     NAV <-- "HTTP :80 / :8080 · en clair<br/>301 vers HTTPS · /argos-ca.crt" --> WEB
     WEB <-- "HTTP /api/ → :8000 · en clair, interne" --> API
     WEB <-- "HTTP /api/session · avant chaque /flux/<br/>session valide ? sinon 401" --> API
-    WEB <-- "HTTP /flux/webrtc/ → :8889 · WHEP<br/>/flux/hls/ → :8888 · en clair, interne<br/>après session vérifiée" --> PONT
+    WEB <-- "HTTP /flux/webrtc/ → :8889 · WHEP<br/>/flux/hls/ → :8888 · /flux/relecture/get → :9996<br/>en clair, interne, après session vérifiée" --> PONT
     PONT == "WebRTC UDP :8189 · chiffré (DTLS-SRTP)<br/>H.264, < 1 s" ==> NAV
 
     CAMR -- "RTSP :554 · en clair · à la demande" --> PONT
@@ -77,11 +77,12 @@ Le nginx de `web` est la seule porte du Site pour un navigateur. Il termine le T
 | `/api/…` | `api:8000` | JSON, cookie `argos_session` (`Secure; HttpOnly; SameSite=Lax`) |
 | `/flux/webrtc/<chemin>/whep` (puis `PATCH`, `DELETE` sur la session) | `mediamtx:8889` | signalisation WHEP : offre / réponse SDP, candidats ICE |
 | `/flux/hls/<chemin>/index.m3u8`, variantes, segments | `mediamtx:8888` | LL-HLS fMP4 H.265, sans mise en tampon |
+| `/flux/relecture/get?path=<chemin>&start=…&duration=…&format=mp4` | `mediamtx:9996/get` | Relecture : MP4 des Segments enregistrés, sans réencodage ([ADR 0013](../../adr/0013-relecture-des-enregistrements.md)) |
 | `/argos-ca.crt` | volume `certificats-serveur` | partie publique de l’Autorité du Site (`404` avec un certificat fourni) |
 
 `<chemin>` est `camera-<id>` (une Caméra active) ou `apercu-<jeton>` (l’Aperçu pendant un ajout).
 
-**`/flux/` derrière la session** (depuis la 0.6.2) : avant de relayer **chaque** requête `/flux/webrtc/…` ou `/flux/hls/…`, nginx fait une sous-requête interne vers `api:8000/api/session` avec le cookie du navigateur (`auth_request`). `204` → la requête part vers MediaMTX ; `401` → nginx répond `401` au navigateur, rien n’est relayé. Toute session valide lit tout chemin. Un Live WebRTC déjà établi continue ensuite sans nginx (vidéo sur `8189/udp`) ; un Live HLS est revérifié à chaque playlist et segment.
+**`/flux/` derrière la session** (depuis la 0.6.2) : avant de relayer **chaque** requête `/flux/webrtc/…`, `/flux/hls/…` ou `/flux/relecture/get`, nginx fait une sous-requête interne vers `api:8000/api/session` avec le cookie du navigateur (`auth_request`). `204` → la requête part vers MediaMTX ; `401` → nginx répond `401` au navigateur, rien n’est relayé. Toute session valide lit tout chemin. Un Live WebRTC déjà établi continue ensuite sans nginx (vidéo sur `8189/udp`) ; un Live HLS est revérifié à chaque playlist et segment.
 
 L’UI n’utilise que des URL relatives : un seul nom d’hôte, un seul certificat, plus de CORS.
 

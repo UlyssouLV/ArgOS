@@ -158,6 +158,18 @@ Vitesse à laquelle les Segments d’une Caméra (ou l’ensemble retenu) rempli
 
 À éviter : bitrate Live, débit max ONVIF seul (c’est un repli, pas le concept).
 
+## Relecture {#relecture}
+
+Consultation dans l’UI de l’historique enregistré d’une Caméra : choisir un moment sur la période de Conservation et lire les Segments fermés, sans réencodage, derrière la session.
+
+À éviter : playback seul, VOD, archive player.
+
+## Timeline d’enregistrement {#timeline-d-enregistrement}
+
+Bande temporelle sur la fenêtre de Conservation d’une Caméra en Relecture : plages où des Segments existent mises en évidence ; un clic positionne la lecture au début du Segment concerné.
+
+À éviter : scrubber Live, curseur media générique.
+
 ## Staging {#staging}
 
 Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.

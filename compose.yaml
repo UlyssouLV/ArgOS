@@ -11,6 +11,7 @@ services:
       # 8554 (RTSP, en clair et sans authentification) non publié : réseau Compose seulement, ne jamais le
       # republier (docs/securite.md, ADR 0006). La simulation de dev le republie sur 127.0.0.1 seulement.
       # 8888 (HLS) et 8889 (WHEP) non publiés : relayés par web sous l'origine HTTPS (/flux).
+      # 9996 (playback, Relecture des Segments) non publié : relayé par web (/flux/relecture/get, ADR 0013).
       # 9997 (API de contrôle, pilotée par api) volontairement non publié : réseau Compose seulement (docs/securite.md).
     volumes:
       # Segments fMP4 du pont (docs/adr/0011-enregistrement-continu-par-mediamtx.md) : volume nommé, comme la DB.

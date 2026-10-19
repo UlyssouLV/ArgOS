@@ -14,6 +14,11 @@ rtmp: no
 srt: no
 moq: no
 
+# Relecture (docs/adr/0013-relecture-des-enregistrements.md) : serveur playback non publié, relayé par web sous
+# /flux/relecture/ après vérification de la session (ADR 0006).
+playback: yes
+playbackAddress: :9996
+
 # Enregistrement continu (docs/adr/0011-enregistrement-continu-par-mediamtx.md) : format et conservation
 # du volume /enregistrements. record reste off par défaut ; l'API l'allume sur camera-<id>.
 pathDefaults:

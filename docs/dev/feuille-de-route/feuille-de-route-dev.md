@@ -29,14 +29,9 @@ Contraintes transverses :
 - **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
 - **0.8.0** — Enregistrement continu : segments fMP4 (~1 min, rétention 1 h) via MediaMTX, volume Docker nommé, interrupteur et indicateur dans l’Administration ([PR #120](https://github.com/UlyssouLV/ArgOS/pull/120), [spec](../../specs/v0.8.0-enregistrement-continu.md), [ADR 0011](../../adr/0011-enregistrement-continu-par-mediamtx.md)).
 - **0.8.1** — Suivi du stockage et du débit d’écriture : page Enregistrement (espace volume, débits, tenue), Conservation Site 1–24 h et Seuil de place disque (signal seul) ([PR #126](https://github.com/UlyssouLV/ArgOS/pull/126), [spec](../../specs/v0.8.1-suivi-du-stockage-et-du-debit-decriture.md), [ADR 0012](../../adr/0012-suivi-stockage-et-conservation-reglable.md)).
+- **0.8.2** — Relecture des enregistrements : sur la page Enregistrement, une Caméra du résumé ouvre sa timeline sur la Conservation (plages colorées, trous visibles, Segment en écriture exclu) ; un clic lit le Segment fermé depuis son début, play / pause, enchaînement, vitesses ×1…×16 ; vidéo du serveur playback MediaMTX relayée par nginx derrière la session, sans réencodage (H.265 lisible là où le Live l’est). Une Caméra à la fois, pas de seek à la seconde (1.0.0) ni de téléchargement (Plus tard) ([PR #132](https://github.com/UlyssouLV/ArgOS/pull/132), [spec](../../specs/v0.8.2-relecture-des-enregistrements.md), [ADR 0013](../../adr/0013-relecture-des-enregistrements.md)).
 
-## Prochaine : 0.8.2 — Relecture des enregistrements
-
-**Objectif.** Parcourir et relire les enregistrements de chaque Caméra depuis l’UI : choisir un moment, lire.
-
-**Hors périmètre :** plages horaires d’enregistrement, fil rouge 1.0.0 (à redéfinir).
-
-## Ensuite : 0.9.0 — Le Site, serveur de temps des Caméras
+## Prochaine : 0.9.0 — Le Site, serveur de temps des Caméras
 
 **Objectif.** Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
 
@@ -110,6 +105,10 @@ Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui s
 ### Couper un Live WebRTC à la fin de la session
 
 Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.
+
+### Téléchargement / export des enregistrements
+
+Après la relecture in-browser (0.8.2) : permettre à l’Administrateur de **télécharger** ou **exporter** des segments / une plage d’enregistrement (fichier utilisable hors ArgOS), derrière la session. Hors 0.8.2 : la relecture UI suffit.
 
 ### Bug — Modifier l'URL d'une Caméra sans retaper son mot de passe enregistre *** comme mot de passe (#86)
 

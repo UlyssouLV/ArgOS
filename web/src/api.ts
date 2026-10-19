@@ -32,3 +32,13 @@ export async function appeler(chemin: string, init: RequestInit = {}): Promise<R
 export function signalerNonConnecte(): void {
   quandNonConnecte();
 }
+
+/** Faux si l'API refuse la session (et l'UI revient alors à la connexion) ; vrai sinon, même si l'API ne répond pas. */
+export async function sessionValide(): Promise<boolean> {
+  try {
+    await appeler("/api/session");
+    return true;
+  } catch (error_) {
+    return !(error_ instanceof NonConnecte);
+  }
+}
