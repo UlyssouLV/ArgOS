@@ -15,6 +15,7 @@ from playwright.sync_api import Locator, Page, Route, expect
 from stack_compose import raccourcir_les_segments
 from test_administration import api, noms, url_injoignable, url_simulee  # noqa: F401 (fixtures)
 from test_connexion import se_connecter
+from test_live import NAVIGATEUR_SANS_H265, SANS_HEVC
 
 CHEMIN_RELECTURE = "/flux/relecture/get"
 # Un tour de réconciliation du pont (10 s), avec de la marge.
@@ -144,6 +145,32 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
     _cliquer_a(timeline, 30 / 60)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == recent[0]
+
+
+def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = datetime.now(UTC)
+    _simuler_segments(
+        enregistrement,
+        camera["id"],
+        (maintenant - timedelta(hours=1), maintenant),
+        [(maintenant - timedelta(minutes=30), maintenant - timedelta(minutes=29))],
+    )
+
+    def en_h265(route: Route) -> None:
+        reponse = route.fetch()
+        route.fulfill(response=reponse, json=[c | {"codec": "H265"} if c["id"] == camera["id"] else c for c in reponse.json()])
+
+    enregistrement.route("**/api/cameras", en_h265)
+    enregistrement.add_init_script(SANS_HEVC)
+    relecture = _selectionner(enregistrement, camera["nom"])
+
+    _cliquer_a(relecture.get_by_role("group", name="Timeline d’enregistrement"), 30.5 / 60)
+
+    expect(relecture.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()
+    expect(relecture.get_by_text("Enregistrement indisponible")).to_have_count(0)
+    enregistrement.wait_for_timeout(1000)
+    assert relectures == []
 
 
 def _attendre(page: Page, condition, delai_s: float = 10) -> None:

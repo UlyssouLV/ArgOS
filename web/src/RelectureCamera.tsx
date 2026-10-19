@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { sessionValide } from "./api";
 import { listerCameras, messageEchec } from "./cameras";
@@ -16,7 +16,7 @@ import {
 
 type PropsRelecture = Readonly<{ idCamera: number; nom: string }>;
 
-type EtatViewer = "lecture" | "indisponible" | "codec_non_supporte";
+type EtatViewer = "lecture" | "indisponible";
 
 /** Chemin du pont d'une Caméra, aussi celui de ses enregistrements (`camera-<id>`, ADR 0011). */
 function cheminFlux(idCamera: number): string {
@@ -67,12 +67,16 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
   }, [idCamera]);
 
   const segment = fenetre !== null && courant !== null ? fenetre.segments[courant] : null;
+  // Décidé avant de donner une source à la vidéo : sinon son échec masquerait le message (comme au Live).
+  const h265Illisible = useMemo(
+    () => codec === "H265" && !hevcDecodable(document.createElement("video")),
+    [codec],
+  );
 
   useEffect(() => {
     setPosition(0);
-    if (segment === null) return;
-    setEtat(codec === "H265" && !hevcDecodable(video.current!) ? "codec_non_supporte" : "lecture");
-  }, [segment, codec]);
+    setEtat("lecture");
+  }, [segment]);
 
   useEffect(() => {
     if (video.current === null) return;
@@ -144,12 +148,14 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
           <div className="lecteur">
             <video
               ref={video}
-              src={etat === "codec_non_supporte" ? undefined : urlRelecture(cheminFlux(idCamera), segment)}
+              src={h265Illisible ? undefined : urlRelecture(cheminFlux(idCamera), segment)}
               autoPlay
               muted
               playsInline
               onLoadedMetadata={(e) => {
                 e.currentTarget.playbackRate = vitesse;
+                // `autoPlay` seul ne part pas toujours sur un MP4 d'une minute (Chromium) : on lance la lecture.
+                void e.currentTarget.play().catch(() => {});
               }}
               onPlay={() => setEnPause(false)}
               onPause={() => setEnPause(true)}
@@ -157,25 +163,27 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
               onEnded={enchainer}
               onError={surErreur}
             />
-            {etat === "indisponible" && <p className="flux-indisponible">Enregistrement indisponible</p>}
-            {etat === "codec_non_supporte" && <p className="flux-indisponible">Ce navigateur ne lit pas le H.265</p>}
+            {h265Illisible && <p className="flux-indisponible">Ce navigateur ne lit pas le H.265</p>}
+            {!h265Illisible && etat === "indisponible" && <p className="flux-indisponible">Enregistrement indisponible</p>}
           </div>
-          <div className="commandes-relecture">
-            <button type="button" onClick={basculer}>
-              {enPause ? "Lecture" : "Pause"}
-            </button>
-            <progress aria-label="Progression dans le Segment" max={dureeS(segment)} value={position} />
-            <span className="position">
-              {minutesSecondes(position)} / {minutesSecondes(dureeS(segment))}
-            </span>
-            <span role="group" aria-label="Vitesse de lecture" className="vitesses">
-              {VITESSES.map((v) => (
-                <button key={v} type="button" aria-pressed={v === vitesse} onClick={() => setVitesse(v)}>
-                  ×{v}
-                </button>
-              ))}
-            </span>
-          </div>
+          {!h265Illisible && (
+            <div className="commandes-relecture">
+              <button type="button" onClick={basculer}>
+                {enPause ? "Lecture" : "Pause"}
+              </button>
+              <progress aria-label="Progression dans le Segment" max={dureeS(segment)} value={position} />
+              <span className="position">
+                {minutesSecondes(position)} / {minutesSecondes(dureeS(segment))}
+              </span>
+              <span role="group" aria-label="Vitesse de lecture" className="vitesses">
+                {VITESSES.map((v) => (
+                  <button key={v} type="button" aria-pressed={v === vitesse} onClick={() => setVitesse(v)}>
+                    ×{v}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
         </>
       )}
     </section>

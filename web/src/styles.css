@@ -593,9 +593,14 @@ button.danger {
   cursor: pointer;
 }
 
-.enregistrement-site .resume-cameras .selectionnable:hover,
-.enregistrement-site .resume-cameras [aria-selected="true"] {
+.enregistrement-site .resume-cameras .selectionnable:hover {
   background: #eef3f8;
+}
+
+.enregistrement-site .resume-cameras [aria-selected="true"] {
+  background: #d6e4f5;
+  box-shadow: inset 4px 0 0 #1f5fa8;
+  font-weight: 600;
 }
 
 .relecture {
