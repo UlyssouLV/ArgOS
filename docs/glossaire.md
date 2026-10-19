@@ -34,9 +34,21 @@ Texte que l’Appareil dessine lui-même dans l’image d’une Caméra avant de
 
 ## Horloge {#horloge}
 
-Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes ses Caméras.
+Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes ses Caméras. L’Administrateur ne la règle pas : le Site la cale sur l’Heure du Site.
 
 À éviter : heure système.
+
+## Heure du Site {#heure-du-site}
+
+La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses Caméras. Une Caméra est calée sur le Site quand son Horloge suit le Serveur de temps du Site avec le fuseau du Site.
+
+À éviter : heure système, horloge du Site, heure du serveur.
+
+## Serveur de temps du Site {#serveur-de-temps-du-site}
+
+Le service NTP que le Site offre aux Appareils sur le réseau des caméras, à partir de l’Heure du Site.
+
+À éviter : NTP local, horloge du Site.
 
 ## Image {#image}
 
@@ -52,7 +64,7 @@ Résolution, images par seconde, débit et codec du Flux d’une Caméra.
 
 ## Réglages de la Caméra {#reglages-de-la-camera}
 
-Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations, l’Horloge et l’Image de son Appareil, et l’Encodage de son Flux.
+Ce que l’Administrateur règle sur une Caméra par ONVIF depuis l’Administration : ses Incrustations, l’Image de son Appareil et l’Encodage de son Flux.
 
 À éviter : configuration, paramètres.
 
