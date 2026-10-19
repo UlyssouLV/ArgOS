@@ -15,7 +15,8 @@ L’enregistrement continu (ADR 0011) et le suivi stockage (ADR 0012) laissent l
 ## Consequences
 
 - ADR 0011 (« pas d’exposition HTTP ») est **levé** pour la relecture authentifiée ; l’inspection volume Docker reste utile en labo, plus la seule voie.
-- Les segments **encore ouverts** (écriture en cours) sont exclus de la relecture.
+- Les segments **encore ouverts** (écriture en cours) sont exclus de la relecture. Le volume ne marque pas la fermeture : l'API tient le dernier Segment pour ouvert tant que l'Enregistrement est ON et qu'il a été écrit il y a moins de 120 s (2 × `recordSegmentDuration`, même seuil que l'état « en erreur » de l'Enregistrement). Un Segment bloqué au-delà serait proposé ; un Segment tout juste fermé peut rester caché jusqu'à 2 min.
+- La timeline se rafraîchit toutes les 10 s : les Segments fermés depuis s'y ajoutent, et l'enchaînement attend le suivant au lieu de s'arrêter au dernier connu.
 - Pas de téléchargement / export dans cette décision (Plus tard).
 - Vitesses de lecture ×1…×16 côté lecteur web ; ×32 hors scope.
 - `/get` ne gère pas les plages d'octets (`Accept-Ranges: none`, réponse en flux) : pas de seek HTTP dans un Segment ; le lecteur relit depuis `start` ou charge le Segment entier. Cohérent avec « clic = début de Segment » ; à revoir avec le seek précis (1.0.0).

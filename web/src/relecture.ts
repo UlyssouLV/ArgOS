@@ -54,6 +54,17 @@ export function segmentVise(segments: SegmentFerme[], instant: number): number |
   return vise;
 }
 
+/** Premier Segment qui commence après celui de début `debut` ; `null` s'il n'est pas encore fermé. */
+export function segmentSuivant(segments: SegmentFerme[], debut: string): SegmentFerme | null {
+  return segments.find((segment) => Date.parse(segment.debut) > Date.parse(debut)) ?? null;
+}
+
+/** Instant (ms) à une fraction de la fenêtre, de 0 (son début) à 1 (sa fin). */
+export function instantSurLaFenetre(fenetre: SegmentsFermes, fraction: number): number {
+  const debut = Date.parse(fenetre.debut);
+  return debut + fraction * (Date.parse(fenetre.fin) - debut);
+}
+
 /** Place d'une plage sur la timeline, en pourcentage de la fenêtre, bornée à celle-ci. */
 export function placeSurLaFenetre(fenetre: SegmentsFermes, segment: SegmentFerme): { gauche: number; largeur: number } {
   const debut = Date.parse(fenetre.debut);

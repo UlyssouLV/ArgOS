@@ -31,7 +31,7 @@ export function Enregistrement() {
   const [debits, setDebits] = useState<DebitsEcriture | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
-  const [relue, setRelue] = useState<DebitCamera | null>(null);
+  const [selectionnee, setSelectionnee] = useState<DebitCamera | null>(null);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -170,13 +170,13 @@ export function Enregistrement() {
                 <tr
                   key={camera.id}
                   className="selectionnable"
-                  aria-selected={camera.id === relue?.id}
+                  aria-selected={camera.id === selectionnee?.id}
                   tabIndex={0}
-                  onClick={() => setRelue(camera)}
+                  onClick={() => setSelectionnee(camera)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setRelue(camera);
+                      setSelectionnee(camera);
                     }
                   }}
                 >
@@ -239,8 +239,8 @@ export function Enregistrement() {
           Enregistrer le seuil
         </button>
       </form>
-      {relue ? (
-        <RelectureCamera key={relue.id} idCamera={relue.id} nom={relue.nom} />
+      {selectionnee ? (
+        <RelectureCamera key={selectionnee.id} idCamera={selectionnee.id} nom={selectionnee.nom} />
       ) : (
         debits && (
           <p className="aide invite-relecture">Cliquez sur une Caméra du résumé pour relire ses enregistrements.</p>

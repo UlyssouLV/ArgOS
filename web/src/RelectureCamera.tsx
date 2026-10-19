@@ -6,8 +6,10 @@ import { hevcDecodable } from "./hls";
 import {
   VITESSES,
   dureeS,
+  instantSurLaFenetre,
   lireSegments,
   placeSurLaFenetre,
+  segmentSuivant,
   segmentVise,
   urlRelecture,
   type SegmentsFermes,
@@ -16,9 +18,15 @@ import {
 
 type PropsRelecture = Readonly<{ idCamera: number; nom: string }>;
 
-type EtatViewer = "lecture" | "indisponible";
+type EtatViewer = "lisible" | "indisponible";
 
-/** Chemin du pont d'une Caméra, aussi celui de ses enregistrements (`camera-<id>`, ADR 0011). */
+/** Les Segments fermés depuis rejoignent la timeline, et la fenêtre suit la Conservation. */
+const RAFRAICHISSEMENT_MS = 10_000;
+
+/**
+ * Chemin du pont d'une Caméra, aussi celui de ses enregistrements (`camera-<id>`, ADR 0011). Recalculé ici :
+ * l'API ne donne `chemin_flux` qu'à une Caméra activée, et une Caméra désactivée garde ses Segments.
+ */
 function cheminFlux(idCamera: number): string {
   return `camera-${idCamera}`;
 }
@@ -46,27 +54,36 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
   const [fenetre, setFenetre] = useState<SegmentsFermes | null>(null);
   const [codec, setCodec] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [courant, setCourant] = useState<number | null>(null);
-  const [etat, setEtat] = useState<EtatViewer>("lecture");
+  // Segments repérés par leur début : un rafraîchissement décale leurs index.
+  const [courant, setCourant] = useState<string | null>(null);
+  const [acheve, setAcheve] = useState<string | null>(null);
+  const [etat, setEtat] = useState<EtatViewer>("lisible");
   const [vitesse, setVitesse] = useState<Vitesse>(1);
   const [enPause, setEnPause] = useState(true);
   const [position, setPosition] = useState(0);
 
   useEffect(() => {
     let annule = false;
+    const echec = (e: unknown) => !annule && setErreur(messageEchec(e));
     Promise.all([lireSegments(idCamera), listerCameras()])
       .then(([lue, cameras]) => {
         if (annule) return;
         setFenetre(lue);
         setCodec(cameras.find((c) => c.id === idCamera)?.codec ?? null);
       })
-      .catch((e) => !annule && setErreur(messageEchec(e)));
+      .catch(echec);
+    const minuterie = setInterval(() => {
+      lireSegments(idCamera)
+        .then((lue) => !annule && setFenetre(lue))
+        .catch(echec);
+    }, RAFRAICHISSEMENT_MS);
     return () => {
       annule = true;
+      clearInterval(minuterie);
     };
   }, [idCamera]);
 
-  const segment = fenetre !== null && courant !== null ? fenetre.segments[courant] : null;
+  const segment = fenetre?.segments.find((s) => s.debut === courant) ?? null;
   // Décidé avant de donner une source à la vidéo : sinon son échec masquerait le message (comme au Live).
   const h265Illisible = useMemo(
     () => codec === "H265" && !hevcDecodable(document.createElement("video")),
@@ -75,8 +92,17 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
 
   useEffect(() => {
     setPosition(0);
-    setEtat("lecture");
-  }, [segment]);
+    setEtat("lisible");
+  }, [courant]);
+
+  // Fin du dernier Segment connu : on enchaîne dès qu'un rafraîchissement apporte le Segment fermé ensuite.
+  useEffect(() => {
+    if (fenetre === null || acheve === null) return;
+    const suivant = segmentSuivant(fenetre.segments, acheve);
+    if (suivant === null) return;
+    setAcheve(null);
+    setCourant(suivant.debut);
+  }, [fenetre, acheve]);
 
   useEffect(() => {
     if (video.current === null) return;
@@ -88,14 +114,16 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
     if (fenetre === null) return;
     const boite = event.currentTarget.getBoundingClientRect();
     const fraction = (event.clientX - boite.left) / boite.width;
-    const debut = Date.parse(fenetre.debut);
-    const vise = segmentVise(fenetre.segments, debut + fraction * (Date.parse(fenetre.fin) - debut));
-    if (vise === courant && video.current !== null) video.current.currentTime = 0;
-    setCourant(vise);
+    const vise = segmentVise(fenetre.segments, instantSurLaFenetre(fenetre, fraction));
+    if (vise === null) return;
+    const debut = fenetre.segments[vise].debut;
+    if (debut === courant && video.current !== null) video.current.currentTime = 0;
+    setAcheve(null);
+    setCourant(debut);
   }
 
   function enchainer() {
-    if (fenetre !== null && courant !== null && courant + 1 < fenetre.segments.length) setCourant(courant + 1);
+    setAcheve(courant);
   }
 
   function surErreur() {
@@ -121,12 +149,12 @@ export function RelectureCamera({ idCamera, nom }: PropsRelecture) {
       {fenetre && fenetre.segments.length > 0 && (
         <>
           <div className="timeline-enregistrement" role="group" aria-label="Timeline d’enregistrement" onClick={viser}>
-            {fenetre.segments.map((s, index) => {
+            {fenetre.segments.map((s) => {
               const { gauche, largeur } = placeSurLaFenetre(fenetre, s);
               return (
                 <span
                   key={s.debut}
-                  className={index === courant ? "plage-enregistree plage-courante" : "plage-enregistree"}
+                  className={s.debut === courant ? "plage-enregistree plage-courante" : "plage-enregistree"}
                   style={{ left: `${gauche}%`, width: `${largeur}%` }}
                   title={`${heure(s.debut)} → ${heure(s.fin)}`}
                 />

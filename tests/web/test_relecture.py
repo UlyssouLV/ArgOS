@@ -23,6 +23,8 @@ DELAI_PONT_S = 20
 # Deux Segments de 2 s fermés après le démarrage du Flux à la demande, avec de la marge.
 DELAI_SEGMENTS_FERMES_S = 60
 DELAI_VIDEO_MS = 30_000
+# Un rafraîchissement de la Timeline d'enregistrement (10 s), avec de la marge.
+DELAI_RAFRAICHISSEMENT_MS = 15_000
 SANS_SEGMENT = "Aucun enregistrement sur cette période"
 VITESSES = (1, 2, 4, 8, 16)
 
@@ -145,6 +147,37 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
     _cliquer_a(timeline, 30 / 60)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == recent[0]
+
+
+def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ensuite(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = datetime.now(UTC)
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    ancien = (maintenant - timedelta(minutes=3), maintenant - timedelta(minutes=2))
+    ferme_ensuite = (maintenant - timedelta(minutes=2), maintenant - timedelta(minutes=1))
+    lectures = 0
+
+    def segments(route: Route) -> None:
+        nonlocal lectures
+        lectures += 1
+        plages = [ancien] if lectures == 1 else [ancien, ferme_ensuite]
+        route.fulfill(json={
+            "debut": _iso(fenetre[0]),
+            "fin": _iso(fenetre[1]),
+            "segments": [{"debut": _iso(d), "fin": _iso(f)} for d, f in plages],
+        })
+
+    enregistrement.route(f"**/api/cameras/{camera['id']}/segments", segments)
+    relecture = _selectionner(enregistrement, camera["nom"])
+    _cliquer_a(relecture.get_by_role("group", name="Timeline d’enregistrement"), 57.5 / 60)
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+
+    # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis.
+    relecture.locator("video").dispatch_event("ended")
+    expect(relecture.locator(".plage-enregistree")).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
+    _attendre(enregistrement, lambda: len(relectures) >= 2)
+    assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ferme_ensuite[0]
+    expect(relecture.locator(".plage-courante")).to_have_count(1)
 
 
 def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
