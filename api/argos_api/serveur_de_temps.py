@@ -16,8 +16,9 @@ from typing import Literal
 
 PORT_NTP = 123
 DELAI_S = 1.0
-# Strate de `local stratum 10` (temps/lancer.sh) : chrony sert l'horloge du serveur.
-STRATE_DU_REPLI = 10
+# Identifiant de référence de chrony en `local stratum 10` (temps/lancer.sh) : il sert l'horloge du serveur. La
+# strate seule ne suffit pas : une source amont en strate 9 donne aussi la strate 10.
+REFERENCE_DU_REPLI = "127.127.1.1"
 # Indicateur de seconde intercalaire 3 : horloge non synchronisée (RFC 5905).
 NON_SYNCHRONISE = 3
 # Secondes entre l'époque NTP (1900) et l'époque Unix (1970).
@@ -65,10 +66,11 @@ def interroger(hote: str, port: int = PORT_NTP, delai_s: float = DELAI_S) -> Eta
     strate = paquet[1]
     if paquet[0] >> 6 == NON_SYNCHRONISE or not 0 < strate < 16:
         return EtatServi("non_synchronise", heure=heure)
-    if strate == STRATE_DU_REPLI:
-        return EtatServi("horloge_serveur", heure=heure)
     # Source IPv4 : son adresse ; IPv6 : une empreinte, lue de même.
-    return EtatServi("ntp", socket.inet_ntoa(paquet[12:16]), heure)
+    reference = socket.inet_ntoa(paquet[12:16])
+    if reference == REFERENCE_DU_REPLI:
+        return EtatServi("horloge_serveur", heure=heure)
+    return EtatServi("ntp", reference, heure)
 
 
 def adresse_annoncee(ip_temps: str, ips_du_site: str) -> str | None:

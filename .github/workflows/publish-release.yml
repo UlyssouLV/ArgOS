@@ -1,14 +1,18 @@
-# Canal production : une GitHub Release vX.Y.Z retaggue le digest :staging
-# (même digest, pas de rebuild) vers X.Y.Z et :latest, et joint l'artefact du Site.
+# Canal production : retaggue le digest :staging vers X.Y.Z et :latest (sans rebuild),
+# et joint l'artefact du Site. Déclenchement manuel : attendre que « Publier images staging »
+# soit vert pour le SHA voulu, puis lancer ce workflow avec le tag vX.Y.Z.
 name: Promouvoir images vers Release
 
 on:
-  release:
-    types:
-      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Étiquette de Release déjà publiée (vX.Y.Z)"
+        required: true
+        type: string
 
 concurrency:
-  group: promouvoir-release-${{ github.event.release.tag_name }}
+  group: promouvoir-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -27,9 +31,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: bash scripts/promouvoir-images-release.sh
+      - env:
+          ARGOS_RELEASE_TAG: ${{ inputs.tag }}
+        run: bash scripts/promouvoir-images-release.sh
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARGOS_RELEASE_TAG: ${{ inputs.tag }}
         run: |
           bash scripts/assembler-artefact-site.sh argos-site.tar.gz
-          gh release upload "${{ github.event.release.tag_name }}" argos-site.tar.gz
+          # Remplace l'artefact s'il existe déjà (re-promo / Release créée plus tôt).
+          gh release delete-asset "${ARGOS_RELEASE_TAG}" argos-site.tar.gz --yes 2>/dev/null || true
+          gh release upload "${ARGOS_RELEASE_TAG}" argos-site.tar.gz

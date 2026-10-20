@@ -1,4 +1,4 @@
-"""Contrat : une GitHub Release vX.Y.Z promeut :staging (même digest) et joint l'artefact du Site."""
+"""Contrat : promo manuelle :staging → vX.Y.Z (même digest) et artefact du Site."""
 
 import os
 import subprocess
@@ -17,8 +17,10 @@ def test_le_workflow_promouvoit_staging_vers_la_release_sans_rebuild():
     yaml = WORKFLOW.read_text()
     script = SCRIPT_PROMOUVOIR.read_text()
 
-    assert "release:" in yaml
-    assert "published" in yaml
+    assert "workflow_dispatch:" in yaml
+    assert "inputs:" in yaml
+    assert "tag:" in yaml
+    assert "published" not in yaml  # plus de promo auto à la publication de la Release
     assert "push:" not in yaml
     assert "pull_request" not in yaml
     assert "packages: write" in yaml
@@ -28,6 +30,8 @@ def test_le_workflow_promouvoit_staging_vers_la_release_sans_rebuild():
     assert "scripts/promouvoir-images-release.sh" in yaml
     assert "scripts/assembler-artefact-site.sh" in yaml
     assert "gh release upload" in yaml
+    assert "gh release delete-asset" in yaml
+    assert "ARGOS_RELEASE_TAG" in yaml
     assert "scripts/lancer-les-tests.sh" not in yaml
     assert "docker/setup-qemu-action@" not in yaml
     assert "SONAR" not in yaml
@@ -37,6 +41,7 @@ def test_le_workflow_promouvoit_staging_vers_la_release_sans_rebuild():
     assert "--push" not in script
     assert ":staging" in script
     assert ":latest" in script
+    assert "ARGOS_RELEASE_TAG" in script
     assert "ghcr.io/ulyssoulv/argos-" in script
     for service in ("api", "web", "pont", "certificats", "temps"):
         assert service in script
@@ -55,7 +60,7 @@ def test_promouvoir_retaggue_le_digest_staging_vers_la_version_et_latest(tmp_pat
         text=True,
         env=os.environ | {
             "PATH": f"{binaire}{os.pathsep}{os.environ['PATH']}",
-            "GITHUB_REF_NAME": "v0.7.3",
+            "ARGOS_RELEASE_TAG": "v0.7.3",
         },
         timeout=DELAI_S,
     )

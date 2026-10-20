@@ -164,7 +164,8 @@ services:
       # Complète les sous-réseaux de .env avec celui des Caméras simulées.
       ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:+${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX},}172.30.0.0/24
       # Les Caméras simulées sont calées sur temps, à son IP fixe sur leur réseau.
-      ARGOS_TEMPS_ADRESSE_CAMERAS: 172.30.0.10
+      # Surcharge possible (.env) pour caler une vraie caméra du LAN : IP du Mac (UDP 123 publié).
+      ARGOS_TEMPS_ADRESSE_CAMERAS: ${ARGOS_TEMPS_ADRESSE_CAMERAS:-172.30.0.10}
 
 volumes:
   camera-simulee-2-onvif-certificat:

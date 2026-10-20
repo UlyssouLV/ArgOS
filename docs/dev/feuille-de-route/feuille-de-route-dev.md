@@ -33,9 +33,9 @@ Contraintes transverses :
 
 ## Prochaine : 0.9.0 — Le Site, serveur de temps des Caméras
 
-**Objectif.** Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0.
+**Objectif.** Le Site sert l’heure (NTP) sur le réseau des caméras, et chaque Caméra est réglée pour s’y caler : une heure juste et commune à toutes, sans accès à internet ni remise à l’heure manuelle. Remplace le bouton « Mettre à l’heure du Site » de la 0.6.0. Corrige aussi la relecture Safari sur Caméra H.265 avec piste audio ([#141](https://github.com/UlyssouLV/ArgOS/issues/141)) : enregistrement / playback **vidéo seule**.
 
-**Hors périmètre :** fil rouge 1.0.0.
+**Hors périmètre :** fil rouge 1.0.0 ; audio d’enregistrement utile.
 
 ## Ensuite : 1.0.0 — Fil rouge Site → Live RTSP
 

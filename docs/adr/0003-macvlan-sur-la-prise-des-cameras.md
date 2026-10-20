@@ -2,6 +2,8 @@
 
 Remplace en partie l'[ADR 0002](0002-detection-depuis-le-reseau-bridge.md) : les sous-réseaux restent déclarés par le script hôte, mais l'API ne se contente plus du réseau bridge. Pour reconnaître un Appareil par son adresse MAC (0.4.2), `api` gagne, en prod Linux, une interface **macvlan** par prise des caméras, avec une IP fixe proposée par le script hôte hors DHCP. L'API y parle aux caméras sans NAT : après chaque sonde, sa propre table de voisinage donne la MAC de l'IP sondée. Elle garde le bridge pour les noms Compose et les ports publiés, et n'accepte aucune requête arrivée par le réseau des caméras. Le réseau macvlan vit dans `compose.reseau-cameras.yaml`, ajouté à `COMPOSE_FILE` par le script sur Linux seulement.
 
+**Complété par l'[ADR 0014](0014-serveur-de-temps-du-site.md) (0.9.0, #133).** Le réseau des caméras n'est plus « une sortie seulement » : le service `temps` y sert l'heure en NTP (UDP 123, et rien d'autre) à une seconde IP fixe hors DHCP. `api` n'y sert toujours rien.
+
 ## Considered Options
 
 - **Table ARP de l'hôte montée dans `api`** (`/proc/net/arp`) : une ligne de Compose, mais un fichier procfs lié à un processus de l'hôte, fragile, et Linux seulement.

@@ -40,3 +40,19 @@ def test_une_plage_hors_du_fichier_est_insatisfaisable(entete):
 def test_un_fichier_vide_n_a_aucune_plage_satisfaisable():
     with pytest.raises(relecture.PlageInsatisfaisable):
         relecture.plage("bytes=0-1", 0)
+
+
+def test_sans_plage_le_fichier_entier_part_en_200_et_annonce_les_plages():
+    assert relecture.servir_par_plages(b"0123456789", None) == (200, {"Accept-Ranges": "bytes"}, b"0123456789")
+
+
+def test_une_plage_part_en_206_avec_ses_bornes():
+    assert relecture.servir_par_plages(b"0123456789", "bytes=2-4") == (
+        206,
+        {"Accept-Ranges": "bytes", "Content-Range": "bytes 2-4/10"},
+        b"234",
+    )
+
+
+def test_une_plage_hors_du_fichier_part_en_416_avec_sa_taille():
+    assert relecture.servir_par_plages(b"0123456789", "bytes=10-") == (416, {"Content-Range": "bytes */10"}, b"")

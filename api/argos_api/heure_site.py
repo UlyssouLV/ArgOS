@@ -19,7 +19,7 @@ MOTIF_SERVEUR_NTP = r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$"
 
 
 @dataclass(frozen=True)
-class Reglage:
+class HeureDuSite:
     source: Source
     serveur_ntp: str
     # Fuseau IANA du Site ; celui de l'hôte tant que l'Administrateur n'en a pas choisi.
@@ -66,9 +66,9 @@ class ModificationHeureDuSite(BaseModel):
         return self
 
 
-def lire(base: Session, fuseau_hote: str) -> Reglage:
+def lire(base: Session, fuseau_hote: str) -> HeureDuSite:
     ligne = reglages_site.ligne_du_site(base)
-    return Reglage(
+    return HeureDuSite(
         source="horloge_serveur" if ligne.heure_source == "horloge_serveur" else "ntp",
         serveur_ntp=ligne.heure_serveur_ntp,
         fuseau=ligne.fuseau or fuseau_hote,
@@ -76,7 +76,7 @@ def lire(base: Session, fuseau_hote: str) -> Reglage:
     )
 
 
-def modifier(base: Session, modification: ModificationHeureDuSite, fuseau_hote: str) -> Reglage:
+def modifier(base: Session, modification: ModificationHeureDuSite, fuseau_hote: str) -> HeureDuSite:
     ligne = reglages_site.ligne_du_site(base)
     if modification.source is not None:
         ligne.heure_source = modification.source
@@ -88,7 +88,8 @@ def modifier(base: Session, modification: ModificationHeureDuSite, fuseau_hote: 
     return lire(base, fuseau_hote)
 
 
-def lue(reglage: Reglage, servi: EtatServi, adresse: str | None) -> HeureDuSiteLue:
+def avec_ce_que_sert_temps(reglage: HeureDuSite, servi: EtatServi, adresse: str | None) -> HeureDuSiteLue:
+    """L'Heure du Site réglée, avec ce que `temps` sert vraiment aux Caméras et l'adresse qui leur est annoncée."""
     return HeureDuSiteLue(
         source=reglage.source,
         serveur_ntp=reglage.serveur_ntp,

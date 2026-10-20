@@ -6,7 +6,8 @@ réencodage. Les octets audio restent dans `mdat`, plus désignés par aucune pi
 `co64`) des pistes vidéo suivent le `moov` raccourci. Aucun autre octet n'est touché, et un MP4 sans piste à
 retirer (ou sans piste vidéo) passe tel quel. Sans dépendance hors stdlib.
 
-Safari ouvre une `<video>` par `Range: bytes=0-1` et refuse tout sauf un `206` (#143) : `plage` lit cet en-tête.
+Safari ouvre une `<video>` par `Range: bytes=0-1` et refuse tout sauf un `206` (#143) : `servir_par_plages` répond
+à cet en-tête.
 """
 
 import re
@@ -43,6 +44,19 @@ def plage(entete: str | None, taille: int) -> tuple[int, int] | None:
     if debut >= taille:
         raise PlageInsatisfaisable
     return debut, min(int(dernier) + 1, taille) if dernier else taille
+
+
+def servir_par_plages(mp4: bytes, entete: str | None) -> tuple[int, dict[str, str], bytes]:
+    """Statut, en-têtes et corps de la réponse à l'en-tête `Range` : `200` le fichier entier, `206` une plage, `416`
+    une plage hors du fichier."""
+    try:
+        bornes = plage(entete, len(mp4))
+    except PlageInsatisfaisable:
+        return 416, {"Content-Range": f"bytes */{len(mp4)}"}, b""
+    if bornes is None:
+        return 200, {"Accept-Ranges": "bytes"}, mp4
+    debut, fin = bornes
+    return 206, {"Accept-Ranges": "bytes", "Content-Range": f"bytes {debut}-{fin - 1}/{len(mp4)}"}, mp4[debut:fin]
 
 
 def video_seule(morceaux: Iterable[bytes]) -> Iterator[bytes]:

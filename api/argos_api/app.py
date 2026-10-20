@@ -38,8 +38,15 @@ from argos_api import (
 )
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
-from argos_api.calage import Calage, HorlogeVerifiee
-from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
+from argos_api.calage import Calage
+from argos_api.cameras import (
+    AdresseMiseAJour,
+    CameraCorrespondante,
+    CameraLue,
+    HorlogeVerifiee,
+    ModificationCamera,
+    NouvelleCamera,
+)
 from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.debits_ecriture import DebitsEcriture
 from argos_api.ecoute import SortieSeulement
@@ -61,7 +68,7 @@ DETECTION_EN_COURS = "Une Détection est déjà en cours : attendre son résulta
 TAILLE_MORCEAU_RELECTURE = 64 * 1024
 # Attente de chaque réponse du serveur playback, en secondes : il lit tous les Segments demandés avant d'envoyer
 # le `moov`. Celle de nginx par défaut (proxy_read_timeout), quand il le relayait lui-même.
-DELAI_RELECTURE_S = 60
+DELAI_PLAYBACK_S = 60
 # Retrait des Aperçus expirés, en secondes.
 INTERVALLE_APERCU_S = 1
 # Réseau local : seules ces adresses (RFC 1918) peuvent être essayées. Plages jamais jointes, seulement
@@ -197,7 +204,7 @@ def creer_app(
     calage = Calage(ouvrir_base, horloge, adresse_temps, fuseau_hote)
     dossier_temps = Path(configuration.temps_reglage)
 
-    def transmettre_a_temps(reglage: heure_site.Reglage) -> None:
+    def transmettre_a_temps(reglage: heure_site.HeureDuSite) -> None:
         """Volume absent ou illisible : temps garde sa source, l'API marche."""
         try:
             serveur_de_temps.transmettre(dossier_temps, reglage.source_suivie)
@@ -313,8 +320,8 @@ def creer_app(
         """Fuseaux proposés pour l'Heure du Site : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
 
-    def heure_du_site_lue(reglage: heure_site.Reglage) -> HeureDuSiteLue:
-        return heure_site.lue(reglage, serveur_de_temps.interroger(configuration.temps_hote), adresse_temps)
+    def heure_du_site_lue(reglage: heure_site.HeureDuSite) -> HeureDuSiteLue:
+        return heure_site.avec_ce_que_sert_temps(reglage, serveur_de_temps.interroger(configuration.temps_hote), adresse_temps)
 
     @app.get("/api/heure-du-site", dependencies=[Depends(administrateur_connecte)])
     def lire_heure_du_site(base: Annotated[Session, Depends(base)]) -> HeureDuSiteLue:
@@ -334,13 +341,13 @@ def creer_app(
     @app.get("/api/heure-du-site/cameras", dependencies=[Depends(administrateur_connecte)])
     def lire_horloges_des_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
         """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande)."""
-        return calage.tableau(base)
+        return cameras.horloges_verifiees(base)
 
     @app.post("/api/heure-du-site/verification", dependencies=[Depends(administrateur_connecte)])
     def verifier_les_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
         """« Vérifier maintenant » : vérifie toutes les Caméras actives, puis rend le tableau."""
         calage.verifier_toutes()
-        return calage.tableau(base)
+        return cameras.horloges_verifiees(base)
 
     @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
     def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
@@ -364,7 +371,7 @@ def creer_app(
         `<video>` par `Range: bytes=0-1` et ne lit qu'un `206` (#143)."""
         try:
             reponse = urllib.request.urlopen(
-                f"{configuration.url_playback_mediamtx}/get?{request.url.query}", timeout=DELAI_RELECTURE_S
+                f"{configuration.url_playback_mediamtx}/get?{request.url.query}", timeout=DELAI_PLAYBACK_S
             )
         except urllib.error.HTTPError as erreur:
             return Response(erreur.read(), erreur.code, media_type=erreur.headers.get_content_type())
@@ -379,21 +386,9 @@ def creer_app(
         if request.query_params.get("format") != "mp4":
             return StreamingResponse(morceaux(), media_type=type_)
         mp4 = b"".join(relecture.video_seule(morceaux()))
-        try:
-            bornes = relecture.plage(request.headers.get("range"), len(mp4))
-        except relecture.PlageInsatisfaisable:
-            return Response(
-                status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE, headers={"Content-Range": f"bytes */{len(mp4)}"}
-            )
-        if bornes is None:
-            return Response(mp4, media_type=type_, headers={"Accept-Ranges": "bytes"})
-        debut, fin = bornes
-        return Response(
-            mp4[debut:fin],
-            status.HTTP_206_PARTIAL_CONTENT,
-            media_type=type_,
-            headers={"Accept-Ranges": "bytes", "Content-Range": f"bytes {debut}-{fin - 1}/{len(mp4)}"},
-        )
+        code, entetes, corps = relecture.servir_par_plages(mp4, request.headers.get("range"))
+        sans_corps = code == status.HTTP_416_RANGE_NOT_SATISFIABLE
+        return Response(corps, code, entetes, media_type=None if sans_corps else type_)
 
     @app.get("/api/espace-enregistrements", dependencies=[Depends(administrateur_connecte)])
     def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:
@@ -465,8 +460,7 @@ def _routes_cameras(
         pas l'ajout."""
         with _erreurs_cameras():
             creee = cameras.creer(base, nouvelle, racine_enregistrements)
-        calage.verifier(creee.id)
-        return cameras.lire(base, creee.id, racine_enregistrements)
+        return _verifiee_puis_relue(calage, base, creee.id, racine_enregistrements)
 
     @routes.get("/{id_camera}")
     def lire(id_camera: int, base: Base) -> CameraLue:
@@ -719,11 +713,16 @@ def _routes_essai(
 
         with _sans_apercu_404():
             creee = apercus.ajouter(creer)
-        # Comme l'ajout par URL : vérifiée avant de répondre, sans bloquer l'ajout.
-        calage.verifier(creee.id)
-        return cameras.lire(base, creee.id, racine_enregistrements)
+        # Comme l'ajout par URL.
+        return _verifiee_puis_relue(calage, base, creee.id, racine_enregistrements)
 
     return routes
+
+
+def _verifiee_puis_relue(calage: Calage, base: Session, id_camera: int, racine_enregistrements: Path) -> CameraLue:
+    """Vérifie l'Horloge d'une Caméra qui vient d'être ajoutée (un échec n'empêche pas l'ajout), puis la relit."""
+    calage.verifier(id_camera)
+    return cameras.lire(base, id_camera, racine_enregistrements)
 
 
 def _deja_configuree(camera: CameraCorrespondante) -> JSONResponse:

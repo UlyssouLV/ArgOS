@@ -190,7 +190,7 @@ Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `
 
 ## Production (canal) {#production-canal}
 
-Canal d’images du Site publié par une GitHub Release (`vX.Y.Z`) : même digest que le Staging au moment de la promotion. Les Sites Ubuntu « vrais » suivent ce semver.
+Canal d’images du Site sous l’étiquette semver (`X.Y.Z`) : même digest que le Staging au moment de la promotion manuelle (workflow **Promouvoir images vers Release**). Les Sites Ubuntu « vrais » suivent ce semver, pas `:staging`.
 
 À éviter : branche production, prod git.
 

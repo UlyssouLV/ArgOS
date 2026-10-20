@@ -63,6 +63,15 @@ def test_temps_en_strate_10_sert_l_horloge_du_serveur(faux_temps):
     assert etat.heure is not None
 
 
+def test_temps_qui_suit_une_source_en_strate_9_n_est_pas_le_repli(faux_temps):
+    # Strate 10 aussi, mais l'identifiant de référence est la source amont : seul 127.127.1.1 dit le repli.
+    port = faux_temps(strate=10, reference=socket.inet_aton("192.0.2.10"))
+
+    etat = serveur_de_temps.interroger("127.0.0.1", port)
+
+    assert (etat.source_utilisee, etat.reference) == ("ntp", "192.0.2.10")
+
+
 def test_temps_pas_encore_synchronise(faux_temps):
     # Indicateur de seconde intercalaire 3 : horloge non synchronisée.
     etat = serveur_de_temps.interroger("127.0.0.1", faux_temps(strate=0, octet_0=0xE4))

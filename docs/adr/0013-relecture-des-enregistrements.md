@@ -22,7 +22,7 @@ L’enregistrement continu (ADR 0011) et le suivi stockage (ADR 0012) laissent l
 - Les segments **encore ouverts** (écriture en cours) sont exclus de la relecture. Le volume ne marque pas la fermeture : l'API tient le dernier Segment pour ouvert tant que l'Enregistrement est ON et qu'il a été écrit il y a moins de 120 s (2 × `recordSegmentDuration`, même seuil que l'état « en erreur » de l'Enregistrement). Un Segment bloqué au-delà serait proposé ; un Segment tout juste fermé peut rester caché jusqu'à 2 min.
 - La timeline se rafraîchit toutes les 10 s : les Segments fermés depuis s'y ajoutent, et l'enchaînement attend le suivant au lieu de s'arrêter au dernier connu.
 - Pas de téléchargement / export dans cette décision (Plus tard).
-- Le MP4 de relecture traverse l'API (0.9.0) : un flux de plus par lecteur ouvert, sans mise en mémoire au-delà du `moov`. Pas d'audio en relecture tant qu'une fonctionnalité son n'est pas décidée.
+- Le MP4 de relecture traverse l'API (0.9.0) : un flux de plus par lecteur ouvert ; en `format=mp4`, le MP4 vidéo seule du Segment est assemblé en mémoire à chaque requête de plage (#143). Pas d'audio en relecture tant qu'une fonctionnalité son n'est pas décidée.
 - Vitesses de lecture ×1…×16 côté lecteur web ; ×32 hors scope.
 - `/get` ne gère pas les plages d'octets (`Accept-Ranges: none`, réponse en flux) ; l'API les sert sur le MP4 assemblé (#143), pour Safari, pas pour le seek : le lecteur relit depuis `start` ou charge le Segment entier. Cohérent avec « clic = début de Segment » ; à revoir avec le seek précis (1.0.0).
 - Comme le Live, toute session valide relit tout chemin du pont, et un conteneur compromis du réseau Compose joint `9996` sans session (ADR 0006). Ne jamais publier `9996` (`docs/securite.md`).

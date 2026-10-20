@@ -28,6 +28,8 @@ CAPACITES = (
 # Secondes entre l'époque NTP (1900) et l'époque Unix (1970).
 EPOQUE_NTP = 2_208_988_800
 STRATE_DU_REPLI = 10
+# Identifiant de référence de chrony en `local` : ce que l'API lit pour dire « horloge du serveur ».
+REFERENCE_DU_REPLI = socket.inet_aton("127.127.1.1")
 ECART_MAX_S = 1.0
 DELAI_S = 60
 
@@ -117,7 +119,7 @@ def test_source_injoignable_temps_sert_l_horloge_du_serveur(lancer):
 
     reponse = attendre_reponse(port)
 
-    assert reponse.strate == STRATE_DU_REPLI
+    assert (reponse.strate, reponse.reference) == (STRATE_DU_REPLI, REFERENCE_DU_REPLI)
     assert abs(reponse.heure - time.time()) < ECART_MAX_S
 
 

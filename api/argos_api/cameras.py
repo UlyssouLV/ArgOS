@@ -29,6 +29,8 @@ LONGUEUR_MOT_DE_PASSE_SUR = 12
 
 Etat = Literal["unknown", "online", "offline"]
 EtatEnregistrement = Literal["enregistre", "a_l_arret", "en_erreur"]
+# Dernière vérification de l'Horloge (docs/adr/0014-serveur-de-temps-du-site.md).
+EtatHorloge = Literal["calee", "ecart", "recalee", "sans_onvif", "echec"]
 # Au-delà de 2 × recordSegmentDuration (1 m) : l'écriture a stagné alors que l'enregistrement est ON.
 AGE_MAX_DERNIER_SEGMENT_S = 120.0
 
@@ -577,6 +579,42 @@ def lire_horloge(base: Session, id_camera: int, maintenant: Callable[[], datetim
 
 def ids_actives(base: Session) -> list[int]:
     return list(base.scalars(select(Camera.id).where(Camera.active).order_by(Camera.id)))
+
+
+class HorlogeVerifiee(BaseModel):
+    """Une ligne du tableau des Caméras de l'Heure du Site ; `None` : jamais vérifiée."""
+
+    id: int
+    nom: str
+    etat: EtatHorloge | None
+    # Mesuré à la dernière vérification (positif : la caméra avance) ; `None` sans Horloge lue.
+    ecart_s: float | None
+    verifiee_le: datetime | None
+
+
+def horloges_verifiees(base: Session) -> list[HorlogeVerifiee]:
+    """Dernière vérification de l'Horloge de chaque Caméra active."""
+    return [
+        HorlogeVerifiee(
+            id=camera.id,
+            nom=camera.nom,
+            etat=camera.horloge_etat,
+            ecart_s=camera.horloge_ecart_s,
+            verifiee_le=camera.horloge_verifiee_le,
+        )
+        for camera in base.scalars(select(Camera).where(Camera.active).order_by(Camera.id))
+    ]
+
+
+def retenir_horloge(
+    base: Session, id_camera: int, etat: EtatHorloge, ecart_s: float | None, verifiee_le: datetime
+) -> None:
+    base.execute(
+        update(Camera)
+        .where(Camera.id == id_camera)
+        .values(horloge_etat=etat, horloge_ecart_s=ecart_s, horloge_verifiee_le=verifiee_le)
+    )
+    base.commit()
 
 
 def _par_onvif[T](
