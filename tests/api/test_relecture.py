@@ -81,3 +81,29 @@ def test_un_segment_ferme_relu_par_une_session_est_refuse_sans_elle(connecte, se
 
     with client_du_site() as sans_session:
         assert sans_session.get(url).status_code == 401
+
+
+def test_un_segment_ferme_se_relit_par_plages_d_octets_comme_safari(connecte, segment_ferme):
+    """Safari ouvre la `<video>` par `Range: bytes=0-1` et refuse tout sauf un `206` (#143)."""
+    chemin, segment = segment_ferme(4)
+    url = url_relecture(chemin, segment["debut"], max(_duree_s(segment), 1))
+
+    entier = connecte.get(url)
+    assert entier.status_code == 200, entier.text
+    assert entier.headers["accept-ranges"] == "bytes"
+    assert int(entier.headers["content-length"]) == len(entier.content)
+    assert gestionnaires(entier.content) == [b"vide"]
+    taille = len(entier.content)
+
+    debut = connecte.get(url, headers={"Range": "bytes=0-1"})
+    assert debut.status_code == 206
+    assert debut.headers["content-range"] == f"bytes 0-1/{taille}"
+    assert debut.content == entier.content[:2]
+
+    milieu = connecte.get(url, headers={"Range": f"bytes={taille // 2}-{taille // 2 + 99}"})
+    assert milieu.status_code == 206
+    assert milieu.content == entier.content[taille // 2 : taille // 2 + 100]
+
+    hors = connecte.get(url, headers={"Range": f"bytes={taille}-"})
+    assert hors.status_code == 416
+    assert hors.headers["content-range"] == f"bytes */{taille}"

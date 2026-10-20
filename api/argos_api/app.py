@@ -360,7 +360,8 @@ def creer_app(
     def relire(request: Request) -> Response:
         """Relecture (ADR 0013), relayée par nginx sous /flux/relecture/get : `/get` du serveur playback, mêmes
         paramètres, réponse en flux. En `format=mp4`, vidéo seule : Safari refuse un MP4 avec la piste audio
-        PCM d'une caméra (bug #141)."""
+        PCM d'une caméra (bug #141) ; assemblé, de taille connue, servi par plages d'octets : Safari ouvre la
+        `<video>` par `Range: bytes=0-1` et ne lit qu'un `206` (#143)."""
         try:
             reponse = urllib.request.urlopen(
                 f"{configuration.url_playback_mediamtx}/get?{request.url.query}", timeout=DELAI_RELECTURE_S
@@ -374,8 +375,25 @@ def creer_app(
             with reponse:
                 yield from iter(lambda: reponse.read1(TAILLE_MORCEAU_RELECTURE), b"")
 
-        corps = relecture.video_seule(morceaux()) if request.query_params.get("format") == "mp4" else morceaux()
-        return StreamingResponse(corps, media_type=reponse.headers.get_content_type())
+        type_ = reponse.headers.get_content_type()
+        if request.query_params.get("format") != "mp4":
+            return StreamingResponse(morceaux(), media_type=type_)
+        mp4 = b"".join(relecture.video_seule(morceaux()))
+        try:
+            bornes = relecture.plage(request.headers.get("range"), len(mp4))
+        except relecture.PlageInsatisfaisable:
+            return Response(
+                status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE, headers={"Content-Range": f"bytes */{len(mp4)}"}
+            )
+        if bornes is None:
+            return Response(mp4, media_type=type_, headers={"Accept-Ranges": "bytes"})
+        debut, fin = bornes
+        return Response(
+            mp4[debut:fin],
+            status.HTTP_206_PARTIAL_CONTENT,
+            media_type=type_,
+            headers={"Accept-Ranges": "bytes", "Content-Range": f"bytes {debut}-{fin - 1}/{len(mp4)}"},
+        )
 
     @app.get("/api/espace-enregistrements", dependencies=[Depends(administrateur_connecte)])
     def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:

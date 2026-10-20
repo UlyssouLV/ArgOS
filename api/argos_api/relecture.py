@@ -5,14 +5,44 @@ piste audio PCM (`ipcm`) fait refuser le fichier par Safari : seules les pistes 
 réencodage. Les octets audio restent dans `mdat`, plus désignés par aucune piste ; les tables de morceaux (`stco`,
 `co64`) des pistes vidéo suivent le `moov` raccourci. Aucun autre octet n'est touché, et un MP4 sans piste à
 retirer (ou sans piste vidéo) passe tel quel. Sans dépendance hors stdlib.
+
+Safari ouvre une `<video>` par `Range: bytes=0-1` et refuse tout sauf un `206` (#143) : `plage` lit cet en-tête.
 """
 
+import re
 import struct
 from collections.abc import Iterable, Iterator
 
 # Boîtes qui ne contiennent que des boîtes, de `trak` jusqu'aux tables de morceaux.
 CONTENEURS = {b"trak", b"mdia", b"minf", b"stbl"}
 GESTIONNAIRE_VIDEO = b"vide"
+# Une seule plage, `a-b`, `a-` ou `-n` (RFC 9110, 14.1.2) ; plusieurs plages font servir le fichier entier.
+PLAGE = re.compile(r"\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*")
+
+
+class PlageInsatisfaisable(ValueError):
+    """La plage demandée commence après la fin du fichier : `416`."""
+
+
+def plage(entete: str | None, taille: int) -> tuple[int, int] | None:
+    """Bornes [début, fin[ de l'en-tête `Range` sur `taille` octets ; None s'il est absent ou illisible (`200`)."""
+    correspondance = PLAGE.fullmatch(entete or "")
+    if correspondance is None:
+        return None
+    premier, dernier = correspondance.groups()
+    if not premier:
+        if not dernier:
+            return None
+        suffixe = int(dernier)
+        if suffixe == 0 or taille == 0:
+            raise PlageInsatisfaisable
+        return max(taille - suffixe, 0), taille
+    debut = int(premier)
+    if dernier and int(dernier) < debut:
+        return None
+    if debut >= taille:
+        raise PlageInsatisfaisable
+    return debut, min(int(dernier) + 1, taille) if dernier else taille
 
 
 def video_seule(morceaux: Iterable[bytes]) -> Iterator[bytes]:
