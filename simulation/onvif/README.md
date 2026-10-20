@@ -30,6 +30,8 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_SILENCE_APRES_ENCODAGE_S` (vide par défaut : jamais) rend la caméra muette ce nombre de secondes après chaque changement d'Encodage accepté (médias 1 et 2) : elle ferme chaque connexion sans répondre, sur tous ses services, comme une caméra qui relance son encodeur. C'est le cas « la caméra n'a pas répondu après l'envoi ». Pour la Caméra simulée 2, compose le lit dans `ONVIF_SILENCE_APRES_ENCODAGE_S_2`.
 
+`ONVIF_PORT_NTP` (`123` par défaut) est le port où la caméra joint ses serveurs NTP. Pour la Caméra simulée 2, compose le lit dans `ONVIF_PORT_NTP_2` : un port où rien ne répond donne une caméra calée sur le Site dont l'horloge garde son avance, le cas « écart » de la vérification des Caméras.
+
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
 ## Horloge et serveur de temps

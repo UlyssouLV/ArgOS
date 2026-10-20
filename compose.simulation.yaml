@@ -117,6 +117,9 @@ services:
       # Muette ce nombre de secondes après un changement d'Encodage (vide : jamais) ; les tests le règlent pour une
       # caméra qui ne répond plus après l'envoi.
       ONVIF_SILENCE_APRES_ENCODAGE_S: ${ONVIF_SILENCE_APRES_ENCODAGE_S_2:-}
+      # Port où elle joint ses serveurs NTP (vide : 123) ; les tests le détournent pour une caméra calée sur le Site
+      # dont l'horloge ne se corrige pas.
+      ONVIF_PORT_NTP: ${ONVIF_PORT_NTP_2:-}
       # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
       ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 

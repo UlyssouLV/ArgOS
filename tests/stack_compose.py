@@ -162,6 +162,13 @@ def attendre_api() -> None:
     attendre(f"{URL_SITE}/api/docs")
 
 
+def api_verifiant_les_cameras_toutes_les(secondes: float | None) -> None:
+    """Recrée `api` avec cet intervalle de vérification des Caméras ; `None` : celui de `.env` (une heure par défaut)."""
+    env = {"ARGOS_VERIFICATION_INTERVALLE_S": str(secondes)} if secondes is not None else None
+    compose("up", "-d", "--no-deps", "--force-recreate", "--wait", "api", env=env)
+    attendre_api()
+
+
 def redemarrer_api() -> None:
     compose("restart", "api")
     attendre_api()
@@ -279,6 +286,13 @@ def camera_simulee_2_sans_media_2() -> None:
     `remettre_onvif_en_usine` lui rend ensuite le média 2.
     """
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_SERVICES_2": "image"})
+
+
+def camera_simulee_2_sans_reponse_ntp() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », qui joint ses serveurs NTP sur un port où rien
+    ne répond : calée, elle garde son avance. `remettre_onvif_en_usine` lui rend le port 123.
+    """
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_PORT_NTP_2": "9"})
 
 
 def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:

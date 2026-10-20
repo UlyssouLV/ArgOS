@@ -575,6 +575,17 @@ def caler(
     return horloge
 
 
+def lire_horloge(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
+    """Horloge de la caméra d'une Caméra active, lue par ONVIF ; retient le contact.
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    horloge, _ = _par_onvif(
+        base, id_camera, maintenant, lambda url, retenu, _codec: onvif.lire_horloge(url, retenu, maintenant)
+    )
+    return horloge
+
+
 def ids_actives(base: Session) -> list[int]:
     return list(base.scalars(select(Camera.id).where(Camera.active).order_by(Camera.id)))
 

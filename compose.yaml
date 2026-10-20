@@ -63,6 +63,8 @@ services:
       ARGOS_DETECTION_CAMERAS_PORTS: ${ARGOS_DETECTION_CAMERAS_PORTS:-554,8554}
       # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes : voir .env.example.
       ARGOS_APERCU_EXPIRATION_S: ${ARGOS_APERCU_EXPIRATION_S:-120}
+      # Vérification de l'Horloge des Caméras actives, en secondes : voir .env.example.
+      ARGOS_VERIFICATION_INTERVALLE_S: ${ARGOS_VERIFICATION_INTERVALLE_S:-3600}
       # IP du Site sur le réseau local : adresse du Serveur de temps annoncée aux Caméras quand temps n'a pas d'IP
       # sur le réseau des caméras (il publie alors l'UDP 123 sur l'hôte).
       ARGOS_IPS_DU_SITE: ${MTX_WEBRTCADDITIONALHOSTS:-}

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, false
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
@@ -59,6 +59,11 @@ class Camera(Base):
     enregistrement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Dernier débit max d'Encodage connu (kbit/s, ONVIF) : repli du Débit d'écriture sans segments récents.
     debit_encodage_kbit_s: Mapped[int | None] = mapped_column(Integer)
+    # Dernière vérification de son Horloge (docs/adr/0014-serveur-de-temps-du-site.md) : état (`calee`, `ecart`,
+    # `recalee`, `sans_onvif`, `echec`), écart mesuré en secondes (positif : la caméra avance) et date ; `None` : jamais.
+    horloge_etat: Mapped[str | None] = mapped_column(String(16))
+    horloge_ecart_s: Mapped[float | None] = mapped_column(Float)
+    horloge_verifiee_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ReglagesSite(Base):

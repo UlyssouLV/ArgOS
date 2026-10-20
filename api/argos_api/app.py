@@ -35,7 +35,7 @@ from argos_api import (
 )
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
-from argos_api.calage import Calage
+from argos_api.calage import Calage, HorlogeVerifiee
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.debits_ecriture import DebitsEcriture
@@ -215,6 +215,7 @@ def creer_app(
             BoucleDeFond("surveillance-cameras", surveillance.sonder_tout, configuration.intervalle_sonde),
             BoucleDeFond("pont-mediamtx", reconcilier, INTERVALLE_PONT_S),
             BoucleDeFond("apercus", apercus.entretenir, INTERVALLE_APERCU_S),
+            BoucleDeFond("verification-cameras", calage.verifier_toutes, configuration.intervalle_verification),
         ]
         for boucle in boucles:
             boucle.demarrer()
@@ -323,6 +324,17 @@ def creer_app(
         calage.caler_toutes()
         return heure_du_site_lue(reglage)
 
+    @app.get("/api/heure-du-site/cameras", dependencies=[Depends(administrateur_connecte)])
+    def lire_horloges_des_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
+        """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande)."""
+        return calage.tableau(base)
+
+    @app.post("/api/heure-du-site/verification", dependencies=[Depends(administrateur_connecte)])
+    def verifier_les_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
+        """« Vérifier maintenant » : vérifie toutes les Caméras actives, puis rend le tableau."""
+        calage.verifier_toutes()
+        return calage.tableau(base)
+
     @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
     def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
         """Réglages globaux du Site (Conservation et Seuil de place disque, ADR 0012)."""
@@ -403,10 +415,11 @@ def _routes_cameras(
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
-        """Cale la Caméra sur le Serveur de temps du Site avant de répondre ; un échec n'empêche pas l'ajout."""
+        """Vérifie la Caméra (calée sur le Serveur de temps du Site au besoin) avant de répondre ; un échec n'empêche
+        pas l'ajout."""
         with _erreurs_cameras():
             creee = cameras.creer(base, nouvelle, racine_enregistrements)
-        calage.caler(creee.id)
+        calage.verifier(creee.id)
         return cameras.lire(base, creee.id, racine_enregistrements)
 
     @routes.get("/{id_camera}")
@@ -670,8 +683,8 @@ def _routes_essai(
 
         with _sans_apercu_404():
             creee = apercus.ajouter(creer)
-        # Comme l'ajout par URL : calée avant de répondre, sans bloquer l'ajout.
-        calage.caler(creee.id)
+        # Comme l'ajout par URL : vérifiée avant de répondre, sans bloquer l'ajout.
+        calage.verifier(creee.id)
         return cameras.lire(base, creee.id, racine_enregistrements)
 
     return routes

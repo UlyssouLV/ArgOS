@@ -53,3 +53,55 @@ export function texteHeure(dateUtc: Date | null, fuseau: string): string {
   if (dateUtc === null) return "inconnue";
   return dateUtc.toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "full", timeStyle: "medium" });
 }
+
+/** Dernière vérification de l'Horloge d'une Caméra active ; `etat` `null` : jamais vérifiée. */
+export type EtatHorloge = "calee" | "ecart" | "recalee" | "sans_onvif" | "echec";
+
+export type HorlogeVerifiee = {
+  id: number;
+  nom: string;
+  etat: EtatHorloge | null;
+  ecart_s: number | null;
+  verifiee_le: string | null;
+};
+
+export async function lireHorlogesDesCameras(): Promise<HorlogeVerifiee[]> {
+  const reponse = await appeler("/api/heure-du-site/cameras");
+  if (!reponse.ok) throw new Error(`Lecture des Caméras : ${reponse.status}`);
+  return reponse.json();
+}
+
+/** « Vérifier maintenant » : rend le tableau une fois toutes les Caméras actives vérifiées. */
+export async function verifierLesCameras(): Promise<HorlogeVerifiee[]> {
+  const reponse = await appeler("/api/heure-du-site/verification", { method: "POST" });
+  if (!reponse.ok) throw new Error(`Vérification des Caméras : ${reponse.status}`);
+  return reponse.json();
+}
+
+export function libelleEtatHorloge(etat: EtatHorloge | null): string {
+  switch (etat) {
+    case "calee":
+      return "calée";
+    case "ecart":
+      return "écart";
+    case "recalee":
+      return "recalée";
+    case "sans_onvif":
+      return "sans ONVIF";
+    case "echec":
+      return "échec";
+    default:
+      return "jamais vérifiée";
+  }
+}
+
+/** Écart mesuré, signé (positif : la Caméra avance) ; `—` sans Horloge lue. */
+export function texteEcart(ecartS: number | null): string {
+  if (ecartS === null) return "—";
+  const nombre = ecartS.toLocaleString("fr-FR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    signDisplay: "always",
+  });
+  return `${nombre} s`;
+}

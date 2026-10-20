@@ -3,17 +3,22 @@ import { Link } from "react-router";
 
 import { messageEchec } from "../cameras";
 import {
+  libelleEtatHorloge,
   lireHeureDuSite,
+  lireHorlogesDesCameras,
   modifierHeureDuSite,
   MOTIF_SERVEUR_NTP,
+  texteEcart,
   texteHeure,
   texteSourceUtilisee,
+  verifierLesCameras,
   type HeureDuSite as Heure,
+  type HorlogeVerifiee,
   type Source,
 } from "../heureSite";
 import { lireFuseaux } from "../reglages";
 
-// Relecture de ce que sert le Serveur de temps du Site (source utilisée, repli).
+// Relecture de ce que sert le Serveur de temps du Site (source utilisée, repli) et du tableau des Caméras.
 const RAFRAICHISSEMENT_MS = 10_000;
 
 /** Page Heure du Site de l'Administration (docs/adr/0014-serveur-de-temps-du-site.md). */
@@ -29,6 +34,8 @@ export function HeureDuSite() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
+  const [horloges, setHorloges] = useState<HorlogeVerifiee[] | null>(null);
+  const [verificationEnCours, setVerificationEnCours] = useState(false);
 
   const montrer = useCallback((lue: Heure, saisie: boolean) => {
     setHeure(lue);
@@ -43,7 +50,9 @@ export function HeureDuSite() {
   const rafraichir = useCallback(
     async (saisie: boolean) => {
       try {
-        montrer(await lireHeureDuSite(), saisie);
+        const [lue, cameras] = await Promise.all([lireHeureDuSite(), lireHorlogesDesCameras()]);
+        montrer(lue, saisie);
+        setHorloges(cameras);
         setErreur(null);
       } catch (e) {
         setErreur(messageEchec(e));
@@ -79,6 +88,18 @@ export function HeureDuSite() {
       setMessage(null);
     } finally {
       setEnCours(false);
+    }
+  }
+
+  async function verifierMaintenant() {
+    setVerificationEnCours(true);
+    try {
+      setHorloges(await verifierLesCameras());
+      setErreur(null);
+    } catch (e) {
+      setErreur(messageEchec(e));
+    } finally {
+      setVerificationEnCours(false);
     }
   }
 
@@ -185,6 +206,45 @@ export function HeureDuSite() {
           Enregistrer
         </button>
       </form>
+      <section className="horloges-cameras" aria-labelledby="titre-horloges-cameras">
+        <h2 id="titre-horloges-cameras">Caméras</h2>
+        <p className="aide">
+          Vérifiées toutes les heures : une Caméra qui ne vise plus le Serveur de temps du Site ou n’a plus le fuseau
+          du Site est recalée ; un écart de plus de 2 s sur une Caméra calée est signalé.
+        </p>
+        <button type="button" disabled={verificationEnCours} onClick={() => void verifierMaintenant()}>
+          {verificationEnCours ? "Vérification…" : "Vérifier maintenant"}
+        </button>
+        {horloges && (
+          <table className="resume-cameras" aria-labelledby="titre-horloges-cameras">
+            <thead>
+              <tr>
+                <th scope="col">Caméra</th>
+                <th scope="col">État</th>
+                <th scope="col">Écart mesuré</th>
+                <th scope="col">Dernière vérification</th>
+              </tr>
+            </thead>
+            <tbody>
+              {horloges.map((camera) => (
+                <tr key={camera.id} className={camera.etat ? `horloge-${camera.etat}` : undefined}>
+                  <td>{camera.nom}</td>
+                  <td>{libelleEtatHorloge(camera.etat)}</td>
+                  <td>{texteEcart(camera.ecart_s)}</td>
+                  <td>
+                    {camera.verifiee_le === null
+                      ? "—"
+                      : new Date(camera.verifiee_le).toLocaleString("fr-FR", {
+                          dateStyle: "short",
+                          timeStyle: "medium",
+                        })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
     </section>
   );
 }

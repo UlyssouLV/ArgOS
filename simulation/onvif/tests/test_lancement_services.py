@@ -58,3 +58,23 @@ def test_date_incrustee_ecrite_dans_le_fichier_relu_par_ffmpeg(tmp_path):
     lue = datetime.strptime(seconde, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
     assert abs((lue - attendue).total_seconds()) <= 2
     assert seconde != premiere
+
+
+def test_serveurs_ntp_joints_sur_le_port_choisi(serveur_ntp):
+    """`ONVIF_PORT_NTP` : port des serveurs NTP joints ; ailleurs que là où ils répondent, l'horloge reste décalée."""
+    port = _port_libre()
+    with Lancement({"ONVIF_PORT": str(port), "ONVIF_PORT_NTP": str(serveur_ntp.port)}):
+        camera = Camera(f"http://127.0.0.1:{port}", None)
+        camera.appeler(
+            "<tds:SetNTP><tds:FromDHCP>false</tds:FromDHCP><tds:NTPManual><tt:Type>IPv4</tt:Type>"
+            "<tt:IPv4Address>127.0.0.1</tt:IPv4Address></tds:NTPManual></tds:SetNTP>"
+        )
+        camera.appeler(
+            "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
+            "<tds:DaylightSavings>false</tds:DaylightSavings></tds:SetSystemDateAndTime>"
+        )
+        fin = time.monotonic() + 5
+        while serveur_ntp.requetes == 0 and time.monotonic() < fin:
+            time.sleep(0.05)
+
+    assert serveur_ntp.requetes >= 1

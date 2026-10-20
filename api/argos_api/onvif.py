@@ -35,7 +35,7 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
 - Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
   caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Le calage
   (docs/adr/0014-serveur-de-temps-du-site.md) règle le serveur NTP manuel (jamais `FromDHCP`) sur le Serveur de
-  temps du Site, puis le mode NTP au fuseau du Site.
+  temps du Site, puis le mode NTP au fuseau du Site ; sa vérification relit l'Horloge seule (service appareil).
 - Modification : chaque `Set…` part seul (un refus n'empêche pas les autres ; un paramètre d'image par
   `SetImagingSettings`, le niveau avec son mode), puis la caméra est relue une fois : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
@@ -441,6 +441,13 @@ def mettre_a_l_heure(
         return camera.mettre_a_l_heure(maintenant), contact
 
 
+def lire_horloge(url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]) -> tuple[Horloge, Contact]:
+    """Horloge lue sur la caméra (service appareil seul), et contact qui a répondu. Lève `ErreurOnvif`."""
+    camera, contact = _joindre(url_rtsp, retenu)
+    with _erreurs_onvif():
+        return camera.lire_horloge(maintenant), contact
+
+
 def caler(
     url_rtsp: str, retenu: Retenu, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]
 ) -> tuple[Horloge, Contact]:
@@ -841,6 +848,10 @@ class _Camera:
         self._connecter()
         # Un refus se voit à l'écart relu, inchangé.
         self._regler_horloge(heure_du_site=maintenant())
+        return self._horloge(maintenant)
+
+    def lire_horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
+        self._connecter_appareil()
         return self._horloge(maintenant)
 
     def caler(self, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]) -> Horloge:

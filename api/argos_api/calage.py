@@ -1,23 +1,47 @@
-"""Calage des Caméras sur le Serveur de temps du Site (docs/adr/0014-serveur-de-temps-du-site.md).
+"""Calage et vérification des Caméras sur le Serveur de temps du Site (docs/adr/0014-serveur-de-temps-du-site.md).
 
-Chaque Caméra active est calée par ONVIF sans rien demander, même si elle visait un autre serveur : à son ajout (avant
-la réponse), et toutes en fond à chaque changement de l'Heure du Site. Un échec (pas d'ONVIF, ONVIF en clair non
-accepté, caméra injoignable) est journalisé, jamais remonté : il ne bloque ni l'ajout ni les autres Caméras.
+Chaque Caméra active est calée par ONVIF sans rien demander, même si elle visait un autre serveur : toutes en fond à
+chaque changement de l'Heure du Site. Elle est vérifiée à son ajout (avant la réponse), toutes les heures et sur
+« Vérifier maintenant » : son Horloge est relue, et recalée seulement si elle n'est plus calée (mode NTP, Serveur de
+temps du Site, fuseau du Site) ; une Caméra calée qui s'écarte de plus de `ECART_SIGNALE_S` est signalée, sans rien
+de plus. Le résultat de chaque Caméra (état, écart mesuré, date) est retenu. Un échec (pas d'ONVIF, ONVIF en clair non
+accepté, caméra injoignable) est retenu et journalisé, jamais remonté : il ne bloque ni l'ajout ni les autres Caméras.
 """
 
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from typing import Literal
 
+from pydantic import BaseModel
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from argos_api import cameras, fuseaux, heure_site, onvif
+from argos_api.modeles import Camera
 
-# Caméras calées en même temps au changement de l'Heure du Site : une caméra muette n'attend pas les autres.
+# Caméras calées ou vérifiées en même temps : une caméra muette n'attend pas les autres.
 CALAGES_SIMULTANES = 4
+# Écart (secondes) au-delà duquel une Caméra pourtant calée est signalée.
+ECART_SIGNALE_S = 2
+# Une Caméra sans ONVIF, ou dont l'ONVIF en clair n'est pas accordé, se règle à la main.
+CODES_SANS_ONVIF = ("sans_onvif", "en_clair_non_accepte")
+
+EtatHorloge = Literal["calee", "ecart", "recalee", "sans_onvif", "echec"]
 
 journal = logging.getLogger("argos_api.calage")
+
+
+class HorlogeVerifiee(BaseModel):
+    """Une ligne du tableau des Caméras de l'Heure du Site ; `None` : jamais vérifiée."""
+
+    id: int
+    nom: str
+    etat: EtatHorloge | None
+    # Mesuré à la dernière vérification (positif : la caméra avance) ; `None` sans Horloge lue.
+    ecart_s: float | None
+    verifiee_le: datetime | None
 
 
 class Calage:
@@ -36,8 +60,45 @@ class Calage:
         self._fond = ThreadPoolExecutor(CALAGES_SIMULTANES, thread_name_prefix="calage")
 
     def caler(self, id_camera: int) -> None:
-        """Cale une Caméra active, sans jamais lever."""
-        if self._adresse is None:
+        """Cale une Caméra active sans la relire d'abord, sans jamais lever."""
+        self._traiter(id_camera, forcer=True)
+
+    def verifier(self, id_camera: int) -> None:
+        """Relit l'Horloge d'une Caméra active et la recale si elle n'est plus calée, sans jamais lever."""
+        self._traiter(id_camera, forcer=False)
+
+    def caler_toutes(self) -> None:
+        """Cale en fond toutes les Caméras actives ; rend la main aussitôt."""
+        for id_camera in self._actives():
+            self._fond.submit(self.caler, id_camera)
+
+    def verifier_toutes(self) -> None:
+        """Vérifie toutes les Caméras actives, `CALAGES_SIMULTANES` à la fois ; rend la main quand toutes le sont."""
+        list(self._fond.map(self.verifier, self._actives()))
+
+    def tableau(self, base: Session) -> list[HorlogeVerifiee]:
+        """Dernière vérification de chaque Caméra active."""
+        return [
+            HorlogeVerifiee(
+                id=camera.id,
+                nom=camera.nom,
+                etat=camera.horloge_etat,
+                ecart_s=camera.horloge_ecart_s,
+                verifiee_le=camera.horloge_verifiee_le,
+            )
+            for camera in base.scalars(select(Camera).where(Camera.active).order_by(Camera.id))
+        ]
+
+    def arreter(self) -> None:
+        self._fond.shutdown(wait=False, cancel_futures=True)
+
+    def _actives(self) -> list[int]:
+        with self._ouvrir_base() as base:
+            return cameras.ids_actives(base)
+
+    def _traiter(self, id_camera: int, forcer: bool) -> None:
+        adresse = self._adresse
+        if adresse is None:
             journal.warning(
                 "Calage : Caméra %s non calée, adresse du Serveur de temps du Site inconnue "
                 "(ARGOS_RESEAU_CAMERAS_TEMPS_IP ou MTX_WEBRTCADDITIONALHOSTS)",
@@ -47,22 +108,37 @@ class Calage:
         with self._ouvrir_base() as base:
             fuseau = heure_site.lire(base, self._fuseau_hote).fuseau
             try:
-                horloge = cameras.caler(base, id_camera, self._maintenant, self._adresse, fuseaux.posix(fuseau))
+                etat, horloge = self._caler_si_besoin(base, id_camera, adresse, fuseaux.posix(fuseau), forcer)
             except cameras.CameraIntrouvable:
                 return
             except onvif.ErreurOnvif as erreur:
-                journal.info("Calage : Caméra %s non calée (%s)", id_camera, erreur.code)
-                return
-        journal.info(
-            "Calage : Caméra %s calée sur %s, fuseau %s, écart %.1f s", id_camera, self._adresse, fuseau, horloge.ecart_s
+                journal.info("Calage : Caméra %s non vérifiée (%s)", id_camera, erreur.code)
+                etat, horloge = ("sans_onvif" if erreur.code in CODES_SANS_ONVIF else "echec"), None
+            self._retenir(base, id_camera, etat, horloge)
+        if horloge is not None:
+            journal.info(
+                "Calage : Caméra %s %s (Serveur de temps %s, fuseau %s, écart %.1f s)",
+                id_camera, etat, adresse, fuseau, horloge.ecart_s,
+            )
+
+    def _caler_si_besoin(
+        self, base: Session, id_camera: int, adresse: str, fuseau_posix: str, forcer: bool
+    ) -> tuple[EtatHorloge, onvif.Horloge]:
+        if not forcer:
+            horloge = cameras.lire_horloge(base, id_camera, self._maintenant)
+            if (horloge.mode, horloge.serveur_ntp, horloge.fuseau_posix) == ("ntp", adresse, fuseau_posix):
+                return ("ecart" if abs(horloge.ecart_s) > ECART_SIGNALE_S else "calee"), horloge
+        horloge = cameras.caler(base, id_camera, self._maintenant, adresse, fuseau_posix)
+        return "recalee", horloge
+
+    def _retenir(self, base: Session, id_camera: int, etat: EtatHorloge, horloge: onvif.Horloge | None) -> None:
+        base.execute(
+            update(Camera)
+            .where(Camera.id == id_camera)
+            .values(
+                horloge_etat=etat,
+                horloge_ecart_s=horloge.ecart_s if horloge is not None else None,
+                horloge_verifiee_le=self._maintenant(),
+            )
         )
-
-    def caler_toutes(self) -> None:
-        """Cale en fond toutes les Caméras actives ; rend la main aussitôt."""
-        with self._ouvrir_base() as base:
-            actives = cameras.ids_actives(base)
-        for id_camera in actives:
-            self._fond.submit(self.caler, id_camera)
-
-    def arreter(self) -> None:
-        self._fond.shutdown(wait=False, cancel_futures=True)
+        base.commit()

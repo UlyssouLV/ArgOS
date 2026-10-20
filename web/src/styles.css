@@ -171,6 +171,36 @@ input {
   font-size: 0.95rem;
 }
 
+.heure-du-site .horloges-cameras {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  justify-items: start;
+}
+
+.heure-du-site .horloges-cameras h2 {
+  margin: 0;
+}
+
+.heure-du-site .resume-cameras {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.heure-du-site .resume-cameras th,
+.heure-du-site .resume-cameras td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #d5d9de;
+}
+
+.heure-du-site .horloge-ecart td:nth-child(2),
+.heure-du-site .horloge-echec td:nth-child(2) {
+  color: #a3361f;
+  font-weight: 600;
+}
+
 .enregistrement-site .espace-volume {
   display: flex;
   flex-wrap: wrap;

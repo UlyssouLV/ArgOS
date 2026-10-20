@@ -1,6 +1,7 @@
 """Page Heure du Site de l'Administration, de bout en bout dans Chromium.
 
-Le réglage d'origine est remis tel quel en base (et transmis à `temps`) après chaque test qui le change.
+Le réglage d'origine est remis tel quel en base (et transmis à `temps`) après chaque test qui le change. Les Caméras
+du tableau sont créées par l'API, puis désactivées et supprimées.
 """
 
 import re
@@ -8,14 +9,16 @@ import re
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from stack_compose import compose
-from test_administration import administration, api  # noqa: F401 (fixtures)
+from stack_compose import compose, remettre_onvif_en_usine, url_camera_simulee
+from test_administration import administration, api, noms, unique  # noqa: F401 (fixtures)
 
 # Adresse de temps sur le réseau des Caméras simulées (compose.simulation.yaml).
 ADRESSE_TEMPS = "172.30.0.10"
 # temps relit son réglage toutes les 2 s ; la page relit l'état toutes les 10 s.
 DELAI_SOURCE_MS = 60_000
 COLONNES = ("heure_source", "heure_serveur_ntp", "fuseau")
+# Vérification de toutes les Caméras actives, une caméra muette comprise.
+DELAI_VERIFICATION_MS = 60_000
 
 
 def psql(requete: str) -> str:
@@ -102,3 +105,52 @@ def test_adresse_de_serveur_invalide_jamais_envoyee(heure_du_site: Page, api):
 
     assert reglage.get_by_label("Adresse du serveur NTP").evaluate("champ => !champ.validity.valid")
     assert "PATCH" not in envois
+
+
+# --- Tableau des Caméras ----------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def usine():
+    remettre_onvif_en_usine()
+    yield
+    remettre_onvif_en_usine()
+
+
+def colonnes(ligne: Locator) -> list[Locator]:
+    return [ligne.get_by_role("cell").nth(i) for i in range(4)]
+
+
+def test_tableau_des_cameras_et_verifier_maintenant(administration: Page, api, noms, usine):
+    calee_ailleurs, sans_onvif = noms("Heure"), noms("Heure")
+    for nom, numero in ((calee_ailleurs, 2), (sans_onvif, 1)):
+        reponse = api.post("/api/cameras", json={"nom": nom, "url_rtsp": url_camera_simulee(numero, unique("ui"))})
+        assert reponse.status_code == 201, reponse.text
+    administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
+    tableau = administration.get_by_role("table", name="Caméras")
+
+    # Vérifiées à l'ajout.
+    nom, etat, ecart, verifiee = colonnes(tableau.get_by_role("row").filter(has_text=sans_onvif))
+    expect(etat).to_have_text("sans ONVIF")
+    expect(ecart).to_have_text("—")
+    expect(verifiee).to_contain_text(re.compile(r"\d{2}:\d{2}:\d{2}"))
+    expect(colonnes(tableau.get_by_role("row").filter(has_text=calee_ailleurs))[1]).to_have_text(
+        re.compile("^(calée|écart|recalée)$")
+    )
+
+    # Réglée ailleurs entre-temps : la vérification la recale.
+    compose(
+        "exec", "-T", "api", "python", "-c",
+        "from argos_api import onvif; from datetime import datetime, UTC;"
+        "onvif.caler('rtsp://admin:argos-simulee@camera-simulee-2/', onvif.Retenu(), 'ntp.example.org', 'UTC0',"
+        " lambda: datetime.now(UTC))",
+    )
+    with administration.expect_request(
+        lambda r: r.method == "POST" and r.url.endswith("/api/heure-du-site/verification"), timeout=DELAI_VERIFICATION_MS
+    ):
+        administration.get_by_role("button", name="Vérifier maintenant").click()
+
+    _, etat, ecart, _ = colonnes(tableau.get_by_role("row").filter(has_text=calee_ailleurs))
+    expect(etat).to_have_text("recalée", timeout=DELAI_VERIFICATION_MS)
+    expect(ecart).to_have_text(re.compile(r"^[+−-]\d+,\d s$"))
+    expect(administration.get_by_role("button", name="Vérifier maintenant")).to_be_enabled()

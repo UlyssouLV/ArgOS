@@ -44,6 +44,8 @@ class Configuration(BaseSettings):
     # vide : la première IPv4 du Site (`ips_du_site`, IP du certificat serveur, 0.6.1), où temps publie l'UDP 123.
     temps_adresse_cameras: str = Field("", validation_alias="ARGOS_TEMPS_ADRESSE_CAMERAS")
     ips_du_site: str = Field("", validation_alias="ARGOS_IPS_DU_SITE")
+    # Vérification de l'Horloge de chaque Caméra active, en secondes (réglable pour les tests).
+    intervalle_verification: float = Field(3600, gt=0, validation_alias="ARGOS_VERIFICATION_INTERVALLE_S")
     # `/etc/localtime` de l'hôte, monté : fuseau du Site par défaut.
     localtime_hote: str = Field("/etc/localtime-hote", validation_alias="ARGOS_LOCALTIME_HOTE")
 

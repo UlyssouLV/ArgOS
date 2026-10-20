@@ -12,7 +12,8 @@ caméra ancienne), `ONVIF_SERVICES` (services en plus de l'appareil et du média
 `media2` ; aucun par défaut), `ONVIF_CHEMINS_RTSP` (chemin et requête de l'URL RTSP de chaque profil, séparés par des
 virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut), `ONVIF_SILENCE_APRES_ENCODAGE_S` (secondes
 pendant lesquelles la caméra ferme chaque connexion sans répondre après un changement d'Encodage accepté, comme une
-caméra qui relance son encodeur ; jamais par défaut), `ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
+caméra qui relance son encodeur ; jamais par défaut), `ONVIF_PORT_NTP` (port où la caméra joint ses serveurs NTP ;
+123 par défaut), `ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
 date incrustée dans son Flux, relu par ffmpeg : media/simulated/diffuser.sh ; aucun par défaut). HTTP et HTTPS
 servent la même caméra (même état). En mode NTP, la caméra interroge vraiment le serveur reçu par `SetNTP` et s'y cale. Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
 opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
@@ -1094,6 +1095,7 @@ def main() -> None:
         services,
         _liste("ONVIF_CHEMINS_RTSP") or CHEMINS_RTSP,
         float(os.environ.get("ONVIF_SILENCE_APRES_ENCODAGE_S") or 0),
+        int(os.environ.get("ONVIF_PORT_NTP") or PORT_NTP),
     )
     tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
     fils = []
