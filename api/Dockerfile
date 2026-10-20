@@ -16,6 +16,8 @@ COPY argos_api ./argos_api
 # Même uid que le pont (65532) : à la suppression d'une Caméra, rmtree peut effacer camera-<id>/.
 RUN groupadd --system --gid 65532 argos && useradd --system --no-create-home --uid 65532 --gid 65532 argos
 RUN mkdir -p /enregistrements && chown 65532:65532 /enregistrements
+# Point de montage du réglage de temps : un volume neuf en prend le propriétaire, l'API y écrit la source.
+RUN mkdir -p /temps && chown 65532:65532 /temps
 USER argos
 
 EXPOSE 8000

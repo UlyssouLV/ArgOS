@@ -6,7 +6,7 @@
 # Aucun port publié : on les regarde par le Live, une fois déclarées comme Caméras (media/simulated/README.md).
 # MAC et IP fixes, comme l'étiquette et le bail d'une vraie caméra : la Détection et l'essai les lisent.
 # Les Caméras simulées 2 et 4 répondent aussi en ONVIF (simulation/onvif/README.md) : leur Flux, réencodé, porte la
-# date et l'heure de leur horloge, qu'elles calent en NTP sur temps quand on le leur demande.
+# date et l'heure de leur horloge, qu'elles calent en NTP sur temps quand le Site les cale (Heure du Site).
 
 x-camera-simulee: &camera-simulee
   # MediaMTX et ffmpeg, plus une police pour incruster la date (media/simulated/Dockerfile).
@@ -158,6 +158,8 @@ services:
     environment:
       # Complète les sous-réseaux de .env avec celui des Caméras simulées.
       ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX: ${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX:+${ARGOS_DETECTION_CAMERAS_SOUS_RESEAUX},}172.30.0.0/24
+      # Les Caméras simulées sont calées sur temps, à son IP fixe sur leur réseau.
+      ARGOS_TEMPS_ADRESSE_CAMERAS: 172.30.0.10
 
 volumes:
   camera-simulee-2-onvif-certificat:

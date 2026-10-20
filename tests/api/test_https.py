@@ -106,11 +106,11 @@ def test_api_ne_recoit_que_le_certificat_presente_par_le_site():
     presente = compose("exec", "-T", "api", "cat", "/etc/argos/serveur.crt").stdout
 
     assert not any(m.get("Name", "").endswith("_autorite") for m in montages), montages
-    # Certificat du Site en lecture seule ; le volume d'enregistrement est RW (indicateur + purge, ADR 0011).
-    assert all(
-        not m["RW"] for m in montages if m.get("Destination") != "/enregistrements"
-    ), montages
-    assert any(m.get("Destination") == "/enregistrements" and m["RW"] for m in montages), montages
+    # Certificat du Site et fuseau de l'hôte en lecture seule ; RW : le volume d'enregistrement (indicateur + purge,
+    # ADR 0011) et celui où l'API écrit la source de temps (ADR 0014).
+    ecrits = {"/enregistrements", "/temps"}
+    assert all(not m["RW"] for m in montages if m.get("Destination") not in ecrits), montages
+    assert {m.get("Destination") for m in montages if m["RW"]} == ecrits, montages
     assert lisibles == ["serveur.crt"]
     assert ssl.PEM_cert_to_DER_cert(presente) == certificat_presente()
 

@@ -114,6 +114,63 @@ input {
   font-size: 1.1rem;
 }
 
+.pages-administration {
+  margin: 0 0 1rem;
+}
+
+.heure-du-site .fil {
+  margin: 0 0 0.5rem;
+  color: #555;
+}
+
+.heure-du-site .etat-heure {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+}
+
+.heure-du-site .etat-heure dt {
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.heure-du-site .etat-heure dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.1rem;
+}
+
+.heure-du-site .message {
+  margin: 0 0 1rem;
+  color: #1f6b35;
+}
+
+.heure-du-site .reglage-heure {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+
+.heure-du-site .reglage-heure fieldset {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.heure-du-site .reglage-heure label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.heure-du-site .reglage-heure .serveur-ntp {
+  margin-left: 1.5rem;
+}
+
+.heure-du-site .aide {
+  margin: 0;
+  color: #555;
+  font-size: 0.95rem;
+}
+
 .enregistrement-site .espace-volume {
   display: flex;
   flex-wrap: wrap;

@@ -24,21 +24,25 @@ from argos_api import (
     espace_enregistrements,
     essai,
     fuseaux,
+    heure_site,
     onvif,
     reglages_site,
     segments_fermes,
+    serveur_de_temps,
     sessions,
     soi,
     sonde,
 )
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
+from argos_api.calage import Calage
 from argos_api.cameras import AdresseMiseAJour, CameraCorrespondante, CameraLue, ModificationCamera, NouvelleCamera
 from argos_api.configuration import Configuration, ReglageDetection, charger
 from argos_api.debits_ecriture import DebitsEcriture
 from argos_api.ecoute import SortieSeulement
 from argos_api.espace_enregistrements import EspaceEnregistrements
 from argos_api.frein import FreinForceBrute, TropDEchecs
+from argos_api.heure_site import HeureDuSiteLue, ModificationHeureDuSite
 from argos_api.pont import Pont
 from argos_api.reglages_site import ModificationReglagesSite, ReglagesSiteLus
 from argos_api.segments_fermes import SegmentsFermes
@@ -61,6 +65,7 @@ ESSAI_EN_COURS = "Un essai est déjà en cours : attendre son résultat avant d'
 
 journal = logging.getLogger("argos_api.detection")
 journal_essai = logging.getLogger("argos_api.essai")
+journal_temps = logging.getLogger("argos_api.temps")
 
 Horloge = Callable[[], datetime]
 
@@ -179,9 +184,23 @@ def creer_app(
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
     pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
     apercus = Apercus(pont, configuration.expiration_apercu)
+    fuseau_hote = fuseaux.de_l_hote(Path(configuration.localtime_hote))
+    adresse_temps = serveur_de_temps.adresse_annoncee(configuration.temps_adresse_cameras, configuration.ips_du_site)
+    calage = Calage(ouvrir_base, horloge, adresse_temps, fuseau_hote)
+    dossier_temps = Path(configuration.temps_reglage)
+
+    def transmettre_a_temps(reglage: heure_site.Reglage) -> None:
+        """Volume absent ou illisible : temps garde sa source, l'API marche."""
+        try:
+            serveur_de_temps.transmettre(dossier_temps, reglage.source_suivie)
+        except OSError as erreur:
+            journal_temps.warning("Heure du Site : source non transmise à temps (%s)", erreur)
 
     @asynccontextmanager
     async def cycle_de_vie(_: FastAPI) -> AsyncIterator[None]:
+        # temps suit l'Heure du Site gardée en base, même après un redémarrage.
+        with ouvrir_base() as base:
+            transmettre_a_temps(heure_site.lire(base, fuseau_hote))
         surveillance = Surveillance(
             ouvrir_base, sonde.sonder, cameras.mac_a_l_adresse, configuration.delai_sonde, horloge
         )
@@ -202,6 +221,7 @@ def creer_app(
         yield
         for boucle in boucles:
             boucle.arreter()
+        calage.arreter()
 
     app = FastAPI(
         lifespan=cycle_de_vie,
@@ -281,8 +301,27 @@ def creer_app(
 
     @app.get("/api/fuseaux", dependencies=[Depends(administrateur_connecte)])
     def lister_fuseaux() -> list[str]:
-        """Fuseaux proposés dans les Réglages de la Caméra : ceux que la lecture sait renommer, Europe/Paris en tête."""
+        """Fuseaux proposés (Heure du Site, Réglages de la Caméra) : ceux que la lecture sait renommer, Europe/Paris en
+        tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
+
+    def heure_du_site_lue(reglage: heure_site.Reglage) -> HeureDuSiteLue:
+        return heure_site.lue(reglage, serveur_de_temps.interroger(configuration.temps_hote), adresse_temps)
+
+    @app.get("/api/heure-du-site", dependencies=[Depends(administrateur_connecte)])
+    def lire_heure_du_site(base: Annotated[Session, Depends(base)]) -> HeureDuSiteLue:
+        """Heure du Site réglée, et ce que temps sert vraiment aux Caméras (lu en NTP à chaque appel)."""
+        return heure_du_site_lue(heure_site.lire(base, fuseau_hote))
+
+    @app.patch("/api/heure-du-site", dependencies=[Depends(administrateur_connecte)])
+    def modifier_heure_du_site(
+        modification: ModificationHeureDuSite, base: Annotated[Session, Depends(base)]
+    ) -> HeureDuSiteLue:
+        """Transmet la source à temps, puis recale en fond toutes les Caméras actives."""
+        reglage = heure_site.modifier(base, modification, fuseau_hote)
+        transmettre_a_temps(reglage)
+        calage.caler_toutes()
+        return heure_du_site_lue(reglage)
 
     @app.get("/api/reglages-site", dependencies=[Depends(administrateur_connecte)])
     def lire_reglages_site(base: Annotated[Session, Depends(base)]) -> ReglagesSiteLus:
@@ -310,7 +349,7 @@ def creer_app(
         return debits_ecriture.lire(racine_enregistrements, base, espace.libre_o)
 
     app.include_router(
-        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements)
+        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements, calage)
     )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
@@ -331,6 +370,7 @@ def creer_app(
             base,
             administrateur_connecte,
             racine_enregistrements,
+            calage,
         )
     )
     return app
@@ -351,6 +391,7 @@ def _routes_cameras(
     administrateur_connecte: Callable,
     horloge: Horloge,
     racine_enregistrements: Path,
+    calage: Calage,
 ) -> APIRouter:
     """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
     Base = Annotated[Session, Depends(base)]
@@ -362,8 +403,11 @@ def _routes_cameras(
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
+        """Cale la Caméra sur le Serveur de temps du Site avant de répondre ; un échec n'empêche pas l'ajout."""
         with _erreurs_cameras():
-            return cameras.creer(base, nouvelle, racine_enregistrements)
+            creee = cameras.creer(base, nouvelle, racine_enregistrements)
+        calage.caler(creee.id)
+        return cameras.lire(base, creee.id, racine_enregistrements)
 
     @routes.get("/{id_camera}")
     def lire(id_camera: int, base: Base) -> CameraLue:
@@ -536,6 +580,7 @@ def _routes_essai(
     base: Callable[[], Iterator[Session]],
     administrateur_connecte: Callable,
     racine_enregistrements: Path,
+    calage: Calage,
 ) -> APIRouter:
     """Essai d'un Candidat et son Aperçu, réservés à une session valide : un inconnu du réseau ne s'en sert
     pas pour deviner des mots de passe.
@@ -624,7 +669,10 @@ def _routes_essai(
                 )
 
         with _sans_apercu_404():
-            return apercus.ajouter(creer)
+            creee = apercus.ajouter(creer)
+        # Comme l'ajout par URL : calée avant de répondre, sans bloquer l'ajout.
+        calage.caler(creee.id)
+        return cameras.lire(base, creee.id, racine_enregistrements)
 
     return routes
 

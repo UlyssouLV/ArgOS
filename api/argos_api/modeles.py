@@ -62,7 +62,7 @@ class Camera(Base):
 
 
 class ReglagesSite(Base):
-    """Réglages globaux du Site (une seule ligne, id = 1). Conservation / seuil : ADR 0012."""
+    """Réglages globaux du Site (une seule ligne, id = 1). Conservation / seuil : ADR 0012 ; Heure du Site : ADR 0014."""
 
     __tablename__ = "reglages_site"
 
@@ -73,3 +73,9 @@ class ReglagesSite(Base):
     seuil_octets_libres: Mapped[int] = mapped_column(
         BigInteger, default=1_073_741_824, server_default="1073741824"
     )
+    # Heure du Site : source de l'heure que suit temps (`ntp` : `heure_serveur_ntp`, ou `horloge_serveur`).
+    heure_source: Mapped[str] = mapped_column(String(16), default="ntp", server_default="ntp")
+    # Gardé quand la source est l'horloge du serveur : il revient si l'Administrateur repasse en NTP.
+    heure_serveur_ntp: Mapped[str] = mapped_column(String, default="pool.ntp.org", server_default="pool.ntp.org")
+    # Fuseau IANA du Site ; `None` : celui de l'hôte.
+    fuseau: Mapped[str | None] = mapped_column(String)

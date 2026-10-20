@@ -558,6 +558,27 @@ def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], dat
     return horloge
 
 
+def caler(
+    base: Session, id_camera: int, maintenant: Callable[[], datetime], serveur_ntp: str, fuseau_posix: str
+) -> onvif.Horloge:
+    """Cale la caméra d'une Caméra active sur le Serveur de temps du Site, par ONVIF, puis relit son Horloge ; retient
+    le contact (et la clé au premier contact HTTPS).
+
+    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
+    """
+    horloge, _ = _par_onvif(
+        base,
+        id_camera,
+        maintenant,
+        lambda url, retenu, _codec: onvif.caler(url, retenu, serveur_ntp, fuseau_posix, maintenant),
+    )
+    return horloge
+
+
+def ids_actives(base: Session) -> list[int]:
+    return list(base.scalars(select(Camera.id).where(Camera.active).order_by(Camera.id)))
+
+
 def _par_onvif[T](
     base: Session,
     id_camera: int,

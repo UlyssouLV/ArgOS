@@ -3,6 +3,8 @@
 La 2 répond en HTTPS sur `443` avec ses identifiants de dev (HTTP gardé sur `8899`), la 4 en HTTP sur `80` sans
 identifiants, les 1 et 3 pas du tout. Le détail d'HTTPS (clé mémorisée, TLS ancien) : `test_reglages_https.py`.
 Les simulateurs ONVIF sont recréés « sortie d'usine » au début du module et après chaque test qui les change.
+La 2 est calée sur le Site dès son ajout (`test_heure_du_site.py`) ; la 4, dont l'ONVIF en clair est accordé après
+l'ajout, garde son horloge d'usine.
 """
 
 from datetime import UTC, datetime
@@ -110,15 +112,16 @@ def test_fuseaux_sans_session_401(client):
     assert client.get("/api/fuseaux").status_code == 401
 
 
-def test_camera_simulee_2_usine_en_https_sur_le_port_443_retenu(connecte, camera_simulee):
+def test_camera_simulee_2_en_https_sur_le_port_443_retenu_des_l_ajout(connecte, camera_simulee):
+    # Le calage à l'ajout est son premier échange ONVIF (test_heure_du_site.py).
     id_camera = camera_simulee(2)
-    assert port_onvif(connecte, id_camera) is None
+    assert port_onvif(connecte, id_camera) == 443
 
     reponse = lire(connecte, id_camera)
 
     assert reponse.status_code == 200
-    assert_usine(reponse.json())
-    assert port_onvif(connecte, id_camera) == 443
+    assert reponse.json()["horloge"]["mode"] == "ntp"
+    assert reponse.json()["incrustations"] == USINE_INCRUSTATIONS
 
 
 def test_camera_simulee_4_sans_identifiants_usine_sur_le_port_80(connecte, camera_simulee):
@@ -501,7 +504,8 @@ def camera_4_en_ntp():
 
 
 def test_fuseau_europe_paris_pris_sans_toucher_a_l_heure(connecte, camera_simulee, remise_en_usine):
-    id_camera = camera_simulee(2)
+    # La 4 : ONVIF en clair accordé après l'ajout, donc jamais calée, horloge d'usine.
+    id_camera = camera_simulee(4)
 
     reponse = modifier_horloge(connecte, id_camera, {"fuseau": "Europe/Paris"})
 
@@ -541,7 +545,8 @@ def test_fuseau_inconnu_422(connecte, camera_simulee, fuseau):
 
 
 def test_mise_a_l_heure_du_site_garde_le_fuseau(connecte, camera_simulee, remise_en_usine):
-    id_camera = camera_simulee(2)
+    # La 4 : jamais calée, horloge d'usine.
+    id_camera = camera_simulee(4)
     assert abs(lire(connecte, id_camera).json()["horloge"]["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
 
     reponse = mettre_a_l_heure(connecte, id_camera)

@@ -43,6 +43,10 @@ services:
       - type: volume
         source: enregistrements
         target: /enregistrements
+      # Source de l'Heure du Site, écrite ici pour temps (docs/adr/0014-serveur-de-temps-du-site.md).
+      - reglage-temps:/temps
+      # Fuseau de l'hôte : fuseau du Site par défaut. Le contenu suffit (Docker suit le lien).
+      - /etc/localtime:/etc/localtime-hote:ro
     # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.
@@ -59,6 +63,9 @@ services:
       ARGOS_DETECTION_CAMERAS_PORTS: ${ARGOS_DETECTION_CAMERAS_PORTS:-554,8554}
       # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes : voir .env.example.
       ARGOS_APERCU_EXPIRATION_S: ${ARGOS_APERCU_EXPIRATION_S:-120}
+      # IP du Site sur le réseau local : adresse du Serveur de temps annoncée aux Caméras quand temps n'a pas d'IP
+      # sur le réseau des caméras (il publie alors l'UDP 123 sur l'hôte).
+      ARGOS_IPS_DU_SITE: ${MTX_WEBRTCADDITIONALHOSTS:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/docs')"]
       interval: 2s
@@ -131,8 +138,11 @@ services:
       # NTP seulement ; aucune commande chrony par le réseau (cmdport 0). Sur le réseau des caméras
       # (compose.reseau-cameras.yaml), temps a sa propre IP et ce port n'est plus publié sur l'hôte.
       - "${ARGOS_PORT_NTP:-123}:123/udp"
+    volumes:
+      # Source choisie dans l'Heure du Site, écrite par api ; suivie sans redémarrer.
+      - reglage-temps:/reglage:ro
     environment:
-      # Source de l'heure ; injoignable, temps sert l'horloge du serveur.
+      # Source tant qu'api n'en a écrit aucune ; injoignable, temps sert l'horloge du serveur.
       ARGOS_TEMPS_SOURCE: pool.ntp.org
 
   db:
@@ -153,6 +163,7 @@ services:
       retries: 30
 
 volumes:
+  reglage-temps:
   donnees-db:
   autorite:
   certificats-serveur:

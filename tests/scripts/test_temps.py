@@ -2,7 +2,7 @@
 
 L'image est lancée seule, comme dans la stack mais sur un réseau Docker de test : on l'interroge en NTP
 (UDP 123 publié sur l'hôte), sur une source injoignable (repli sur l'horloge du serveur) puis sur un autre
-`temps` pris pour source.
+`temps` pris pour source, donnée par l'environnement ou par le fichier de réglage qu'écrit `api`.
 """
 
 import socket
@@ -85,12 +85,16 @@ def reseau() -> Iterator[str]:
 def lancer(image: str, reseau: str) -> Iterator:
     conteneurs: list[str] = []
 
-    def _lancer(source: str) -> tuple[str, int]:
-        """Lance `temps` sur `source`, UDP 123 publié sur un port libre de 127.0.0.1 : (nom, port)."""
+    def _lancer(source: str, reglage: Path | None = None) -> tuple[str, int]:
+        """Lance `temps` sur `source`, UDP 123 publié sur un port libre de 127.0.0.1 : (nom, port).
+
+        `reglage` : dossier monté en lecture seule comme le volume que partage `api`."""
         nom = f"argos-temps-test-{uuid.uuid4().hex[:8]}"
+        montage = ("-v", f"{reglage}:/reglage:ro") if reglage else ()
         docker(
             "run", "-d", "--name", nom, "--network", reseau,
             "-e", f"ARGOS_TEMPS_SOURCE={source}",
+            *montage,
             *CAPACITES,
             "-p", "127.0.0.1::123/udp",
             image,
@@ -133,6 +137,27 @@ def test_temps_suit_sa_source_et_sert_une_heure_proche_d_elle(lancer):
     assert interroger(port).strate == STRATE_DU_REPLI + 1
 
 
+def test_temps_suit_la_source_reglee_par_api_sans_redemarrer(lancer, tmp_path):
+    source, port_source = lancer(SOURCE_INJOIGNABLE)
+    attendre_reponse(port_source)
+    reglage = tmp_path / "reglage"
+    reglage.mkdir()
+    # Ligne vide : l'horloge du serveur, même si l'environnement donne une source.
+    (reglage / "source").write_text("\n")
+    nom, port = lancer(source, reglage)
+    assert attendre_reponse(port).strate == STRATE_DU_REPLI
+
+    (reglage / "source").write_text(f"{adresse_ip(source)}\n")
+    suivie = attendre_reponse(port, lambda r: r.strate == STRATE_DU_REPLI + 1)
+    assert socket.inet_ntoa(suivie.reference) == adresse_ip(source)
+
+    (reglage / "source").write_text("\n")
+    # Sans source, chrony garderait sa dernière estimation : temps le relance sur l'horloge du serveur.
+    attendre_reponse(port, lambda r: r.strate == STRATE_DU_REPLI)
+    # Le réglage suit sans redémarrer le conteneur.
+    assert docker("inspect", "-f", "{{.RestartCount}}", nom).stdout.strip() == "0"
+
+
 def test_temps_n_accepte_aucune_commande_chrony_par_le_reseau(lancer, image, reseau):
     nom, port = lancer(SOURCE_INJOIGNABLE)
     attendre_reponse(port)
@@ -169,7 +194,8 @@ def test_temps_ne_regle_pas_l_horloge_de_l_hote_et_se_dit_en_bonne_sante(lancer)
         time.sleep(1)
 
     capacites = docker("inspect", "-f", "{{.HostConfig.CapAdd}}", nom).stdout
-    commande = docker("exec", nom, "cat", "/proc/1/cmdline").stdout.split("\0")
+    # Dernière colonne de `docker top` : la commande de chaque processus.
+    (chronyd,) = [ligne.split() for ligne in docker("top", nom).stdout.splitlines() if "chronyd -" in ligne]
 
     assert "SYS_TIME" not in capacites
-    assert commande[0].endswith("chronyd") and "-x" in commande
+    assert "-x" in chronyd

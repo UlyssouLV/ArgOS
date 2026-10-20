@@ -36,6 +36,17 @@ class Configuration(BaseSettings):
     # séparées par des virgules : jamais Candidat, et aucune requête n'y est servie (ADR 0003).
     reseau_cameras_adresses: str = Field("", validation_alias="ARGOS_RESEAU_CAMERAS_ADRESSES")
 
+    # Serveur de temps du Site (docs/adr/0014-serveur-de-temps-du-site.md) : son nom sur le réseau Compose, où l'API
+    # lit en NTP ce qu'il sert, et le dossier du volume partagé où elle lui écrit la source à suivre.
+    temps_hote: str = Field("temps", validation_alias="ARGOS_TEMPS_HOTE")
+    temps_reglage: str = Field("/temps", validation_alias="ARGOS_TEMPS_REGLAGE")
+    # Adresse de temps sur le réseau des caméras (macvlan, ou réseau des Caméras simulées), annoncée aux Caméras ;
+    # vide : la première IPv4 du Site (`ips_du_site`, IP du certificat serveur, 0.6.1), où temps publie l'UDP 123.
+    temps_adresse_cameras: str = Field("", validation_alias="ARGOS_TEMPS_ADRESSE_CAMERAS")
+    ips_du_site: str = Field("", validation_alias="ARGOS_IPS_DU_SITE")
+    # `/etc/localtime` de l'hôte, monté : fuseau du Site par défaut.
+    localtime_hote: str = Field("/etc/localtime-hote", validation_alias="ARGOS_LOCALTIME_HOTE")
+
     def adresses_reseau_cameras(self) -> set[IPv4Address]:
         """Une adresse invalide est ignorée : le réseau des caméras n'empêche jamais l'API de démarrer."""
         adresses = set()

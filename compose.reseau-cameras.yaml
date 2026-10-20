@@ -17,6 +17,8 @@ services:
     environment:
       # Jamais Candidat, et toute requête arrivée sur cette adresse est refusée.
       ARGOS_RESEAU_CAMERAS_ADRESSES: ${ARGOS_RESEAU_CAMERAS_IP}
+      # Adresse du Serveur de temps du Site annoncée aux Caméras (ADR 0014).
+      ARGOS_TEMPS_ADRESSE_CAMERAS: ${ARGOS_RESEAU_CAMERAS_TEMPS_IP}
 
   temps:
     networks:

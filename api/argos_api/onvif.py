@@ -3,8 +3,8 @@ Encodage de son Flux).
 
 L'appelant donne l'URL RTSP de la Caméra, son codec connu et le contact retenu (schéma, port, empreinte de la clé
 mémorisée) ; il
-reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après une mise à l'heure,
-l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
+reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après une mise à l'heure
+ou un calage, l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
 SOAP, recherche du port, TLS, profils et tokens restent ici.
 
 - Contact (docs/adr/0007-onvif-en-https-par-cle-memorisee.md) : HTTPS sur `443` d'abord, à chaque échange (une
@@ -33,8 +33,9 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
   caméra est relue toutes les `PAS_RELECTURE_S` jusqu'à ce qu'elle réponde, `DELAI_RELECTURE_S` au plus ; sans
   réponse, chaque champ envoyé est `pas_pris` (`sans_reponse`) et les Réglages rendus sont ceux lus avant l'envoi.
 - Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
-  caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Jamais de NTP réglé, jamais d'écriture
-  sans une demande de l'Administrateur.
+  caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Le calage
+  (docs/adr/0014-serveur-de-temps-du-site.md) règle le serveur NTP manuel (jamais `FromDHCP`) sur le Serveur de
+  temps du Site, puis le mode NTP au fuseau du Site.
 - Modification : chaque `Set…` part seul (un refus n'empêche pas les autres ; un paramètre d'image par
   `SetImagingSettings`, le niveau avec son mode), puis la caméra est relue une fois : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
@@ -59,6 +60,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from functools import cache, cached_property
+from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
@@ -439,6 +441,16 @@ def mettre_a_l_heure(
         return camera.mettre_a_l_heure(maintenant), contact
 
 
+def caler(
+    url_rtsp: str, retenu: Retenu, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]
+) -> tuple[Horloge, Contact]:
+    """Cale la caméra sur le Serveur de temps du Site : serveur NTP manuel `serveur_ntp`, puis mode NTP au fuseau
+    `fuseau_posix` ; relit son Horloge. Lève `ErreurOnvif` (un refus de la caméra compris)."""
+    camera, contact = _joindre(url_rtsp, retenu)
+    with _erreurs_onvif():
+        return camera.caler(serveur_ntp, fuseau_posix, maintenant), contact
+
+
 def _joindre(url_rtsp: str, retenu: Retenu, codec: str | None = None) -> tuple["_Camera", Contact]:
     morceaux = urlsplit(url_rtsp)
     hote = morceaux.hostname or ""
@@ -685,9 +697,9 @@ class _Camera:
         # Encodeur du profil de la Caméra, lu par `lire` : ce que `modifier` renvoie, champs changés.
         self._encodeur: _Encodeur | None = None
 
-    def _connecter(self) -> None:
-        """Services appareil et média, jeton daté à l'heure de la caméra, source vidéo : une fois par requête."""
-        if self._media is not None:
+    def _connecter_appareil(self) -> None:
+        """Service appareil, jeton daté à l'heure de la caméra : une fois par requête."""
+        if self._appareil is not None:
             return
         appareil = _service(
             self.session, "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, None
@@ -699,10 +711,16 @@ class _Camera:
         self._appareil = _service(
             self.session, "devicemgmt", "{http://www.onvif.org/ver10/device/wsdl}DeviceBinding", self.adresse, jeton
         )
+        self._jeton = jeton
+
+    def _connecter(self) -> None:
+        """Services appareil et média, source vidéo : une fois par requête."""
+        if self._media is not None:
+            return
+        self._connecter_appareil()
         # Seul le chemin de l'adresse annoncée sert : une caméra jointe en HTTPS l'annonce souvent en `http://…`
         # (ou sous un autre hôte, un autre port). Schéma, hôte et port restent ceux du contact retenu, pour
         # qu'aucune requête ne reparte en clair ni ailleurs.
-        self._jeton = jeton
         self._media = self._service_annonce(
             "media",
             "{http://www.onvif.org/ver10/media/wsdl}MediaBinding",
@@ -823,6 +841,16 @@ class _Camera:
         self._connecter()
         # Un refus se voit à l'écart relu, inchangé.
         self._regler_horloge(heure_du_site=maintenant())
+        return self._horloge(maintenant)
+
+    def caler(self, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]) -> Horloge:
+        self._connecter_appareil()
+        # Le serveur d'abord : la caméra passe en NTP déjà tournée vers le Site.
+        self._appareil.SetNTP(FromDHCP=False, NTPManual=[_adresse_ntp(serveur_ntp)])
+        heure = self._appareil.GetSystemDateAndTime()
+        self._appareil.SetSystemDateAndTime(
+            DateTimeType="NTP", DaylightSavings=bool(heure.DaylightSavings), TimeZone={"TZ": fuseau_posix}
+        )
         return self._horloge(maintenant)
 
     def _regler_horloge(self, *, fuseau_posix: str | None = None, heure_du_site: datetime | None = None) -> bool:
@@ -1116,6 +1144,14 @@ def _date_heure_utc(heure: Any) -> datetime:
     return datetime(
         utc.Date.Year, utc.Date.Month, utc.Date.Day, utc.Time.Hour, utc.Time.Minute, utc.Time.Second, tzinfo=UTC
     )
+
+
+def _adresse_ntp(serveur: str) -> dict[str, str]:
+    """Serveur NTP manuel d'ONVIF : une IPv4 en `IPv4`, un nom en `DNS`."""
+    try:
+        return {"Type": "IPv4", "IPv4Address": str(IPv4Address(serveur))}
+    except ValueError:
+        return {"Type": "DNS", "DNSname": serveur}
 
 
 def _serveur_ntp(ntp: Any) -> str | None:

@@ -75,7 +75,8 @@ def valeur(reglages: Locator, terme: str) -> Locator:
 
 def test_reglages_d_une_camera_active_valeurs_usine_et_ecart(administration: Page, api, noms):
     nom = noms()
-    creer(administration, api, nom, url_simulee(2))
+    # La 4 : ONVIF en clair accepté après l'ajout, donc jamais calée sur le Site, horloge d'usine.
+    creer_en_clair_accepte(administration, api, nom)
 
     reglages = ouvrir_reglages(administration, nom)
 
@@ -498,7 +499,8 @@ def test_afficher_propose_seulement_si_la_camera_sait_recreer(
 
 
 def test_fuseau_choisi_dans_la_liste_envoye_seul_et_pris(administration: Page, api, noms, remise_en_usine):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    # La 4 : jamais calée, fuseau d'usine.
+    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
     fuseau = reglages.get_by_label("Fuseau", exact=True)
     expect(fuseau.locator("option").nth(1)).to_have_text("Europe/Paris")
 
@@ -526,7 +528,8 @@ def test_fuseau_inconnu_montre_tant_qu_il_n_est_pas_change(administration: Page,
 
 
 def test_mettre_a_l_heure_du_site_rafraichit_l_ecart(administration: Page, api, noms, remise_en_usine):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
+    # La 4 : jamais calée, horloge d'usine.
+    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
     horloge = reglages.get_by_role("region", name="Horloge")
     expect(valeur(horloge, "Écart avec le Site")).to_have_text(ECART_D_USINE)
 
