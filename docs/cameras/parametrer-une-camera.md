@@ -1,6 +1,6 @@
 # Paramétrer une Caméra : ONVIF
 
-Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit et règle** par ONVIF les Réglages de la Caméra : Incrustations, fuseau de l’Horloge et mise à l’heure du Site. Depuis la 0.6.3, il le fait en **HTTPS** quand la caméra le propose, et en clair seulement avec l’accord de l’Administrateur. Depuis la 0.6.4, il règle aussi l’**Image** de l’Appareil (filtre infrarouge, luminosité, contraste, saturation, netteté, contre-jour, WDR) et l’**Encodage** du Flux de la Caméra (résolution, images par seconde, débit), et montre le Flux dans le panneau. Voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos).
+Comprendre ce qu’on peut régler sur une caméra IP (nom et heure incrustés, horloge, image, vidéo), et comment le faire quand son interface web est inutilisable. Écrit à partir d’une vraie caméra générique branchée sur un Site de dev, en octobre 2026. Depuis la 0.6.0, ArgOS **lit et règle** par ONVIF les Réglages de la Caméra : Incrustations (et, jusqu’à la 0.9.0, fuseau de l’Horloge et mise à l’heure du Site). Depuis la 0.6.3, il le fait en **HTTPS** quand la caméra le propose, et en clair seulement avec l’accord de l’Administrateur. Depuis la 0.6.4, il règle aussi l’**Image** de l’Appareil (filtre infrarouge, luminosité, contraste, saturation, netteté, contre-jour, WDR) et l’**Encodage** du Flux de la Caméra (résolution, images par seconde, débit), et montre le Flux dans le panneau. Depuis la 0.9.0, l’heure ne se règle plus Caméra par Caméra : le Site cale chaque Caméra sur son **Heure du Site** ([plus bas](#lheure-de-la-caméra)). Voir [§ 6](#6-les-réglages-de-la-caméra-dans-argos).
 
 Pour aller plus loin : [Ajouter une Caméra](ajouter-une-camera.md), [Réseau du Site et Détection des Caméras](reseau-et-detection.md), [sécurité](../securite.md).
 
@@ -74,7 +74,7 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ### Ce qui cloche, réglé d’usine
 
-- **Horloge au 31/12/1999** : le serveur de temps s’appelle simplement `NTP`, un nom qui ne mène nulle part, et le fuseau est celui de l’Australie (`AWST-8`). L’heure incrustée est fausse, et le serait dans tout enregistrement. Remède : fuseau de Paris (`CET-1CEST,M3.5.0,M10.5.0/3`) et heure du Site, depuis ArgOS ([§ 6](#régler-lhorloge)) ; pas de serveur de temps public, la caméra n’ayant pas accès à internet.
+- **Horloge au 31/12/1999** : le serveur de temps s’appelle simplement `NTP`, un nom qui ne mène nulle part, et le fuseau est celui de l’Australie (`AWST-8`). L’heure incrustée est fausse, et le serait dans tout enregistrement. Remède : le Site la cale sur son Serveur de temps, au fuseau du Site ([§ 6](#lheure-de-la-caméra)) ; pas de serveur de temps public, la caméra n’ayant pas accès à internet.
 - **DNS chinois** (`114.114.114.114`) : la caméra cherche à joindre internet, comme beaucoup de caméras génériques. Bloquer son accès à internet dans la box ([sécurité](../securite.md), § 1).
 - **H.264 annoncé, H.265 servi** : le service média ONVIF 1.0 ne sait pas décrire le H.265 et déclare le flux principal en H.264, alors qu’ArgOS le reçoit en H.265. Le service média 2 décrit le vrai codec. ArgOS continue de lire le codec dans le Flux lui-même ([Caméras H.265](ajouter-une-camera.md#caméras-h265)).
 
@@ -87,14 +87,12 @@ Autres lectures utiles : `GetSystemDateAndTime`, `GetNTP`, `GetNetworkInterfaces
 
 ## 6. Les Réglages de la Caméra dans ArgOS
 
-Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)), l’Horloge ([fuseau et mise à l’heure](#régler-lhorloge)), l’Image ([filtre infrarouge, luminosité…](#régler-limage)) et l’Encodage du Flux ([résolution, images par seconde, débit](#régler-lencodage-du-flux)) se règlent.
+Dans l’Administration, chaque Caméra **active** a un bouton **Réglages** (pas une Caméra désactivée). Il ouvre un panneau qui lit la caméra par ONVIF **à chaque ouverture** : ArgOS ne garde aucune copie de ces réglages, la caméra reste la seule source de vérité. Les Incrustations ([plus bas](#régler-les-incrustations)), l’Image ([filtre infrarouge, luminosité…](#régler-limage)) et l’Encodage du Flux ([résolution, images par seconde, débit](#régler-lencodage-du-flux)) se règlent. L’heure n’y est pas : elle se règle pour le Site ([L’heure de la Caméra](#lheure-de-la-caméra)).
 
 En tête du panneau, un petit lecteur montre le **Flux de la Caméra**, comme le Live (WebRTC, ou HLS pour un Flux H.265), avec les mêmes messages (« Flux indisponible », « Ce navigateur ne lit pas le H.265 ») : l’effet d’un réglage se voit sans quitter l’Administration. Après une coupure (changement d’Encodage, caméra qui redémarre), il reprend seul, sans recharger la page. Fermer le panneau arrête la lecture.
 
 ### Ce qu’ArgOS lit
 
-- **Horloge** (celle de l’Appareil, partagée par toutes ses Caméras) : date et heure de la caméra (UTC), **écart avec l’heure du Site** (« en retard de 26 ans », « en avance de 3 min »), fuseau, et si la caméra se règle sur un serveur de temps (NTP), avec son nom.
-  - Le fuseau est donné par la caméra au format POSIX (`CET-1CEST,M3.5.0,M10.5.0/3`). ArgOS le montre en nom lisible (`Europe/Paris`) s’il le reconnaît parmi les fuseaux courants, sinon tel quel (`AWST-8`).
 - **Incrustations** de la **première source vidéo** (premier profil média) :
   - le **nom** : texte, position, affiché ou caché ;
   - la **date et heure** : format (non modifiable), position, affichée ou cachée.
@@ -113,17 +111,19 @@ Le panneau est un formulaire. Sous chaque champ reste affichée sa **valeur d’
   - **afficher** une Incrustation cachée la recrée (`CreateOSD`, même type, avec son texte et son coin). C’est proposé **seulement si la caméra annonce savoir la recréer** (`GetOSDOptions`) : sinon ArgOS refuse sans rien envoyer.
 - Le **format de la date** ne s’envoie jamais : les caméras ne le règlent pas de façon fiable.
 
-### Régler l’Horloge
+### L’heure de la Caméra
 
-L’Horloge est celle de l’Appareil : la régler depuis une Caméra la règle pour toutes les Caméras de la même MAC.
+L’heure ne se règle plus dans les Réglages de la Caméra (section Horloge, fuseau et bouton « Mettre à l’heure du Site » retirés en 0.9.0). Elle se règle **une fois pour le Site**, dans **Administration → Heure du Site** : source de l’heure (`pool.ntp.org` par défaut, ou l’horloge du serveur) et fuseau (celui du serveur par défaut). Le Site sert cette heure en NTP sur le réseau des caméras (le **Serveur de temps du Site**, [ADR 0014](../adr/0014-serveur-de-temps-du-site.md)) et **cale** chaque Caméra ONVIF dessus : serveur NTP = le Site, mode NTP, fuseau du Site. Il le fait à l’ajout, à chaque changement de l’Heure du Site, puis toutes les heures (et sur « Vérifier maintenant ») ; le tableau de la page Heure du Site donne l’état de chaque Caméra (calée, écart, recalée, sans ONVIF, échec). L’Horloge est celle de l’Appareil : la caler depuis une Caméra la cale pour toutes les Caméras de la même MAC.
 
-- **Fuseau** : choisi dans une liste de noms lisibles (`Europe/Paris` en tête, puis les fuseaux courants), dans le même formulaire que les Incrustations. ArgOS le convertit au format POSIX qu’attend ONVIF (`Europe/Paris` → `CET-1CEST,M3.5.0,M10.5.0/3`), à partir de la dernière ligne du fichier du fuseau dans la base IANA (paquet `tzdata`), et l’envoie seul (`SetSystemDateAndTime`) en **gardant le mode** de la caméra (manuel ou serveur de temps) et, en manuel, son heure. Un fuseau qu’ArgOS ne reconnaît pas (`AWST-8`) reste affiché tel quel tant qu’on n’en choisit pas un autre. Après l’envoi, le fuseau relu (en POSIX) donne le statut, comme pour les Incrustations.
-- **Mettre à l’heure du Site** : un bouton qui envoie **une fois** l’heure UTC du serveur ArgOS à la caméra, en mode manuel, sans toucher à son fuseau, puis relit l’Horloge : date, heure et écart avec le Site se mettent à jour (« en retard de 26 ans » devient « à l’heure » ou quelques secondes). Si la caméra se règle sur un serveur de temps, une confirmation le dit d’abord : « La caméra se règle sur le serveur de temps `<x>`. La mettre à l’heure du Site coupe cette synchronisation. »
-- ArgOS n’écrit **jamais** sur l’Horloge sans une action de l’Administrateur : ouvrir les Réglages ne fait que lire, et rien ne remet une caméra à l’heure tout seul. Une caméra laissée en mode manuel dérive : la remettre à l’heure de temps en temps.
+**Caméra sans ONVIF** (ou ONVIF en clair non accordé) : marquée « sans ONVIF » dans ce tableau, le Site ne peut pas la caler. La régler à la main, dans son interface web ou l’application du fabricant :
 
-**Pourquoi pas de NTP ?** Les Caméras n’ont pas accès à internet (bloqué dans la box, [sécurité](../securite.md), § 1) : un serveur de temps public comme `pool.ntp.org` ne leur répondrait pas, et le leur ouvrir irait contre la page sécurité. ArgOS ne règle donc pas le NTP de la caméra : il le montre seulement (en lecture). Plus tard, le Site deviendra lui-même serveur de temps des Caméras, sur le réseau local (voir la [feuille de route](../dev/feuille-de-route/feuille-de-route-dev.md)).
+1. Relever l’**Adresse du Serveur de temps** sur la page Heure du Site (l’IP fixe de `temps` sur la prise des caméras, ou l’IP du Site sans macvlan).
+2. Dans la caméra, choisir la synchronisation par **serveur NTP**, saisir cette adresse comme serveur (pas `pool.ntp.org` : la caméra n’a pas accès à internet), port `123` si demandé.
+3. Choisir le **fuseau du Site** (celui affiché sur la page Heure du Site).
 
-Par l’API : le fuseau passe par `PATCH /api/cameras/{id}/reglages` (`{"horloge": {"fuseau": "Europe/Paris"}}`, champ `horloge.fuseau` dans la réponse, valeur relue en POSIX ; un nom IANA inconnu → `422`). La mise à l’heure : `POST /api/cameras/{id}/reglages/mise-a-l-heure`, sans corps, qui renvoie l’Horloge relue (écart avec le Site compris). Mêmes erreurs que la lecture (`404`, `502`).
+Le Site ne vérifie pas cette caméra : si elle repart en heure manuelle (remise en usine, coupure), recommencer.
+
+Par l’API : `GET /api/cameras/{id}/reglages` rend toujours l’Horloge lue (date, écart avec le Site, fuseau, mode, serveur NTP), en lecture seule. `POST /api/cameras/{id}/reglages/mise-a-l-heure` n’existe plus (`404`), et `horloge` n’est plus accepté par `PATCH /api/cameras/{id}/reglages` (`422`, rien n’est envoyé).
 
 ### Régler l’Image
 
@@ -134,7 +134,7 @@ L’Image est celle de l’Appareil : la section le rappelle (« Partagée par l
 - **Contre-jour** et **WDR** : coupé ou activé, et leur **niveau** (curseur) seulement si la caméra le borne ; sinon le mode seul.
 - Exposition, balance des blancs, mise au point : ni lues, ni envoyées.
 
-Sans service image, ou s’il répond en faute, la section dit « Image non réglable sur cette caméra » : le reste du panneau (Horloge, Incrustations) se lit et se règle normalement. L’Image s’envoie avec « Enregistrer » (un `SetImagingSettings` par paramètre, le niveau avec son mode), puis la caméra est relue une fois : mêmes statuts que les Incrustations. Certaines caméras acceptent le WDR sans l’appliquer : il est alors « pas pris ».
+Sans service image, ou s’il répond en faute, la section dit « Image non réglable sur cette caméra » : le reste du panneau (Incrustations, Encodage) se lit et se règle normalement. L’Image s’envoie avec « Enregistrer » (un `SetImagingSettings` par paramètre, le niveau avec son mode), puis la caméra est relue une fois : mêmes statuts que les Incrustations. Certaines caméras acceptent le WDR sans l’appliquer : il est alors « pas pris ».
 
 Par l’API : la lecture renvoie `image` (`reglable`, `raison` = `non_reglable` sinon `null`, `valeurs`, `options`), avec les champs `infrarouge`, `luminosite`, `contraste`, `saturation`, `nettete`, `contre_jour`, `contre_jour_niveau`, `wdr`, `wdr_niveau` (`null` : non proposé). La modification : `{"image": {"infrarouge": "OFF", "luminosite": 70}}`, champs `image.infrarouge`… dans la réponse. Une valeur hors des bornes relues, un mode ou un paramètre que la caméra ne propose pas → `422`, **rien n’est envoyé** (pas même les autres champs).
 
@@ -152,7 +152,7 @@ Par quel service ([ADR 0008](../adr/0008-encodage-par-media-2-media-1-seulement-
 - sinon le **média 1**, **seulement si le Flux est en H.264** (codec lu dans le Flux par ArgOS) : le média 1 ne connaît pas le H.265 et le déclare souvent en H.264 (c’est le cas de la caméra de dev), si bien qu’un réglage par lui pourrait changer le codec du Flux ;
 - sinon, « Encodage non réglable sur cette caméra » : les valeurs restent affichées, en lecture seule. Le codec affiché est alors celui du Flux.
 
-Un changement d’Encodage **coupe le Flux quelques secondes** (la caméra relance son encodeur). « Enregistrer » le confirme d’abord : « Le Flux de cette Caméra sera coupé quelques secondes. » (**Couper le Flux et enregistrer** ou **Garder le Flux**). Une modification d’Image, d’Incrustation ou d’Horloge seule part sans confirmation. L’Encodage part en dernier ; ArgOS relit ensuite la caméra toutes les 2 s environ, jusqu’à ce qu’elle réponde, 20 s au plus. Si elle ne répond plus : « pas pris — la caméra n’a pas répondu après l’envoi », et le formulaire garde les valeurs lues avant l’envoi.
+Un changement d’Encodage **coupe le Flux quelques secondes** (la caméra relance son encodeur). « Enregistrer » le confirme d’abord : « Le Flux de cette Caméra sera coupé quelques secondes. » (**Couper le Flux et enregistrer** ou **Garder le Flux**). Une modification d’Image ou d’Incrustation seule part sans confirmation. L’Encodage part en dernier ; ArgOS relit ensuite la caméra toutes les 2 s environ, jusqu’à ce qu’elle réponde, 20 s au plus. Si elle ne répond plus : « pas pris — la caméra n’a pas répondu après l’envoi », et le formulaire garde les valeurs lues avant l’envoi.
 
 Par l’API : la lecture renvoie `encodage` (`reglable`, `raison` = `profil_introuvable` ou `non_reglable` sinon `null`, `profil`, `valeurs` avec `resolution` (`1920x1080`), `images_par_seconde`, `debit_max`, `codec`, `qualite`, `intervalle_images_cles`, et `options` avec `resolutions`, `images_par_seconde` et `debit_max` (bornes)). La modification : `{"encodage": {"resolution": "1920x1080", "images_par_seconde": 15, "debit_max": 2048}}`, champs `encodage.resolution`… dans la réponse ; sans réponse de la caméra après l’envoi, chaque champ envoyé est `pas_pris` avec `"raison": "sans_reponse"`. Une résolution non proposée, une valeur hors des bornes relues, un champ inconnu ou un Encodage non réglable → `422`, **rien n’est envoyé**.
 

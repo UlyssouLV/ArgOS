@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { messageEchec } from "../cameras";
 import {
   libelleEtatHorloge,
+  lireFuseaux,
   lireHeureDuSite,
   lireHorlogesDesCameras,
   modifierHeureDuSite,
@@ -16,7 +17,6 @@ import {
   type HorlogeVerifiee,
   type Source,
 } from "../heureSite";
-import { lireFuseaux } from "../reglages";
 
 // Relecture de ce que sert le Serveur de temps du Site (source utilisée, repli) et du tableau des Caméras.
 const RAFRAICHISSEMENT_MS = 10_000;

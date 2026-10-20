@@ -547,17 +547,6 @@ def essayer_retenir_debit_encodage(base: Session, id_camera: int, maintenant: Ca
     _retenir_debit_encodage(base, id_camera, reglages.encodage)
 
 
-def mettre_a_l_heure(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
-    """Met la caméra d'une Caméra active à l'heure du Site, par ONVIF, puis relit son Horloge ; retient le contact.
-
-    Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
-    """
-    horloge, _ = _par_onvif(
-        base, id_camera, maintenant, lambda url, retenu, _codec: onvif.mettre_a_l_heure(url, retenu, maintenant)
-    )
-    return horloge
-
-
 def caler(
     base: Session, id_camera: int, maintenant: Callable[[], datetime], serveur_ntp: str, fuseau_posix: str
 ) -> onvif.Horloge:

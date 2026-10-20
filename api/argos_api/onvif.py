@@ -3,8 +3,8 @@ Encodage de son Flux).
 
 L'appelant donne l'URL RTSP de la Caméra, son codec connu et le contact retenu (schéma, port, empreinte de la clé
 mémorisée) ; il
-reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après une mise à l'heure
-ou un calage, l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
+reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après un calage,
+l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
 SOAP, recherche du port, TLS, profils et tokens restent ici.
 
 - Contact (docs/adr/0007-onvif-en-https-par-cle-memorisee.md) : HTTPS sur `443` d'abord, à chaque échange (une
@@ -32,10 +32,9 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
   des options relues est refusée (`HorsDesOptions`) avant tout envoi. Envoyé en dernier (il coupe le Flux), puis la
   caméra est relue toutes les `PAS_RELECTURE_S` jusqu'à ce qu'elle réponde, `DELAI_RELECTURE_S` au plus ; sans
   réponse, chaque champ envoyé est `pas_pris` (`sans_reponse`) et les Réglages rendus sont ceux lus avant l'envoi.
-- Horloge : le fuseau part seul, en gardant le mode et l'heure de la caméra ; la mise à l'heure du Site passe la
-  caméra en mode manuel, à l'heure UTC du serveur, en gardant son fuseau. Le calage
-  (docs/adr/0014-serveur-de-temps-du-site.md) règle le serveur NTP manuel (jamais `FromDHCP`) sur le Serveur de
-  temps du Site, puis le mode NTP au fuseau du Site ; sa vérification relit l'Horloge seule (service appareil).
+- Horloge : lue avec les Réglages, jamais modifiée avec eux. Le calage (docs/adr/0014-serveur-de-temps-du-site.md)
+  règle le serveur NTP manuel (jamais `FromDHCP`) sur le Serveur de temps du Site, puis le mode NTP au fuseau du
+  Site ; sa vérification relit l'Horloge seule (service appareil).
 - Modification : chaque `Set…` part seul (un refus n'empêche pas les autres ; un paramètre d'image par
   `SetImagingSettings`, le niveau avec son mode), puis la caméra est relue une fois : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
@@ -69,7 +68,7 @@ import requests
 import zeep
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 from zeep.exceptions import Error as ErreurZeep
@@ -334,20 +333,6 @@ class ModificationIncrustations(BaseModel):
     date_heure: ModificationDateHeure | None = None
 
 
-class ModificationHorloge(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    # Nom IANA (`Europe/Paris`) : ArgOS l'envoie en POSIX.
-    fuseau: str | None = None
-
-    @field_validator("fuseau")
-    @classmethod
-    def _fuseau_connu(cls, fuseau: str | None) -> str | None:
-        if fuseau is not None and not fuseaux.connu(fuseau):
-            raise ValueError("Fuseau IANA inconnu")
-        return fuseau
-
-
 class ModificationImage(BaseModel):
     """Champs d'Image modifiés ; un champ absent (ou `null`) n'est pas envoyé. Bornes : celles relues sur la caméra."""
 
@@ -379,18 +364,16 @@ class ModificationReglages(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    horloge: ModificationHorloge = ModificationHorloge()
     incrustations: ModificationIncrustations = ModificationIncrustations()
     image: ModificationImage = ModificationImage()
     encodage: ModificationEncodage = ModificationEncodage()
 
 
 class ChampModifie(BaseModel):
-    # Chemin du champ envoyé : `horloge.fuseau`, `incrustations.nom.texte`, `image.luminosite`…
+    # Chemin du champ envoyé : `incrustations.nom.texte`, `image.luminosite`…
     champ: str
     demande: str | bool | float
-    # Valeur relue sur la caméra après l'envoi (fuseau : sa chaîne POSIX) ; `None` : sans valeur (Incrustation
-    # cachée, caméra sans fuseau).
+    # Valeur relue sur la caméra après l'envoi ; `None` : sans valeur (Incrustation cachée).
     relu: str | bool | float | None
     statut: StatutChamp
     # `sans_reponse` : la caméra n'a plus répondu après l'envoi d'Encodage ; rien n'a pu être relu.
@@ -430,15 +413,6 @@ def modifier_reglages(
     camera, contact = _joindre(url_rtsp, retenu, codec)
     with _erreurs_onvif():
         return camera.modifier(modification, maintenant), contact
-
-
-def mettre_a_l_heure(
-    url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]
-) -> tuple[Horloge, Contact]:
-    """Met la caméra à l'heure du Site (mode manuel, fuseau gardé), puis relit son Horloge. Lève `ErreurOnvif`."""
-    camera, contact = _joindre(url_rtsp, retenu)
-    with _erreurs_onvif():
-        return camera.mettre_a_l_heure(maintenant), contact
 
 
 def lire_horloge(url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]) -> tuple[Horloge, Contact]:
@@ -844,12 +818,6 @@ class _Camera:
             serveur_ntp=_serveur_ntp(ntp),
         )
 
-    def mettre_a_l_heure(self, maintenant: Callable[[], datetime]) -> Horloge:
-        self._connecter()
-        # Un refus se voit à l'écart relu, inchangé.
-        self._regler_horloge(heure_du_site=maintenant())
-        return self._horloge(maintenant)
-
     def lire_horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
         self._connecter_appareil()
         return self._horloge(maintenant)
@@ -864,29 +832,6 @@ class _Camera:
         )
         return self._horloge(maintenant)
 
-    def _regler_horloge(self, *, fuseau_posix: str | None = None, heure_du_site: datetime | None = None) -> bool:
-        """`SetSystemDateAndTime` ; ce qui n'est pas demandé reste celui de la caméra. `False` : refusé.
-
-        Sans `heure_du_site`, le mode est gardé et, en manuel, l'heure renvoyée est celle que la caméra vient de
-        donner : ONVIF l'exige en mode manuel.
-        """
-        heure = self._appareil.GetSystemDateAndTime()
-        manuel = heure_du_site is not None or heure.DateTimeType != "NTP"
-        arguments: dict[str, Any] = {
-            "DateTimeType": "Manual" if manuel else "NTP",
-            "DaylightSavings": bool(heure.DaylightSavings),
-        }
-        fuseau = fuseau_posix or (heure.TimeZone.TZ if heure.TimeZone is not None else None)
-        if fuseau:
-            arguments["TimeZone"] = {"TZ": fuseau}
-        if manuel:
-            utc = (heure_du_site or _date_heure_utc(heure)).astimezone(UTC)
-            arguments["UTCDateTime"] = {
-                "Date": {"Year": utc.year, "Month": utc.month, "Day": utc.day},
-                "Time": {"Hour": utc.hour, "Minute": utc.minute, "Second": utc.second},
-            }
-        return self._envoyer(self._appareil.SetSystemDateAndTime, **arguments)
-
     def modifier(self, modification: ModificationReglages, maintenant: Callable[[], datetime]) -> ResultatModification:
         lus = self.lire(maintenant)
         avant = lus.incrustations
@@ -895,8 +840,6 @@ class _Camera:
         # Avant tout envoi : une valeur hors des options n'envoie rien, pas même les autres champs.
         _verifier_image(image, lus.image)
         _verifier_encodage(encodage, lus.encodage)
-        fuseau = modification.horloge.fuseau
-        fuseau_refuse = fuseau is not None and not self._regler_horloge(fuseau_posix=fuseaux.posix(fuseau))
         envois: list[tuple[CleIncrustation, dict[str, Any], set[str]]] = []
         for cle in TYPES_TEXTE:
             changement = getattr(modification.incrustations, cle)
@@ -912,10 +855,6 @@ class _Camera:
         if apres is None:
             return ResultatModification(champs=_sans_reponse(modification), reglages=lus)
         champs = []
-        if fuseau is not None:
-            relu = apres.horloge.fuseau_posix
-            statut = _statut(fuseau_refuse, relu, fuseaux.posix(fuseau))
-            champs.append(ChampModifie(champ="horloge.fuseau", demande=fuseau, relu=relu, statut=statut))
         for cle, envoyes, refuses in envois:
             relue = getattr(apres.incrustations, cle)
             for champ, demande in envoyes.items():
@@ -1067,8 +1006,6 @@ def _statut(refuse: bool, relu: object, demande: object) -> StatutChamp:
 def _sans_reponse(modification: ModificationReglages) -> list[ChampModifie]:
     """Chaque champ envoyé, `pas_pris` faute d'avoir pu relire la caméra."""
     envoyes: list[tuple[str, Any]] = []
-    if modification.horloge.fuseau is not None:
-        envoyes.append(("horloge.fuseau", modification.horloge.fuseau))
     for cle in TYPES_TEXTE:
         changement = getattr(modification.incrustations, cle)
         if changement is not None:

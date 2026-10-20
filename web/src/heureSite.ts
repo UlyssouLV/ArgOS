@@ -32,6 +32,13 @@ export async function modifierHeureDuSite(modification: ModificationHeureDuSite)
   return reponse.json();
 }
 
+/** Fuseaux proposés, Europe/Paris en tête : ceux que l'API sait relire sous le même nom. */
+export async function lireFuseaux(): Promise<string[]> {
+  const reponse = await appeler("/api/fuseaux");
+  if (!reponse.ok) throw new Error(`Lecture des fuseaux : ${reponse.status}`);
+  return reponse.json();
+}
+
 /** Ce que le Serveur de temps du Site sert vraiment aux Caméras. */
 export function texteSourceUtilisee(heure: HeureDuSite): string {
   switch (heure.source_utilisee) {

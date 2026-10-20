@@ -302,8 +302,7 @@ def creer_app(
 
     @app.get("/api/fuseaux", dependencies=[Depends(administrateur_connecte)])
     def lister_fuseaux() -> list[str]:
-        """Fuseaux proposés (Heure du Site, Réglages de la Caméra) : ceux que la lecture sait renommer, Europe/Paris en
-        tête."""
+        """Fuseaux proposés pour l'Heure du Site : ceux que la lecture sait renommer, Europe/Paris en tête."""
         return list(fuseaux.FUSEAUX_COURANTS)
 
     def heure_du_site_lue(reglage: heure_site.Reglage) -> HeureDuSiteLue:
@@ -474,16 +473,6 @@ def _routes_cameras(
         `422` sans rien envoyer si une valeur sort des options relues sur la caméra (bornes, modes proposés)."""
         with _erreurs_cameras():
             return cameras.modifier_reglages(base, id_camera, modification, horloge)
-
-    @routes.post(
-        "/{id_camera}/reglages/mise-a-l-heure",
-        response_model=onvif.Horloge,
-        responses={status.HTTP_502_BAD_GATEWAY: {"model": ErreurOnvifLue}},
-    )
-    def mettre_a_l_heure(id_camera: int, base: Base) -> onvif.Horloge:
-        """Envoie une fois l'heure UTC du serveur à la caméra (mode manuel, fuseau gardé), puis relit son Horloge."""
-        with _erreurs_cameras():
-            return cameras.mettre_a_l_heure(base, id_camera, horloge)
 
     @routes.post(
         "/{id_camera}/reglages/certificat",
