@@ -47,19 +47,18 @@ def recues_du_4(depuis: datetime, ip_api: str) -> list[str]:
 
 
 def test_simulee_4_refusee_sans_autre_requete_que_la_sonde(connecte, camera_simulee, ip_api):
-    id_camera = camera_simulee(4, en_clair=False)
     depuis = datetime.now(UTC) - timedelta(seconds=1)
+    id_camera = camera_simulee(4, en_clair=False)
 
     lecture = lire(connecte, id_camera)
     modification = connecte.patch(
         f"/api/cameras/{id_camera}/reglages", json={"incrustations": {"nom": {"texte": "Clair"}}}, timeout=30
     )
-    mise_a_l_heure = connecte.post(f"/api/cameras/{id_camera}/reglages/mise-a-l-heure", timeout=30)
 
-    for reponse in (lecture, modification, mise_a_l_heure):
+    for reponse in (lecture, modification):
         assert reponse.status_code == 502
         assert reponse.json() == REFUS
-    # Une sonde par échange, rien d'autre.
+    # Une sonde par échange (le calage à l'ajout compris), rien d'autre.
     recues = recues_du_4(depuis, ip_api)
     assert len(recues) == 3
     assert all('"POST /onvif/device_service ' in ligne for ligne in recues)

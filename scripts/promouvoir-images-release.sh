@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Promouvoit le digest :staging vers l'étiquette de Release X.Y.Z et :latest,
 # sans rebuild (copie de manifeste). Prérequis : docker buildx et login ghcr.
-# Déclenché par une GitHub Release taguée vX.Y.Z (GITHUB_REF_NAME).
+# Déclenché à la main (workflow « Promouvoir images vers Release ») : ARGOS_RELEASE_TAG=vX.Y.Z.
 set -euo pipefail
 
-ETIQUETTE="${GITHUB_REF_NAME:-}"
+ETIQUETTE="${ARGOS_RELEASE_TAG:-${GITHUB_REF_NAME:-}}"
 if [[ ! "$ETIQUETTE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "[ERREUR] Étiquette de Release attendue vX.Y.Z, reçu : ${ETIQUETTE}." >&2
     exit 1
@@ -19,6 +19,6 @@ promouvoir() {
         "ghcr.io/ulyssoulv/argos-${image}:staging"
 }
 
-for image in api web pont certificats; do
+for image in api web pont certificats temps; do
     promouvoir "$image"
 done

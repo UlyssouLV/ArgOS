@@ -1,8 +1,9 @@
 # Réseau des caméras, prod Linux seulement (ADR 0003), superposé à compose.yaml :
 # scripts/cameras/configurer-detection.sh l'ajoute à COMPOSE_FILE dans .env, jamais sous macOS (Docker
 # Desktop ne gère pas macvlan). Sans lui, compose.yaml marche seul (pas de MAC pour les vraies caméras).
-# api seul y gagne une interface macvlan sur la prise des caméras, à une IP fixe hors DHCP : il y parle aux
+# api y gagne une interface macvlan sur la prise des caméras, à une IP fixe hors DHCP : il y parle aux
 # caméras sans NAT et lit leur MAC dans sa table de voisinage. Aucune requête n'y est servie (docs/securite.md).
+# temps y a sa propre IP fixe hors DHCP, et n'y sert que NTP (UDP 123, ADR 0014).
 # Une seule prise : la première retenue (ARGOS_DETECTION_CAMERAS_INTERFACES) ; les autres restent sans MAC.
 
 services:
@@ -16,6 +17,17 @@ services:
     environment:
       # Jamais Candidat, et toute requête arrivée sur cette adresse est refusée.
       ARGOS_RESEAU_CAMERAS_ADRESSES: ${ARGOS_RESEAU_CAMERAS_IP}
+      # Adresse du Serveur de temps du Site annoncée aux Caméras (ADR 0014).
+      ARGOS_TEMPS_ADRESSE_CAMERAS: ${ARGOS_RESEAU_CAMERAS_TEMPS_IP}
+
+  temps:
+    networks:
+      default:
+        gw_priority: 1
+      reseau-cameras:
+        ipv4_address: ${ARGOS_RESEAU_CAMERAS_TEMPS_IP:?écrite par scripts/cameras/configurer-detection.sh, voir .env.example}
+    # Les Caméras le joignent à son IP du réseau des caméras : plus de port publié sur l'hôte.
+    ports: !reset []
 
 networks:
   reseau-cameras:

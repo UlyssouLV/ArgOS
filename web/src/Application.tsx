@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { Administration } from "./pages/Administration";
 import { Connexion } from "./pages/Connexion";
 import { Enregistrement } from "./pages/Enregistrement";
+import { HeureDuSite } from "./pages/HeureDuSite";
 import { Live } from "./pages/Live";
 import { ZoneConnectee } from "./pages/ZoneConnectee";
 import { FournisseurSession } from "./session";
@@ -15,6 +16,7 @@ export function Application() {
           <Route path="/connexion" element={<Connexion />} />
           <Route element={<ZoneConnectee />}>
             <Route path="/administration" element={<Administration />} />
+            <Route path="/administration/heure-du-site" element={<HeureDuSite />} />
             <Route path="/enregistrement" element={<Enregistrement />} />
             <Route path="/live" element={<Live />} />
           </Route>

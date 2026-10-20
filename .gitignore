@@ -13,3 +13,4 @@ dist/
 
 # Cache de compilation TypeScript
 *.tsbuildinfo
+.DS_Store

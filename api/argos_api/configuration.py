@@ -21,6 +21,8 @@ class Configuration(BaseSettings):
     # API de contrôle de MediaMTX (réseau Compose seulement) et délai de ses réponses, en secondes.
     url_api_mediamtx: str = Field("http://mediamtx:9997", validation_alias="ARGOS_MEDIAMTX_API")
     delai_mediamtx: float = Field(5, gt=0, validation_alias="ARGOS_MEDIAMTX_DELAI_S")
+    # Serveur playback de MediaMTX (réseau Compose seulement) : Relecture des Segments (ADR 0013).
+    url_playback_mediamtx: str = Field("http://mediamtx:9996", validation_alias="ARGOS_MEDIAMTX_PLAYBACK")
     # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes (réglable pour les tests).
     expiration_apercu: float = Field(120, gt=0, validation_alias="ARGOS_APERCU_EXPIRATION_S")
     # Volume des segments d'enregistrement, monté dans le conteneur (lecture + purge à la suppression).
@@ -35,6 +37,19 @@ class Configuration(BaseSettings):
     # Adresses d'ArgOS sur le réseau des caméras (macvlan, prod Linux : compose.reseau-cameras.yaml),
     # séparées par des virgules : jamais Candidat, et aucune requête n'y est servie (ADR 0003).
     reseau_cameras_adresses: str = Field("", validation_alias="ARGOS_RESEAU_CAMERAS_ADRESSES")
+
+    # Serveur de temps du Site (docs/adr/0014-serveur-de-temps-du-site.md) : son nom sur le réseau Compose, où l'API
+    # lit en NTP ce qu'il sert, et le dossier du volume partagé où elle lui écrit la source à suivre.
+    temps_hote: str = Field("temps", validation_alias="ARGOS_TEMPS_HOTE")
+    temps_reglage: str = Field("/temps", validation_alias="ARGOS_TEMPS_REGLAGE")
+    # Adresse de temps sur le réseau des caméras (macvlan, ou réseau des Caméras simulées), annoncée aux Caméras ;
+    # vide : la première IPv4 du Site (`ips_du_site`, IP du certificat serveur, 0.6.1), où temps publie l'UDP 123.
+    temps_adresse_cameras: str = Field("", validation_alias="ARGOS_TEMPS_ADRESSE_CAMERAS")
+    ips_du_site: str = Field("", validation_alias="ARGOS_IPS_DU_SITE")
+    # Vérification de l'Horloge de chaque Caméra active, en secondes (réglable pour les tests).
+    intervalle_verification: float = Field(3600, gt=0, validation_alias="ARGOS_VERIFICATION_INTERVALLE_S")
+    # `/etc/localtime` de l'hôte, monté : fuseau du Site par défaut.
+    localtime_hote: str = Field("/etc/localtime-hote", validation_alias="ARGOS_LOCALTIME_HOTE")
 
     def adresses_reseau_cameras(self) -> set[IPv4Address]:
         """Une adresse invalide est ignorée : le réseau des caméras n'empêche jamais l'API de démarrer."""

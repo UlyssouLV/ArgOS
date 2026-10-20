@@ -12,8 +12,10 @@ caméra ancienne), `ONVIF_SERVICES` (services en plus de l'appareil et du média
 `media2` ; aucun par défaut), `ONVIF_CHEMINS_RTSP` (chemin et requête de l'URL RTSP de chaque profil, séparés par des
 virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut), `ONVIF_SILENCE_APRES_ENCODAGE_S` (secondes
 pendant lesquelles la caméra ferme chaque connexion sans répondre après un changement d'Encodage accepté, comme une
-caméra qui relance son encodeur ; jamais par défaut). HTTP et HTTPS servent la même caméra (même
-état). Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
+caméra qui relance son encodeur ; jamais par défaut), `ONVIF_PORT_NTP` (port où la caméra joint ses serveurs NTP ;
+123 par défaut), `ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
+date incrustée dans son Flux, relu par ffmpeg : media/simulated/diffuser.sh ; aucun par défaut). HTTP et HTTPS
+servent la même caméra (même état). En mode NTP, la caméra interroge vraiment le serveur reçu par `SetNTP` et s'y cale. Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
 opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
 `python camera_onvif.py sonde` lit l'heure du service local sur chaque port : healthcheck du conteneur.
 """
@@ -22,7 +24,9 @@ import base64
 import hashlib
 import hmac
 import os
+import socket
 import ssl
+import struct
 import subprocess
 import sys
 import threading
@@ -52,6 +56,20 @@ TER = "http://www.onvif.org/ver10/error"  # NOSONAR
 WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"  # NOSONAR
 WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"  # NOSONAR
 NS = {"env": ENV, "tds": TDS, "trt": TRT, "timg": TIMG, "tr2": TR2, "tt": TT, "wsse": WSSE, "wsu": WSU}
+
+# Horloge d'usine : 7 minutes d'avance sur l'heure réelle, comme une caméra jamais mise à l'heure.
+AVANCE_D_USINE = timedelta(minutes=7)
+# NTP : port des serveurs, secondes d'attente d'une réponse, secondes entre deux interrogations en mode NTP.
+PORT_NTP = 123
+DELAI_NTP_S = 2
+PERIODE_NTP_S = 64
+# Secondes entre l'époque NTP (1900) et l'époque Unix (1970).
+EPOQUE_NTP = 2_208_988_800
+# Adresse d'un serveur NTP manuel : élément ONVIF selon son type.
+ADRESSES_NTP = {"IPv4": "IPv4Address", "IPv6": "IPv6Address", "DNS": "DNSname"}
+# Date et heure incrustées dans le Flux (`yyyy-MM-dd HH:mm:ss`), réécrites ce nombre de secondes.
+FORMAT_DATE_INCRUSTEE = "%Y-%m-%d %H:%M:%S"
+INTERVALLE_DATE_S = 0.2
 
 # Seule opération lue sans identifiants, comme sur les vraies caméras : le client y lit l'heure de la caméra.
 SANS_IDENTIFIANTS = {"GetSystemDateAndTime"}
@@ -168,10 +186,11 @@ class Etat:
     """État « sortie d'usine » d'une caméra de dev XiongMai, en mémoire seulement."""
 
     # Horloge : écart entre l'heure de la caméra et l'heure réelle, pour qu'elle avance.
-    decalage: timedelta = field(default_factory=lambda: datetime(1999, 12, 31, tzinfo=UTC) - datetime.now(UTC))
+    decalage: timedelta = AVANCE_D_USINE
     mode: str = "Manual"
     heure_ete: bool = False
     fuseau: str = "AWST-8"
+    type_ntp: str = "DNS"
     serveur_ntp: str = "NTP"
     incrustations: list[Incrustation] = field(
         default_factory=lambda: [
@@ -266,6 +285,60 @@ def _lire_incrustation(osd: ET.Element, token: str) -> Incrustation:
 
 
 # --- Écriture des réponses --------------------------------------------------------------------------------------
+
+
+def heure_locale(moment: datetime, fuseau: str) -> time.struct_time:
+    """`moment` à l'heure locale du `fuseau` POSIX (`CET-1CEST,M3.5.0,M10.5.0/3`), lu par la libc comme sur une caméra."""
+    with _VERROU_FUSEAU:
+        avant = os.environ.get("TZ")
+        os.environ["TZ"] = fuseau
+        time.tzset()
+        try:
+            return time.localtime(moment.timestamp())
+        finally:
+            if avant is None:
+                del os.environ["TZ"]
+            else:
+                os.environ["TZ"] = avant
+            time.tzset()
+
+
+# `TZ` est propre au processus : un fuseau à la fois.
+_VERROU_FUSEAU = threading.Lock()
+
+
+def _horodatage_ntp(paquet: bytes, debut: int) -> float:
+    secondes, fraction = struct.unpack("!II", paquet[debut : debut + 8])
+    return secondes - EPOQUE_NTP + fraction / 2**32
+
+
+def interroger_ntp(serveur: str, port: int = PORT_NTP) -> timedelta:
+    """Écart entre l'heure du `serveur` NTP et l'heure réelle (client SNTP, RFC 4330), à la première de ses adresses
+    qui répond ; OSError si aucune ne donne de réponse valable."""
+    erreur = OSError(f"{serveur} sans adresse")
+    for famille, type_prise, _, _, adresse in socket.getaddrinfo(serveur, port, type=socket.SOCK_DGRAM):
+        try:
+            return _interroger_adresse_ntp(famille, type_prise, adresse, serveur)
+        except OSError as echec:
+            erreur = echec
+    raise erreur
+
+
+def _interroger_adresse_ntp(famille: int, type_prise: int, adresse: tuple, serveur: str) -> timedelta:
+    with socket.socket(famille, type_prise) as prise:
+        prise.settimeout(DELAI_NTP_S)
+        # Connectée : un port fermé répond « refusé » au lieu de laisser attendre.
+        prise.connect(adresse)
+        depart = time.time()
+        # LI 0, version 4, mode 3 (client).
+        prise.send(b"\x23" + bytes(47))
+        paquet = prise.recv(512)
+        arrivee = time.time()
+    # Mode 4 (serveur), strate non nulle (0 : refus « kiss-o'-death »).
+    if len(paquet) < 48 or paquet[0] & 0x07 != 4 or paquet[1] == 0:
+        raise OSError(f"réponse NTP invalide de {serveur}")
+    reception, emission = _horodatage_ntp(paquet, 32), _horodatage_ntp(paquet, 40)
+    return timedelta(seconds=((reception - depart) + (emission - arrivee)) / 2)
 
 
 def _date_heure(moment: datetime) -> str:
@@ -366,10 +439,16 @@ class Camera:
         services: frozenset[str] = frozenset(),
         chemins_rtsp: tuple[str, ...] = CHEMINS_RTSP,
         silence_apres_encodage_s: float = 0,
+        port_ntp: int = PORT_NTP,
     ) -> None:
         """`services` : `image` et `media2` en plus de l'appareil et du média 1 ; `chemins_rtsp` : un profil par chemin ;
-        `silence_apres_encodage_s` : muette ce temps-là après chaque changement d'Encodage accepté."""
+        `silence_apres_encodage_s` : muette ce temps-là après chaque changement d'Encodage accepté ; `port_ntp` : port
+        des serveurs NTP joints (123 ; un autre pour un serveur de test)."""
         self.identifiants = identifiants
+        self.port_ntp = port_ntp
+        # Synchronisation NTP : lancée au premier passage en mode NTP ou au premier serveur reçu, réveillée ensuite.
+        self._synchronisation: threading.Thread | None = None
+        self._reveil = threading.Event()
         self.silence_apres_encodage_s = silence_apres_encodage_s
         # Instant (`time.monotonic`) jusqu'auquel la caméra ne répond plus.
         self.muette_jusqu_a = 0.0
@@ -390,6 +469,7 @@ class Camera:
                 "GetSystemDateAndTime": self.lire_horloge,
                 "SetSystemDateAndTime": self.regler_horloge,
                 "GetNTP": self.lire_ntp,
+                "SetNTP": self.regler_ntp,
                 "GetCapabilities": self.lire_capacites,
                 "GetServices": self.lire_services,
             },
@@ -486,14 +566,69 @@ class Camera:
         etat.fuseau = _texte(requete, "tds:TimeZone/tt:TZ") or etat.fuseau
         if nouvelle_heure is not None:
             etat.decalage = nouvelle_heure - datetime.now(UTC)
+        if mode == "NTP":
+            self._synchroniser_sans_attendre()
         return "<tds:SetSystemDateAndTimeResponse/>"
 
     def lire_ntp(self, _requete: ET.Element, _hote: str) -> str:
+        etat = self.etat
+        balise = f"tt:{ADRESSES_NTP[etat.type_ntp]}"
         return (
             "<tds:GetNTPResponse><tds:NTPInformation><tt:FromDHCP>false</tt:FromDHCP>"
-            f"<tt:NTPManual><tt:Type>DNS</tt:Type><tt:DNSname>{escape(self.etat.serveur_ntp)}</tt:DNSname></tt:NTPManual>"
+            f"<tt:NTPManual><tt:Type>{etat.type_ntp}</tt:Type><{balise}>{escape(etat.serveur_ntp)}</{balise}></tt:NTPManual>"
             "</tds:NTPInformation></tds:GetNTPResponse>"
         )
+
+    def regler_ntp(self, requete: ET.Element, _hote: str) -> str:
+        """Un serveur manuel (le premier reçu) ; pas de DHCP sur le réseau des Caméras simulées."""
+        if _texte(requete, "tds:FromDHCP") == "true":
+            raise Faute("ter:InvalidArgVal", "Aucun serveur NTP donné par DHCP : NTPManual exigé")
+        manuel = requete.find("tds:NTPManual", NS)
+        if manuel is None:
+            raise Faute("ter:InvalidArgVal", "NTPManual manquant")
+        type_ntp = _exiger(manuel, "tt:Type")
+        if type_ntp not in ADRESSES_NTP:
+            raise Faute("ter:InvalidArgVal", f"Type d'adresse NTP inconnu : {type_ntp}")
+        self.etat.serveur_ntp = _exiger(manuel, f"tt:{ADRESSES_NTP[type_ntp]}")
+        self.etat.type_ntp = type_ntp
+        self._synchroniser_sans_attendre()
+        return "<tds:SetNTPResponse/>"
+
+    # --- Synchronisation NTP ---
+
+    def _synchroniser_sans_attendre(self) -> None:
+        """Réveille la synchronisation (lancée au premier appel) : en mode NTP, elle interroge le serveur aussitôt."""
+        if self._synchronisation is None:
+            self._synchronisation = threading.Thread(target=self._synchroniser, daemon=True)
+            self._synchronisation.start()
+        self._reveil.set()
+
+    def _synchroniser(self) -> None:
+        """En mode NTP, se cale sur le serveur reçu dès qu'on la réveille, puis toutes les `PERIODE_NTP_S` secondes.
+
+        Serveur injoignable : l'horloge est gardée telle quelle, et le service ONVIF continue de répondre."""
+        while True:
+            self._reveil.wait(PERIODE_NTP_S)
+            self._reveil.clear()
+            with self.etat.verrou:
+                serveur = self.etat.serveur_ntp if self.etat.mode == "NTP" else None
+            if serveur is None:
+                continue
+            try:
+                decalage = interroger_ntp(serveur, self.port_ntp)
+            except OSError as erreur:
+                print(f"NTP : {serveur} injoignable ({erreur}), horloge gardée", file=sys.stderr, flush=True)
+                continue
+            with self.etat.verrou:
+                ecart = decalage - self.etat.decalage
+                self.etat.decalage = decalage
+            print(f"NTP : calée sur {serveur} (corrigée de {ecart.total_seconds():+.3f} s)", file=sys.stderr, flush=True)
+
+    def date_incrustee(self) -> str:
+        """Date et heure incrustées dans le Flux : l'heure de la caméra, à son fuseau (`yyyy-MM-dd HH:mm:ss`)."""
+        with self.etat.verrou:
+            heure, fuseau = self.etat.heure(), self.etat.fuseau
+        return time.strftime(FORMAT_DATE_INCRUSTEE, heure_locale(heure, fuseau))
 
     def lire_capacites(self, _requete: ET.Element, hote: str) -> str:
         """Annonce les services : c'est ici que le client apprend l'adresse du service média."""
@@ -888,6 +1023,18 @@ def creer_serveur(
     return serveur
 
 
+def ecrire_la_date(camera: Camera, chemin: str) -> None:
+    """Réécrit sans cesse la date incrustée dans `chemin`, que ffmpeg relit à chaque image (media/simulated/diffuser.sh).
+
+    Remplacé d'un bloc (`os.replace`) : jamais lu à moitié écrit."""
+    provisoire = f"{chemin}.provisoire"
+    while True:
+        with open(provisoire, "w", encoding="utf-8") as fichier:
+            fichier.write(camera.date_incrustee())
+        os.replace(provisoire, chemin)
+        time.sleep(INTERVALLE_DATE_S)
+
+
 def sonder(port: int, https: bool) -> None:
     """Healthcheck : le service local répond à GetSystemDateAndTime."""
     contexte = None
@@ -948,6 +1095,7 @@ def main() -> None:
         services,
         _liste("ONVIF_CHEMINS_RTSP") or CHEMINS_RTSP,
         float(os.environ.get("ONVIF_SILENCE_APRES_ENCODAGE_S") or 0),
+        int(os.environ.get("ONVIF_PORT_NTP") or PORT_NTP),
     )
     tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
     fils = []
@@ -959,6 +1107,8 @@ def main() -> None:
             f"{'avec' if identifiants else 'sans'} identifiants, services {', '.join(sorted(services)) or 'de base'}",
             flush=True,
         )
+    if fichier_date := os.environ.get("ONVIF_FICHIER_DATE"):
+        fils.append(threading.Thread(target=ecrire_la_date, args=(camera, fichier_date)))
     for fil in fils:
         fil.start()
     for fil in fils:

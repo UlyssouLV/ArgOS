@@ -4,7 +4,8 @@
 Caméra simulée 2 ; `camera_complete` est la Caméra simulée 2 (identifiants, service image, média 2, deux profils
 aux chemins Dahua) et `camera_sans_media_2` la même sans média 2 ; `camera_sans_recreation_de_la_date` ne sait
 recréer que le nom ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
-en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire.
+en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire ; `serveur_ntp` est un
+petit serveur NTP de test, que `camera_et_serveur_ntp` joint à la place du port 123.
 Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
@@ -14,7 +15,9 @@ import hashlib
 import os
 import socket
 import ssl
+import struct
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -205,6 +208,57 @@ def camera_complete():
 def camera_sans_media_2():
     """La Caméra simulée 2 lancée sans média 2 : le repli média 1 sur un Flux H.264."""
     yield from _lancer(IDENTIFIANTS, services=frozenset({"image"}), chemins_rtsp=CHEMINS_RTSP_2)
+
+
+# Secondes entre l'époque NTP (1900) et l'époque Unix (1970).
+EPOQUE_NTP = 2_208_988_800
+
+
+class ServeurNtp:
+    """Petit serveur NTP de test (version 4, mode serveur) sur 127.0.0.1, `avance` secondes en avance sur l'heure
+    réelle ; compte les requêtes reçues."""
+
+    def __init__(self, avance: float = 0) -> None:
+        self.avance = avance
+        self.requetes = 0
+        self.prise = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.prise.bind(("127.0.0.1", 0))
+        self.port = self.prise.getsockname()[1]
+        threading.Thread(target=self._repondre, daemon=True).start()
+
+    def _horodatage(self) -> bytes:
+        secondes = time.time() + self.avance + EPOQUE_NTP
+        return struct.pack("!II", int(secondes), int(secondes % 1 * 2**32))
+
+    def _repondre(self) -> None:
+        while True:
+            try:
+                requete, client = self.prise.recvfrom(512)
+            except OSError:
+                return
+            self.requetes += 1
+            reception = self._horodatage()
+            # LI 0, version 4, mode 4 (serveur), strate 1 ; origine = émission du client.
+            entete = bytes([0x24, 1, 6, 0xEC]) + bytes(8) + b"TEST" + reception
+            self.prise.sendto(entete + requete[40:48] + reception + self._horodatage(), client)
+
+    def fermer(self) -> None:
+        self.prise.close()
+
+
+@pytest.fixture
+def serveur_ntp():
+    serveur = ServeurNtp()
+    yield serveur
+    serveur.fermer()
+
+
+@pytest.fixture
+def camera_et_serveur_ntp(serveur_ntp):
+    """Caméra sans identifiants qui joint ses serveurs NTP sur le port du `serveur_ntp` de test (pas 123)."""
+    camera = camera_onvif.Camera(port_ntp=serveur_ntp.port)
+    with _servir(camera) as url:
+        yield Camera(url, None), camera, serveur_ntp
 
 
 @dataclass

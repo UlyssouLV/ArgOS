@@ -1,4 +1,7 @@
-"""Réglages globaux du Site : Conservation des Segments et Seuil de place disque (ADR 0012)."""
+"""Réglages globaux du Site : Conservation des Segments et Seuil de place disque (ADR 0012).
+
+L'Heure du Site, dans la même ligne, se règle par `heure_site`.
+"""
 
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
@@ -32,11 +35,11 @@ class ModificationReglagesSite(BaseModel):
 
 
 def lire(base: Session) -> ReglagesSiteLus:
-    return _lus(_ligne(base))
+    return _lus(ligne_du_site(base))
 
 
 def modifier(base: Session, modification: ModificationReglagesSite) -> ReglagesSiteLus:
-    ligne = _ligne(base)
+    ligne = ligne_du_site(base)
     for champ, valeur in modification.model_dump(exclude_unset=True).items():
         if valeur is not None:
             setattr(ligne, champ, valeur)
@@ -46,12 +49,12 @@ def modifier(base: Session, modification: ModificationReglagesSite) -> ReglagesS
 
 def conservation_h(base: Session) -> int:
     """Heures de Conservation courantes, pour la réconciliation du pont."""
-    return _ligne(base).conservation_h
+    return ligne_du_site(base).conservation_h
 
 
 def seuil_octets_libres(base: Session) -> int:
     """Seuil de place disque courant, en octets libres."""
-    return _ligne(base).seuil_octets_libres
+    return ligne_du_site(base).seuil_octets_libres
 
 
 def _lus(ligne: ReglagesSite) -> ReglagesSiteLus:
@@ -61,7 +64,8 @@ def _lus(ligne: ReglagesSite) -> ReglagesSiteLus:
     )
 
 
-def _ligne(base: Session) -> ReglagesSite:
+def ligne_du_site(base: Session) -> ReglagesSite:
+    """La ligne unique des réglages Site, créée aux valeurs par défaut si elle manque."""
     ligne = base.get(ReglagesSite, ID_UNIQUE)
     if ligne is None:
         ligne = ReglagesSite(

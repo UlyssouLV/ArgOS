@@ -13,6 +13,7 @@ IMAGES_DU_SITE = {
     "web": "argos-web",
     "mediamtx": "argos-pont",
     "certificats": "argos-certificats",
+    "temps": "argos-temps",
 }
 VERSION = "9.9.9"
 
@@ -51,16 +52,31 @@ def config_prod(dossier: Path, *fichiers: str, env: str = f"ARGOS_VERSION={VERSI
 def test_le_repli_compose_sans_env_est_la_version_de_production_courante():
     version = _argos_version_exemple()
     compose = (REPO_ROOT / "compose.yaml").read_text()
-    assert compose.count(f"${{ARGOS_VERSION:-{version}}}") == 4
-    assert compose.count("${ARGOS_VERSION:-") == 4
+    assert compose.count(f"${{ARGOS_VERSION:-{version}}}") == 5
+    assert compose.count("${ARGOS_VERSION:-") == 5
 
 
-def test_les_quatre_images_du_site_portent_le_registre_et_argos_version(tmp_path):
+def test_les_images_du_site_portent_le_registre_et_argos_version(tmp_path):
     config = config_prod(tmp_path, "compose.yaml")
 
     for service, nom in IMAGES_DU_SITE.items():
         assert config["services"][service]["image"] == f"ghcr.io/ulyssoulv/{nom}:{VERSION}"
         assert "build" in config["services"][service]
+
+
+def test_temps_publie_seulement_l_udp_123_sans_regler_l_horloge_de_l_hote(tmp_path):
+    temps = config_prod(tmp_path, "compose.yaml")["services"]["temps"]
+
+    assert [(p["target"], p["published"], p["protocol"]) for p in temps["ports"]] == [(123, "123", "udp")]
+    assert "SYS_TIME" not in temps.get("cap_add", [])
+    assert temps["cap_drop"] == ["ALL"]
+    assert temps["environment"]["ARGOS_TEMPS_SOURCE"] == "pool.ntp.org"
+
+
+def test_le_port_ntp_publie_se_change_par_argos_port_ntp(tmp_path):
+    temps = config_prod(tmp_path, "compose.yaml", env=f"ARGOS_VERSION={VERSION}\nARGOS_PORT_NTP=1123\n")["services"]["temps"]
+
+    assert [(p["target"], p["published"]) for p in temps["ports"]] == [(123, "1123")]
 
 
 def test_le_pont_n_a_plus_besoin_du_fichier_mediamtx_du_depot(tmp_path):

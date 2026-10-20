@@ -6,7 +6,7 @@ chaque test qui les modifie.
 """
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -38,8 +38,6 @@ from test_live import (  # noqa: F401 (fixtures)
 
 # La recherche du port ONVIF, puis la lecture ; une caméra éteinte se fait attendre.
 DELAI_LECTURE_MS = 30_000
-# Horloge d'usine des Caméras simulées ONVIF.
-USINE = datetime(1999, 12, 31, tzinfo=UTC)
 # Aucun conteneur à cette adresse du réseau des Caméras simulées.
 IP_SANS_CAMERA = "172.30.0.250"
 
@@ -73,33 +71,26 @@ def valeur(reglages: Locator, terme: str) -> Locator:
     return dt.locator("xpath=following-sibling::dd[1]")
 
 
-def test_reglages_d_une_camera_active_valeurs_usine_et_ecart(administration: Page, api, noms):
+def test_reglages_d_une_camera_active_valeurs_usine_sans_horloge(administration: Page, api, noms):
     nom = noms()
-    creer(administration, api, nom, url_simulee(2))
+    creer_en_clair_accepte(administration, api, nom)
 
     reglages = ouvrir_reglages(administration, nom)
 
-    horloge = reglages.get_by_role("region", name="Horloge")
-    expect(horloge).to_be_visible(timeout=DELAI_LECTURE_MS)
-    annees = int((datetime.now(UTC) - USINE).days // 365.25)
-    expect(valeur(horloge, "Écart avec le Site")).to_have_text(f"en retard de {annees} ans")
-    expect(valeur(horloge, "Date et heure de la caméra (UTC)")).to_contain_text("31/12/1999")
-    # Fuseau qu'ArgOS ne reconnaît pas : montré tel quel.
-    fuseau = horloge.get_by_label("Fuseau", exact=True)
-    expect(fuseau).to_have_value("AWST-8")
-    expect(fuseau.locator("option:checked")).to_have_text("AWST-8")
-    expect(valeur(horloge, "Serveur de temps (NTP)")).to_have_text("non utilisé (serveur : NTP)")
     incrustations = reglages.get_by_role("region", name="Incrustations")
+    expect(incrustations).to_be_visible(timeout=DELAI_LECTURE_MS)
     expect(incrustations.get_by_label("Affichage du nom", exact=True)).to_have_value("affichee")
     expect(incrustations.get_by_label("Texte du nom", exact=True)).to_have_value("CAM01")
     expect(incrustations.get_by_label("Position du nom", exact=True)).to_have_value("UpperLeft")
     expect(incrustations.get_by_label("Affichage de la date et heure", exact=True)).to_have_value("affichee")
     expect(incrustations).to_contain_text("yyyy-MM-dd HH:mm:ss")
     expect(incrustations.get_by_label("Position de la date et heure", exact=True)).to_have_value("LowerLeft")
-    # De l'Horloge, seul le fuseau se choisit ; le format de la date ne se règle pas.
-    expect(horloge.get_by_role("textbox")).to_have_count(0)
-    expect(horloge.get_by_role("combobox")).to_have_count(1)
+    # Le format de la date ne se règle pas.
     expect(incrustations.get_by_role("textbox")).to_have_count(1)
+    # L'heure se règle pour le Site (page Heure du Site), plus Caméra par Caméra.
+    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_label("Fuseau", exact=True)).to_have_count(0)
+    expect(reglages.get_by_role("button", name="Mettre à l'heure du Site")).to_have_count(0)
 
     reglages.get_by_role("button", name="Fermer").click()
     expect(reglages).to_have_count(0)
@@ -159,11 +150,11 @@ def test_onvif_en_clair_accepte_puis_bandeau_et_retrait(administration: Page, ap
     )
     expect(accord).to_contain_text("mot de passe")
     expect(accord).to_contain_text("en clair sur le réseau des caméras")
-    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
 
     accord.get_by_role("button", name="Régler quand même en clair").click()
 
-    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
     bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
     expect(bandeau).to_contain_text("ONVIF en clair")
     expect(bandeau).not_to_contain_text("Échange chiffré")
@@ -175,7 +166,7 @@ def test_onvif_en_clair_accepte_puis_bandeau_et_retrait(administration: Page, ap
     expect(reglages.get_by_role("region", name="ONVIF en clair").get_by_role("alert")).to_contain_text(
         "ONVIF en clair non accepté", timeout=DELAI_LECTURE_MS
     )
-    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
     (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
     assert camera["onvif_en_clair_accepte"] is False
 
@@ -186,7 +177,7 @@ def test_pas_de_bandeau_en_clair_en_https(administration: Page, api, noms):
 
     reglages = ouvrir_reglages(administration, nom)
 
-    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
     expect(reglages.get_by_text("ONVIF en clair")).to_have_count(0)
     expect(reglages.get_by_text("Mot de passe court")).to_have_count(0)
 
@@ -279,7 +270,7 @@ def test_certificat_change_montre_les_deux_empreintes_puis_confiance_confirmee(
     expect(refus).to_contain_text("remise en usine")
     expect(refus).to_contain_text("nouveau firmware")
     expect(refus).to_contain_text("autre appareil à cette adresse")
-    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
 
     refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
     refus.get_by_role("button", name="Annuler").click()
@@ -287,7 +278,7 @@ def test_certificat_change_montre_les_deux_empreintes_puis_confiance_confirmee(
     refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
     refus.get_by_role("button", name="Confirmer la confiance").click()
 
-    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
     bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
     expect(bandeau).to_contain_text("Échange chiffré")
     expect(bandeau).not_to_contain_text(groupee(securite["empreinte"][:16]))
@@ -301,7 +292,7 @@ def test_https_indisponible_puis_oublier_le_certificat(administration: Page, api
 
     refus = reglages.get_by_role("region", name="HTTPS indisponible")
     expect(refus.get_by_role("alert")).to_contain_text("ne répond plus en HTTPS", timeout=DELAI_LECTURE_MS)
-    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
 
     refus.get_by_role("button", name="Oublier le certificat de cette caméra").click()
 
@@ -329,7 +320,7 @@ def test_messages_d_erreur(administration: Page, api, noms, url, message):
     reglages = ouvrir_reglages(administration, nom)
 
     expect(reglages.get_by_role("alert")).to_contain_text(message, timeout=DELAI_LECTURE_MS)
-    expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
 
 
 def test_pas_de_reglages_pour_une_camera_desactivee(administration: Page, api, noms):
@@ -496,90 +487,6 @@ def test_afficher_propose_seulement_si_la_camera_sait_recreer(
     expect(reglages.get_by_label("Affichage du nom", exact=True).locator("option")).to_have_text(["affichée", "cachée"])
 
 
-# --- Régler l'Horloge --------------------------------------------------------------------------------------------
-
-
-def test_fuseau_choisi_dans_la_liste_envoye_seul_et_pris(administration: Page, api, noms, remise_en_usine):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
-    fuseau = reglages.get_by_label("Fuseau", exact=True)
-    expect(fuseau.locator("option").nth(1)).to_have_text("Europe/Paris")
-
-    fuseau.select_option("Europe/Paris")
-    envoye = enregistrer(administration, reglages)
-
-    assert envoye == {"horloge": {"fuseau": "Europe/Paris"}, "incrustations": {}}
-    # Relu tel que la caméra le garde, en POSIX.
-    expect(statut(reglages, "fuseau")).to_have_text(
-        "pris (demandé : Europe/Paris, relu : CET-1CEST,M3.5.0,M10.5.0/3)", timeout=DELAI_LECTURE_MS
-    )
-    expect(reglages).to_contain_text("d'origine : AWST-8")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
-
-
-def test_fuseau_inconnu_montre_tant_qu_il_n_est_pas_change(administration: Page, api, noms):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
-    fuseau = reglages.get_by_label("Fuseau", exact=True)
-
-    fuseau.select_option("UTC")
-
-    expect(fuseau.locator("option", has_text="AWST-8")).to_have_count(0)
-    reglages.get_by_role("button", name="Annuler").click()
-    expect(fuseau).to_have_value("AWST-8")
-
-
-def test_mettre_a_l_heure_du_site_rafraichit_l_ecart(administration: Page, api, noms, remise_en_usine):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 2)
-    horloge = reglages.get_by_role("region", name="Horloge")
-    expect(valeur(horloge, "Écart avec le Site")).to_contain_text("ans")
-
-    with administration.expect_request(lambda r: r.method == "POST" and r.url.endswith("/mise-a-l-heure")):
-        horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
-
-    # Quelques secondes au plus : requêtes, secondes tronquées.
-    ecart = re.compile(r"^(à l'heure|en (retard|avance) de \d s)$")
-    expect(valeur(horloge, "Écart avec le Site")).to_have_text(ecart, timeout=DELAI_LECTURE_MS)
-    expect(horloge.get_by_role("status", name="Statut : mise à l'heure")).to_contain_text("écart relu")
-    expect(horloge.get_by_label("Fuseau", exact=True)).to_have_value("AWST-8")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
-
-
-@pytest.fixture
-def camera_4_en_ntp():
-    regler_camera_simulee_4_en_onvif(
-        "device",
-        "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
-        "<tds:DaylightSavings>false</tds:DaylightSavings></tds:SetSystemDateAndTime>",
-    )
-    yield
-    remettre_onvif_en_usine()
-
-
-def test_mise_a_l_heure_confirmee_quand_la_camera_est_en_ntp(administration: Page, api, noms, camera_4_en_ntp):
-    _, reglages = ouvrir_formulaire(administration, api, noms, 4)
-    horloge = reglages.get_by_role("region", name="Horloge")
-    envois: list[str] = []
-    # Seulement l'API : le lecteur du Flux, en tête du panneau, fait lui aussi des `POST` (WHEP).
-    administration.on("request", lambda r: envois.append(r.url) if r.method == "POST" and "/api/" in r.url else None)
-    avertissement = (
-        "La caméra se règle sur le serveur de temps NTP. La mettre à l'heure du Site coupe cette synchronisation."
-    )
-
-    horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
-    expect(horloge).to_contain_text(avertissement)
-    horloge.get_by_role("button", name="Garder le serveur de temps").click()
-
-    expect(horloge).not_to_contain_text(avertissement)
-    assert envois == []
-
-    horloge.get_by_role("button", name="Mettre à l'heure du Site").click()
-    horloge.get_by_role("button", name="Mettre à l'heure quand même").click()
-
-    expect(valeur(horloge, "Serveur de temps (NTP)")).to_have_text(
-        "non utilisé (serveur : NTP)", timeout=DELAI_LECTURE_MS
-    )
-    expect(valeur(horloge, "Écart avec le Site")).not_to_contain_text("ans")
-
-
 # --- Image ------------------------------------------------------------------------------------------------------
 
 
@@ -657,7 +564,7 @@ def test_image_non_reglable_sans_service_image_le_reste_reglable(administration:
     expect(section).to_contain_text("Image non réglable sur cette caméra")
     expect(section.get_by_role("slider")).to_have_count(0)
     expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_enabled()
-    expect(reglages.get_by_role("region", name="Horloge")).to_be_visible()
+    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible()
 
 
 # --- Encodage du Flux -------------------------------------------------------------------------------------------

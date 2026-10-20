@@ -52,13 +52,15 @@ Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) por
 
 Version **0.7.1** : chaque pull request vers `main` lance automatiquement la suite de tests complète (équivalent `/t -a`, stack Docker comprise) via GitHub Actions. Le check affiché est **`ArgOS tests`** : à exiger dans la protection de branche de `main` pour qu’une PR rouge ne puisse pas être fusionnée (voir [checks requis sur main](agents/docs/checks-requis-sur-main.md)).
 
-Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` après CI verte sur `main`, canal [Production](docs/glossaire.md#production-canal) par Release `vX.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
+Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` après CI verte sur `main`, canal [Production](docs/glossaire.md#production-canal) par retag manuel vers `X.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
 
 Version **0.8.0** : l’Administrateur active l’**enregistrement continu** d’une Caméra depuis l’Administration (OFF à l’ajout) ; MediaMTX écrit des segments fMP4 (~1 minute) dans le volume Docker `enregistrements`, sans réencodage, avec une conservation d’**une heure**. Un indicateur montre l’état, le chemin du dossier et l’âge du dernier segment ; pas de relecture depuis l’UI (voir [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md), [ADR 0011](docs/adr/0011-enregistrement-continu-par-mediamtx.md)).
 
 Version **0.8.1** : l’onglet **Enregistrement** montre l’espace du volume (total / libre / utilisé), les **débits d’écriture** (mesurés ou estimés) et une estimation de tenue face à la **Conservation** Site (1–24 h, défaut 1 h) ; un **Seuil de place disque** (défaut 1 Go) signale sans couper l’enregistrement. L’interrupteur reste dans l’Administration (voir [ADR 0012](docs/adr/0012-suivi-stockage-et-conservation-reglable.md)).
 
 Version **0.8.2** : la **[Relecture](docs/glossaire.md#relecture)** se fait dans l’UI. Sur l’onglet **Enregistrement**, un clic sur une Caméra du résumé ouvre sa **timeline** sur la Conservation (plages enregistrées en couleur, trous visibles) ; un clic sur la timeline lit le Segment fermé qui couvre l’instant, depuis son début (ou le plus proche), avec lecture / pause, enchaînement au Segment suivant et vitesses ×1 à ×16. La vidéo vient du pont sans réencodage, derrière la session comme le Live (voir [ADR 0013](docs/adr/0013-relecture-des-enregistrements.md)).
+
+Version **0.9.0** : le Site sert l’heure aux Caméras. Un service `temps` (chrony) sert l’heure en **NTP** (UDP 123) sur le réseau des caméras, sans que les caméras aient accès à internet. L’**[Heure du Site](docs/glossaire.md#heure-du-site)** (source, `pool.ntp.org` par défaut ou l’horloge de la machine du Site, et fuseau) se règle une fois dans **Administration → Heure du Site** ; ArgOS **cale** chaque Caméra ONVIF dessus à l’ajout, à chaque changement puis toutes les heures, et un tableau donne l’état de chaque Caméra (calée, écart, recalée, sans ONVIF, échec). La section Horloge et le bouton « Mettre à l’heure du Site » de la 0.6.0 disparaissent des Réglages de la Caméra. La relecture est désormais **vidéo seule**, ce qui la rend lisible sous Safari pour une Caméra H.265 qui annonce de l’audio (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#lheure-de-la-caméra)).
 
 ## Hébergement local
 
@@ -80,7 +82,7 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-`ARGOS_VERSION` étiquette les images construites (`0.8.1` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+`ARGOS_VERSION` étiquette les images construites (`0.9.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
 
 ### Installation / lancement
 
@@ -98,12 +100,12 @@ Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement
 
 ## Hébergement Ubuntu
 
-Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les quatre images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
+Machine Ubuntu : le Site tourne dans les conteneurs, le dossier `/opt/argos` n’a pas les sources `api/` ni `web/`. Pas de Caméras simulées. Les images du Site viennent du registre GitHub (`ghcr.io/ulyssoulv/argos-…`) par `docker compose pull` (sans jeton, une fois les paquets publics).
 
 ### Prérequis
 
 - Ubuntu, avec Docker Engine et le plugin Compose
-- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
+- accès à `ghcr.io` depuis la machine (prise vers la box / internet ; le réseau des caméras reste isolé — [Réseau et Détection](docs/cameras/reseau-et-detection.md#2-trouver-son-sous-réseau-sur-la-machine-linux)). L’API GitHub ne rend pas un paquet public : après la première poussée `:staging`, le mainteneur passe une fois chaque image (`argos-api`, `argos-web`, `argos-pont`, `argos-certificats`, `argos-temps`) en **Public** (page du paquet GHCR → **Danger Zone** → Change visibility). Ensuite le Site tire sans jeton.
 - le clone (ou une copie de `compose.yaml`, `compose.reseau-cameras.yaml`, `.env.example` et `scripts/`) le temps de lancer le script d’installation
 
 Postgres reste l’image officielle `postgres:18.6-alpine3.24` : Compose la tire au premier lancement. Rien à construire sur la machine Ubuntu.
@@ -114,7 +116,7 @@ Le script d’installation crée `/opt/argos/.env` d’après `.env.example`, **
 
 Après installation, dans `/opt/argos/.env` :
 
-- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.8.1`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
+- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.9.0`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
 - `MTX_WEBRTCADDITIONALHOSTS` : IP de la machine Ubuntu sur le réseau local, pour que le certificat nomme le Site
 - Détection et réseau des caméras (macvlan) : [Réseau et Détection](docs/cameras/reseau-et-detection.md) — le script `scripts/cameras/configurer-detection.sh` est copié dans `/opt/argos` et lancé au boot ; la prise se choisit **une fois** en terminal
 
@@ -145,18 +147,19 @@ Si une GitHub Release semver plus récente existe, le script applique l’artefa
 ```bash
 DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
 docker save \
-  ghcr.io/ulyssoulv/argos-api:0.8.1 \
-  ghcr.io/ulyssoulv/argos-web:0.8.1 \
-  ghcr.io/ulyssoulv/argos-pont:0.8.1 \
-  ghcr.io/ulyssoulv/argos-certificats:0.8.1 \
-  -o argos-images-0.8.1.tar
+  ghcr.io/ulyssoulv/argos-api:0.9.0 \
+  ghcr.io/ulyssoulv/argos-web:0.9.0 \
+  ghcr.io/ulyssoulv/argos-pont:0.9.0 \
+  ghcr.io/ulyssoulv/argos-certificats:0.9.0 \
+  ghcr.io/ulyssoulv/argos-temps:0.9.0 \
+  -o argos-images-0.9.0.tar
 ```
 
-Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.8.1.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.8.1` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
+Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.9.0.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.9.0` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
 
 ## Essayer staging
 
-Canal [Staging](docs/glossaire.md#staging) (`:staging`) : dernier digest vert de `main`, avant une Release. Utile pour valider sur une machine perso **avant** de promouvoir vers la production.
+Canal [Staging](docs/glossaire.md#staging) (`:staging`) : dernier digest vert de `main`. Utile pour valider sur une machine perso **avant** de promouvoir vers la production (workflow Actions **Promouvoir images vers Release**, manuel, une fois staging à jour).
 
 **macOS et Windows** : Docker Desktop + clone de ce dépôt. Pas d’installation produit type Ubuntu (`/opt/argos`, systemd) — Windows n’est documenté que pour cet essai.
 

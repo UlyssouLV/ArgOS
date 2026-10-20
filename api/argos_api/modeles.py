@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, false
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # `raison_etat` d'une Caméra dont l'adresse répond avec une autre MAC que celle de son Appareil : pas relayée.
@@ -59,10 +59,15 @@ class Camera(Base):
     enregistrement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Dernier débit max d'Encodage connu (kbit/s, ONVIF) : repli du Débit d'écriture sans segments récents.
     debit_encodage_kbit_s: Mapped[int | None] = mapped_column(Integer)
+    # Dernière vérification de son Horloge (docs/adr/0014-serveur-de-temps-du-site.md) : état (`calee`, `ecart`,
+    # `recalee`, `sans_onvif`, `echec`), écart mesuré en secondes (positif : la caméra avance) et date ; `None` : jamais.
+    horloge_etat: Mapped[str | None] = mapped_column(String(16))
+    horloge_ecart_s: Mapped[float | None] = mapped_column(Float)
+    horloge_verifiee_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ReglagesSite(Base):
-    """Réglages globaux du Site (une seule ligne, id = 1). Conservation / seuil : ADR 0012."""
+    """Réglages globaux du Site (une seule ligne, id = 1). Conservation / seuil : ADR 0012 ; Heure du Site : ADR 0014."""
 
     __tablename__ = "reglages_site"
 
@@ -73,3 +78,9 @@ class ReglagesSite(Base):
     seuil_octets_libres: Mapped[int] = mapped_column(
         BigInteger, default=1_073_741_824, server_default="1073741824"
     )
+    # Heure du Site : source de l'heure que suit temps (`ntp` : `heure_serveur_ntp`, ou `horloge_serveur`).
+    heure_source: Mapped[str] = mapped_column(String(16), default="ntp", server_default="ntp")
+    # Gardé quand la source est l'horloge du serveur : il revient si l'Administrateur repasse en NTP.
+    heure_serveur_ntp: Mapped[str] = mapped_column(String, default="pool.ntp.org", server_default="pool.ntp.org")
+    # Fuseau IANA du Site ; `None` : celui de l'hôte.
+    fuseau: Mapped[str | None] = mapped_column(String)

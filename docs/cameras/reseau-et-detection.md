@@ -242,7 +242,7 @@ box ── enp1s0 (192.168.1.20) ── machine ArgOS ── enp2s0 (10.10.0.1) 
                           (UI, NAT, ports)        (sonde des caméras, ARP)
 ```
 
-Ce réseau est une **sortie** : `api` y parle aux caméras, mais refuse toute requête qui y arrive (une caméra compromise ne joint pas l’API, voir [sécurité](../securite.md#réseau-des-caméras--une-sortie-seulement)).
+Ce réseau est une **sortie** : `api` y parle aux caméras, mais refuse toute requête qui y arrive (une caméra compromise ne joint pas l’API ; seul `temps` y répond, en NTP, § « L’IP du Serveur de temps du Site », voir [sécurité](../securite.md#réseau-des-caméras--une-sortie-et-ntp)).
 
 ### L’IP d’ArgOS sur le réseau des caméras
 
@@ -263,6 +263,14 @@ Limites :
 - **Jamais sous macOS** : Docker Desktop ne gère pas macvlan. Sur un Mac, les vraies caméras restent sans MAC (§ 8).
 
 Changer l’IP d’ArgOS : vider `ARGOS_RESEAU_CAMERAS_IP=` dans `.env`, relancer le script dans un terminal, puis `docker compose up -d --wait`.
+
+### L’IP du Serveur de temps du Site
+
+Depuis la 0.9.0, le Serveur de temps du Site (`temps`, [ADR 0014](../adr/0014-serveur-de-temps-du-site.md)) rejoint aussi le réseau des caméras, à une **seconde** IP fixe, pour y servir l’heure en NTP (UDP 123, rien d’autre). Juste après l’IP d’ArgOS, le script la propose de la même façon (première adresse libre en ARP depuis le haut, ni de la machine ni celle d’ArgOS : `10.10.0.253` si ArgOS a `10.10.0.254`), la retient dans `.env` (`ARGOS_RESEAU_CAMERAS_TEMPS_IP`) et la revérifie à chaque lancement. Elle aussi doit être **hors de la plage DHCP**.
+
+Un Site d’avant la 0.9.0 n’a que l’IP d’ArgOS : au démarrage sans terminal, le script avertit et désactive le réseau des caméras. Lancer une fois `scripts/cameras/configurer-detection.sh` dans un terminal pour choisir l’IP de `temps`, puis `docker compose up -d --wait`.
+
+Sans réseau des caméras (Mac, ou script non lancé), `temps` publie `123/udp` sur l’hôte (`ARGOS_PORT_NTP`) : les caméras le joignent à l’IP de la machine.
 
 ## 10. Quand une caméra change d’IP
 

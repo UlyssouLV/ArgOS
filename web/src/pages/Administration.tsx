@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router";
 
 import {
   listerCameras,
@@ -71,6 +72,9 @@ export function Administration() {
   return (
     <section className="administration">
       <h1>Administration</h1>
+      <nav className="pages-administration" aria-label="Réglages du Site">
+        <Link to="/administration/heure-du-site">Heure du Site</Link>
+      </nav>
       {erreur && (
         <p className="erreur" role="alert">
           {erreur}

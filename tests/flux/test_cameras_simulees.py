@@ -32,7 +32,8 @@ def url(camera: str, chemin: str | None = None, identifiants: str | None = None)
     return f"rtsp://{identifiants + '@' if identifiants else ''}{camera}:554/{chemin or CHEMINS[camera]}"
 
 
-def ffprobe(reseau: str, url_rtsp: str) -> subprocess.CompletedProcess[str]:
+def ffprobe(reseau: str, url_rtsp: str, *options: str) -> subprocess.CompletedProcess[str]:
+    """Sans `options` : première piste vidéo, 60 images comptées."""
     return subprocess.run(
         [
             "docker", "run", "--rm",
@@ -41,10 +42,12 @@ def ffprobe(reseau: str, url_rtsp: str) -> subprocess.CompletedProcess[str]:
             IMAGE_FFPROBE,
             "-v", "error",
             "-rtsp_transport", "tcp",
-            "-select_streams", "v:0",
-            "-count_frames",
-            "-read_intervals", "%+#60",
-            "-show_entries", "stream=codec_name,width,height,nb_read_frames",
+            *(options or (
+                "-select_streams", "v:0",
+                "-count_frames",
+                "-read_intervals", "%+#60",
+                "-show_entries", "stream=codec_name,width,height,nb_read_frames",
+            )),
             "-of", "json",
             url_rtsp,
         ],
@@ -64,6 +67,24 @@ def test_diffuse_son_codec_en_1280x720_decodable(reseau_simulation, camera):
     assert flux["codec_name"] == CODECS[camera]
     assert (flux["width"], flux["height"]) == (1280, 720)
     assert int(flux["nb_read_frames"]) >= 1
+
+
+@pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
+def test_seule_camera_simulee_4_annonce_une_piste_audio_pcm(reseau_simulation, camera):
+    """Comme la caméra H.265 réelle du bug #141 : PCM 16 bits 8 kHz mono, `ipcm` dans les Segments du pont."""
+    resultat = ffprobe(
+        reseau_simulation,
+        url(camera, identifiants=IDENTIFIANTS.get(camera)),
+        "-show_entries", "stream=codec_type,codec_name,sample_rate,channels",
+    )
+
+    assert resultat.returncode == 0, resultat.stderr
+    audio = [
+        (flux["codec_name"], flux["sample_rate"], flux["channels"])
+        for flux in json.loads(resultat.stdout)["streams"]
+        if flux["codec_type"] == "audio"
+    ]
+    assert audio == ([("pcm_s16be", "8000", 1)] if camera == "camera-simulee-4" else [])
 
 
 def test_camera_simulee_2_refusee_sans_identifiants(reseau_simulation):
