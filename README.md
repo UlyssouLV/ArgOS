@@ -60,6 +60,8 @@ Version **0.8.1** : l’onglet **Enregistrement** montre l’espace du volume (t
 
 Version **0.8.2** : la **[Relecture](docs/glossaire.md#relecture)** se fait dans l’UI. Sur l’onglet **Enregistrement**, un clic sur une Caméra du résumé ouvre sa **timeline** sur la Conservation (plages enregistrées en couleur, trous visibles) ; un clic sur la timeline lit le Segment fermé qui couvre l’instant, depuis son début (ou le plus proche), avec lecture / pause, enchaînement au Segment suivant et vitesses ×1 à ×16. La vidéo vient du pont sans réencodage, derrière la session comme le Live (voir [ADR 0013](docs/adr/0013-relecture-des-enregistrements.md)).
 
+Version **0.9.0** : le Site sert l’heure aux Caméras. Un service `temps` (chrony) offre le **[Serveur de temps du Site](docs/glossaire.md#serveur-de-temps-du-site)** en NTP (UDP 123) sur le réseau des caméras, sans que les caméras aient accès à internet. L’**[Heure du Site](docs/glossaire.md#heure-du-site)** (source, `pool.ntp.org` par défaut ou l’horloge du serveur, et fuseau) se règle une fois dans **Administration → Heure du Site** ; ArgOS **cale** chaque Caméra ONVIF dessus à l’ajout, à chaque changement puis toutes les heures, et un tableau donne l’état de chaque Caméra (calée, écart, recalée, sans ONVIF, échec). La section Horloge et le bouton « Mettre à l’heure du Site » de la 0.6.0 disparaissent des Réglages de la Caméra. La relecture est désormais **vidéo seule**, ce qui la rend lisible sous Safari pour une Caméra H.265 qui annonce de l’audio (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#lheure-de-la-caméra), [ADR 0014](docs/adr/0014-serveur-de-temps-du-site.md)).
+
 ## Hébergement local
 
 PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Pour Windows (Docker Desktop seulement) ou un essai du canal Staging sans Ubuntu : [Essayer staging](#essayer-staging).
@@ -80,7 +82,7 @@ cp .env.example .env
 
 `ARGOS_IDENTIFIANT` et `ARGOS_MOT_DE_PASSE` sont le compte de l’Administrateur : sans eux, l’API ne démarre pas (il n’y a pas de compte par défaut). En hébergement local, un compte de test suffit (par exemple `ARGOS_IDENTIFIANT=administrateur`, `ARGOS_MOT_DE_PASSE=argos-dev-phrase-de-passe-de-test`) ; jamais sur une vraie installation. Pour le lanceur macOS, le mot de passe ne doit contenir ni espace ni guillemet (`.env` y est lu par le shell).
 
-`ARGOS_VERSION` étiquette les images construites (`0.8.1` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
+`ARGOS_VERSION` étiquette les images construites (`0.9.0` dans `.env.example`). Pour joindre le Site depuis un autre poste, déclarer l’IP du Mac dans `MTX_WEBRTCADDITIONALHOSTS` (voir plus bas).
 
 ### Installation / lancement
 
@@ -114,7 +116,7 @@ Le script d’installation crée `/opt/argos/.env` d’après `.env.example`, **
 
 Après installation, dans `/opt/argos/.env` :
 
-- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.8.1`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
+- `ARGOS_VERSION` : étiquette semver des images de production (ex. `0.9.0`) ; pour un Site de test qui suit le canal Staging, `staging` (pas de suivi des Releases semver)
 - `MTX_WEBRTCADDITIONALHOSTS` : IP de la machine Ubuntu sur le réseau local, pour que le certificat nomme le Site
 - Détection et réseau des caméras (macvlan) : [Réseau et Détection](docs/cameras/reseau-et-detection.md) — le script `scripts/cameras/configurer-detection.sh` est copié dans `/opt/argos` et lancé au boot ; la prise se choisit **une fois** en terminal
 
@@ -145,15 +147,15 @@ Si une GitHub Release semver plus récente existe, le script applique l’artefa
 ```bash
 DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose -f compose.yaml build
 docker save \
-  ghcr.io/ulyssoulv/argos-api:0.8.1 \
-  ghcr.io/ulyssoulv/argos-web:0.8.1 \
-  ghcr.io/ulyssoulv/argos-pont:0.8.1 \
-  ghcr.io/ulyssoulv/argos-certificats:0.8.1 \
-  ghcr.io/ulyssoulv/argos-temps:0.8.1 \
-  -o argos-images-0.8.1.tar
+  ghcr.io/ulyssoulv/argos-api:0.9.0 \
+  ghcr.io/ulyssoulv/argos-web:0.9.0 \
+  ghcr.io/ulyssoulv/argos-pont:0.9.0 \
+  ghcr.io/ulyssoulv/argos-certificats:0.9.0 \
+  ghcr.io/ulyssoulv/argos-temps:0.9.0 \
+  -o argos-images-0.9.0.tar
 ```
 
-Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.8.1.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.8.1` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
+Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.9.0.tar`, aligner `ARGOS_VERSION` dans `/opt/argos/.env`, et `sudo systemctl restart argos.service`. Adapter `0.9.0` à l’étiquette voulue. Si Ubuntu est elle-même arm64, omettre `DOCKER_DEFAULT_PLATFORM`.
 
 ## Essayer staging
 
