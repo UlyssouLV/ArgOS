@@ -14,10 +14,12 @@ from stack_compose import client_du_site, raccourcir_les_segments
 from test_cameras import connecte, creer_camera  # noqa: F401 (fixtures)
 from test_enregistrement import DELAI_PONT_S
 from test_etat_cameras import url_simulee
+from test_relecture_video_seule import gestionnaires
 
 CHEMIN_RELECTURE = "/flux/relecture/get"
 DELAI_SEGMENT_FERME_S = 60
 # Échantillon vidéo du `moov` : le codec de la Caméra simulée, remballé sans réencodage (ADR 0004 pour hvc1).
+# La 4 annonce aussi une piste audio PCM, que la relecture retire (bug #141).
 ENTREES_CODEC = {1: b"avc1", 4: b"hvc1"}
 
 
@@ -28,11 +30,14 @@ def url_relecture(chemin: str, debut: str, duree_s: float) -> httpx.URL:
 
 
 def _attendre_un_segment_ferme(client: httpx.Client, id_camera: int) -> dict:
+    """Premier Segment fermé d'au moins 1 s : avec une piste audio, le pont ouvre d'abord un Segment de quelques
+    dixièmes de seconde, audio seul, avant la première image clé vidéo."""
     echeance = time.monotonic() + DELAI_SEGMENT_FERME_S
     while True:
         segments = client.get(f"/api/cameras/{id_camera}/segments").json()["segments"]
-        if segments:
-            return segments[0]
+        avec_video = [segment for segment in segments if _duree_s(segment) >= 1]
+        if avec_video:
+            return avec_video[0]
         if time.monotonic() > echeance:
             pytest.fail(f"aucun Segment fermé pour la Caméra {id_camera} après {DELAI_SEGMENT_FERME_S} s")
         time.sleep(1)
@@ -56,7 +61,7 @@ def _duree_s(segment: dict) -> float:
 
 
 @pytest.mark.parametrize("numero", sorted(ENTREES_CODEC))
-def test_un_segment_ferme_se_relit_en_mp4_sans_reencodage(connecte, segment_ferme, numero):
+def test_un_segment_ferme_se_relit_en_mp4_video_seule_sans_reencodage(connecte, segment_ferme, numero):
     chemin, segment = segment_ferme(numero)
 
     reponse = connecte.get(url_relecture(chemin, segment["debut"], max(_duree_s(segment), 1)))
@@ -66,6 +71,7 @@ def test_un_segment_ferme_se_relit_en_mp4_sans_reencodage(connecte, segment_ferm
     assert reponse.content[4:8] == b"ftyp"
     moov = reponse.content[: reponse.content.find(b"mdat")]
     assert ENTREES_CODEC[numero] in moov
+    assert gestionnaires(reponse.content) == [b"vide"]
 
 
 def test_un_segment_ferme_relu_par_une_session_est_refuse_sans_elle(connecte, segment_ferme):

@@ -85,6 +85,8 @@ services:
     environment:
       FICHIER_DATE: /horloge/date.txt
       CHEMIN_FLUX: Streaming/Channels/101
+      # Annonce aussi une piste audio PCM (`ipcm` dans les Segments), comme la caméra H.265 réelle du bug #141.
+      AUDIO_IPCM: "1"
 
   # Interfaces ONVIF des Caméras simulées 2 et 4 (simulation/onvif/README.md) : chacune partage le réseau de sa
   # Caméra simulée, donc son IP et sa MAC, comme l'interface ONVIF d'une vraie caméra. Les 1 et 3 n'en ont pas.

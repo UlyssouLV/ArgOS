@@ -80,13 +80,14 @@ server {
         proxy_buffering off;
     }
 
-    # Relecture (docs/adr/0013-relecture-des-enregistrements.md) : seulement /get du serveur playback,
-    # /flux/relecture/get?path=<chemin>&start=<RFC 3339>&duration=<s>&format=mp4 ; la liste vient de l'API.
+    # Relecture (docs/adr/0013-relecture-des-enregistrements.md) : seulement /get du serveur playback, par l'API
+    # qui n'en garde que la vidéo (bug #141), /flux/relecture/get?path=<chemin>&start=<RFC 3339>&duration=<s>&format=mp4 ;
+    # la liste vient de l'API.
     location = /flux/relecture/get {
         auth_request /_session-des-flux;
-        set $relecture http://mediamtx:9996;
-        rewrite ^ /get break;
-        proxy_pass $relecture;
+        set $api http://api:8000;
+        rewrite ^ /api/relecture/get break;
+        proxy_pass $api;
         proxy_buffering off;
     }
 }

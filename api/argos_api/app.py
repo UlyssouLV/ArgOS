@@ -2,6 +2,8 @@
 
 import logging
 import threading
+import urllib.error
+import urllib.request
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
@@ -12,7 +14,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -26,6 +28,7 @@ from argos_api import (
     fuseaux,
     heure_site,
     onvif,
+    relecture,
     reglages_site,
     segments_fermes,
     serveur_de_temps,
@@ -54,6 +57,11 @@ INTERVALLE_PONT_S = 10
 # Délai de chaque sonde de la Détection (connexion puis réponse RTSP), en secondes.
 DELAI_DETECTION_S = 1.5
 DETECTION_EN_COURS = "Une Détection est déjà en cours : attendre son résultat avant d'en relancer une."
+# Lecture du MP4 de Relecture par morceaux d'au plus ce nombre d'octets.
+TAILLE_MORCEAU_RELECTURE = 64 * 1024
+# Attente de chaque réponse du serveur playback, en secondes : il lit tous les Segments demandés avant d'envoyer
+# le `moov`. Celle de nginx par défaut (proxy_read_timeout), quand il le relayait lui-même.
+DELAI_RELECTURE_S = 60
 # Retrait des Aperçus expirés, en secondes.
 INTERVALLE_APERCU_S = 1
 # Réseau local : seules ces adresses (RFC 1918) peuvent être essayées. Plages jamais jointes, seulement
@@ -347,6 +355,27 @@ def creer_app(
         return reglages_site.modifier(base, modification)
 
     racine_enregistrements = Path(configuration.enregistrements)
+
+    @app.get("/api/relecture/get", dependencies=[Depends(administrateur_connecte)])
+    def relire(request: Request) -> Response:
+        """Relecture (ADR 0013), relayée par nginx sous /flux/relecture/get : `/get` du serveur playback, mêmes
+        paramètres, réponse en flux. En `format=mp4`, vidéo seule : Safari refuse un MP4 avec la piste audio
+        PCM d'une caméra (bug #141)."""
+        try:
+            reponse = urllib.request.urlopen(
+                f"{configuration.url_playback_mediamtx}/get?{request.url.query}", timeout=DELAI_RELECTURE_S
+            )
+        except urllib.error.HTTPError as erreur:
+            return Response(erreur.read(), erreur.code, media_type=erreur.headers.get_content_type())
+        except OSError:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Serveur playback du pont injoignable.") from None
+
+        def morceaux() -> Iterator[bytes]:
+            with reponse:
+                yield from iter(lambda: reponse.read1(TAILLE_MORCEAU_RELECTURE), b"")
+
+        corps = relecture.video_seule(morceaux()) if request.query_params.get("format") == "mp4" else morceaux()
+        return StreamingResponse(corps, media_type=reponse.headers.get_content_type())
 
     @app.get("/api/espace-enregistrements", dependencies=[Depends(administrateur_connecte)])
     def lire_espace_enregistrements(base: Annotated[Session, Depends(base)]) -> EspaceEnregistrements:

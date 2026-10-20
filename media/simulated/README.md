@@ -11,6 +11,8 @@ Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : u
 | `camera-simulee-3` | `172.30.0.13` / `02:a6:05:00:00:03` | `rtsp://camera-simulee-3/flux` | exotique (aucun chemin courant) | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
 | `camera-simulee-4` | `172.30.0.14` / `02:a6:05:00:00:04` | `rtsp://camera-simulee-4/Streaming/Channels/101` | Hikvision, en **H.265** | `cam4.mp4` | `cam1.mp4` réencodée en H.265 (voir plus bas) |
 
+`camera-simulee-4` annonce aussi une **piste audio** PCM 16 bits 8 kHz mono (un souffle, `AUDIO_IPCM` dans `compose.simulation.yaml`, générée par [`diffuser.sh`](diffuser.sh)), comme la caméra H.265 réelle du bug #141 : ses Segments portent une piste `ipcm`, que la Relecture retire ([ADR 0013](../../docs/adr/0013-relecture-des-enregistrements.md)).
+
 Les Caméras simulées 2 et 4 répondent aussi en **ONVIF** (Réglages de la Caméra) : voir [`simulation/onvif/`](../../simulation/onvif/README.md).
 
 ## Date incrustée des Caméras simulées ONVIF
@@ -28,7 +30,7 @@ Identifiants **de dev**, publics dans le dépôt (définis dans `compose.simulat
 
 ## Format attendu
 
-- H.264 (`cam4.mp4` : H.265, tag `hvc1`), 1280×720, 15 i/s, **sans audio**, sans B-frames
+- H.264 (`cam4.mp4` : H.265, tag `hvc1`), 1280×720, 15 i/s, **sans audio** (celui de `camera-simulee-4` est généré à la diffusion), sans B-frames
 - Keyframe ~2 s, ≤ 50 Mo
 - Diffusion en **copie de flux** (`-c copy`), sans réencodage à la volée, sauf pour incruster la date des Caméras simulées ONVIF
 

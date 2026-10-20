@@ -3,14 +3,19 @@
 # Sans FICHIER_DATE : copie de flux, sans réencodage. Avec : la date et l'heure de la caméra, écrites dans ce
 # fichier par son interface ONVIF (simulation/onvif/README.md), incrustées en bas à gauche, relues à chaque image ;
 # la vidéo est alors réencodée à la volée, dans son codec (H.264 ou H.265), keyframe toutes les 2 s, sans B-frames.
+# Avec AUDIO_IPCM : une piste audio en plus, un souffle PCM 16 bits 8 kHz mono, comme la caméra H.265 réelle du
+# bug #141 (piste `ipcm` dans les Segments).
 set -eu
 
 SORTIE="rtsp://localhost:$RTSP_PORT/$MTX_PATH"
 LECTURE="-hide_banner -loglevel error -re -stream_loop -1 -i /media/video.mp4"
+if [ -n "${AUDIO_IPCM:-}" ]; then
+    LECTURE="$LECTURE -f lavfi -i anoisesrc=sample_rate=8000:amplitude=0.02 -map 0:v -map 1:a -c:a pcm_s16be -ac 1"
+fi
 
 if [ -z "${FICHIER_DATE:-}" ]; then
     # shellcheck disable=SC2086
-    exec ffmpeg $LECTURE -c copy -f rtsp "$SORTIE"
+    exec ffmpeg $LECTURE -c:v copy -f rtsp "$SORTIE"
 fi
 
 # drawtext refuse un fichier absent : l'interface ONVIF l'écrit dès son démarrage.

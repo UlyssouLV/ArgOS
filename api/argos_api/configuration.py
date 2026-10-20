@@ -21,6 +21,8 @@ class Configuration(BaseSettings):
     # API de contrôle de MediaMTX (réseau Compose seulement) et délai de ses réponses, en secondes.
     url_api_mediamtx: str = Field("http://mediamtx:9997", validation_alias="ARGOS_MEDIAMTX_API")
     delai_mediamtx: float = Field(5, gt=0, validation_alias="ARGOS_MEDIAMTX_DELAI_S")
+    # Serveur playback de MediaMTX (réseau Compose seulement) : Relecture des Segments (ADR 0013).
+    url_playback_mediamtx: str = Field("http://mediamtx:9996", validation_alias="ARGOS_MEDIAMTX_PLAYBACK")
     # Aperçu retiré sans renouvellement de l'UI pendant ce délai, en secondes (réglable pour les tests).
     expiration_apercu: float = Field(120, gt=0, validation_alias="ARGOS_APERCU_EXPIRATION_S")
     # Volume des segments d'enregistrement, monté dans le conteneur (lecture + purge à la suppression).
