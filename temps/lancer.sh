@@ -7,9 +7,9 @@ SOURCE_PAR_DEFAUT="${ARGOS_TEMPS_SOURCE:-pool.ntp.org}"
 # Source choisie dans l'Heure du Site, écrite par api (volume partagé, lecture seule ici) : une ligne, le serveur
 # NTP, vide pour l'horloge du serveur. Absent (api pas encore démarré) : la source par défaut.
 REGLAGE=/reglage/source
-CONFIGURATION=/etc/chrony/chrony.conf
+CONFIGURATION=/var/lib/argos-temps/chrony.conf
 DERIVE=/var/lib/argos-temps/drift
-PIDFILE=/run/chronyd.pid
+PIDFILE=/var/lib/argos-temps/chronyd.pid
 # Secondes entre deux lectures du réglage.
 PERIODE_REGLAGE_S=2
 
@@ -35,7 +35,6 @@ allow all
 # Aucune commande chrony par le réseau : seulement par la socket locale du conteneur.
 cmdport 0
 driftfile $DERIVE
-# Hors de /run/chrony, à l'utilisateur chrony : root l'écrit sans DAC_OVERRIDE.
 pidfile $PIDFILE
 FIN
     } > "$CONFIGURATION"
@@ -45,14 +44,13 @@ lancer_chronyd() {
     ecrire_configuration "$1"
     # Le pidfile d'un chronyd arrêté (ou d'avant un redémarrage du conteneur) l'empêcherait de démarrer.
     rm -f "$PIDFILE"
-    # -u chrony : après avoir ouvert le port 123, chrony quitte root.
-    chronyd -d -x -u chrony -f "$CONFIGURATION" &
+    # -U : chronyd tourne sans root, en utilisateur chrony (image temps), dès son lancement.
+    chronyd -d -x -U -f "$CONFIGURATION" &
     chronyd=$!
 }
 
-# Sans KILL, root ne peut pas signaler chronyd une fois devenu chrony : chrony s'arrête lui-même.
 arreter_chronyd() {
-    su -s /bin/sh chrony -c "kill $chronyd" 2>/dev/null
+    kill "$chronyd" 2>/dev/null
     wait "$chronyd"
 }
 
@@ -65,9 +63,7 @@ chronyd_tourne() {
 # énorme et sert l'horloge du serveur (strate 10) quelques minutes avant de suivre sa source.
 # Conteneur redémarré : la dérive apprise par chrony est gardée.
 if [ ! -f "$DERIVE" ]; then
-    mkdir -p "$(dirname "$DERIVE")"
     echo "0.000 100.000" > "$DERIVE"
-    chown -R chrony:chrony "$(dirname "$DERIVE")"
 fi
 
 trap 'arreter_chronyd; exit 0' TERM INT

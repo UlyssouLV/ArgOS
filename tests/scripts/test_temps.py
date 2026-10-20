@@ -20,11 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "argos-temps-test"
 # Adresse de documentation (RFC 5737) : jamais joignable.
 SOURCE_INJOIGNABLE = "192.0.2.1"
-# Capacités du service dans compose.yaml : ni SYS_TIME, ni DAC_OVERRIDE.
-CAPACITES = (
-    "--cap-drop", "ALL",
-    *(option for capacite in ("CHOWN", "NET_BIND_SERVICE", "SETGID", "SETUID") for option in ("--cap-add", capacite)),
-)
+# Capacités du service dans compose.yaml : aucune.
+CAPACITES = ("--cap-drop", "ALL")
 # Secondes entre l'époque NTP (1900) et l'époque Unix (1970).
 EPOQUE_NTP = 2_208_988_800
 STRATE_DU_REPLI = 10
@@ -171,7 +168,7 @@ def test_temps_n_accepte_aucune_commande_chrony_par_le_reseau(lancer, image, res
         check=False,
     )
     # Dans le conteneur, par sa socket locale : chrony répond.
-    local = docker("exec", "-u", "chrony", nom, "chronyc", "-n", "tracking", check=False)
+    local = docker("exec", nom, "chronyc", "-n", "tracking", check=False)
 
     assert distant.returncode != 0, distant.stdout
     assert local.returncode == 0, local.stdout + local.stderr
@@ -196,8 +193,10 @@ def test_temps_ne_regle_pas_l_horloge_de_l_hote_et_se_dit_en_bonne_sante(lancer)
         time.sleep(1)
 
     capacites = docker("inspect", "-f", "{{.HostConfig.CapAdd}}", nom).stdout
+    utilisateurs = {ligne.strip() for ligne in docker("exec", nom, "ps", "-o", "user").stdout.splitlines()[1:]}
     # Dernière colonne de `docker top` : la commande de chaque processus.
     (chronyd,) = [ligne.split() for ligne in docker("top", nom).stdout.splitlines() if "chronyd -" in ligne]
 
     assert "SYS_TIME" not in capacites
+    assert utilisateurs == {"chrony"}
     assert "-x" in chronyd

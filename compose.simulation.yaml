@@ -13,7 +13,7 @@ x-camera-simulee: &camera-simulee
   build: ./media/simulated
   restart: unless-stopped
   # Remplit le gabarit camera-simulee.yml avec le chemin de la Caméra simulée, puis lance MediaMTX.
-  entrypoint: ["/bin/sh", "-c", "sed \"s|^  CHEMIN_FLUX:|  $$CHEMIN_FLUX:|\" /camera-simulee.yml > /mediamtx.yml && exec /mediamtx"]
+  entrypoint: ["/bin/sh", "-c", "sed \"s|^  CHEMIN_FLUX:|  $$CHEMIN_FLUX:|\" /camera-simulee.yml > /tmp/mediamtx.yml && exec /mediamtx /tmp/mediamtx.yml"]
   healthcheck:
     # Prête quand la vidéo est diffusée sur son chemin.
     test: ["CMD-SHELL", "ffprobe -v error -rtsp_transport tcp \"rtsp://localhost/$$CHEMIN_FLUX\""]
