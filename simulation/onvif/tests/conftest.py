@@ -5,7 +5,8 @@ Caméra simulée 2 ; `camera_complete` est la Caméra simulée 2 (identifiants, 
 aux chemins Dahua) et `camera_sans_media_2` la même sans média 2 ; `camera_sans_recreation_de_la_date` ne sait
 recréer que le nom ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
 en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire ; `serveur_ntp` est un
-petit serveur NTP de test, que `camera_et_serveur_ntp` joint à la place du port 123.
+petit serveur NTP de test, que `camera_et_serveur_ntp` joint à la place du port 123, comme
+`camera_paresseuse_et_serveur_ntp`, une caméra « NTP paresseux » qui dérive vite.
 Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
@@ -257,6 +258,19 @@ def serveur_ntp():
 def camera_et_serveur_ntp(serveur_ntp):
     """Caméra sans identifiants qui joint ses serveurs NTP sur le port du `serveur_ntp` de test (pas 123)."""
     camera = camera_onvif.Camera(port_ntp=serveur_ntp.port)
+    with _servir(camera) as url:
+        yield Camera(url, None), camera, serveur_ntp
+
+
+# Dérive de la caméra « NTP paresseux » de test, accélérée : 2 s par seconde.
+DERIVE_PARESSEUSE_S_PAR_H = 7200
+
+
+@pytest.fixture
+def camera_paresseuse_et_serveur_ntp(serveur_ntp):
+    """Caméra « NTP paresseux » (se cale au démarrage et sur SetNTP seulement, puis dérive de
+    `DERIVE_PARESSEUSE_S_PAR_H`), qui joint le `serveur_ntp` de test."""
+    camera = camera_onvif.Camera(port_ntp=serveur_ntp.port, ntp_paresseux=DERIVE_PARESSEUSE_S_PAR_H)
     with _servir(camera) as url:
         yield Camera(url, None), camera, serveur_ntp
 

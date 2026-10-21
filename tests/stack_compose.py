@@ -34,13 +34,14 @@ CHEMINS_SIMULES = {
     2: "cam/realmonitor?channel=1&subtype=0",
     3: "flux",
     4: "Streaming/Channels/101",
+    5: "Streaming/Channels/101",
 }
 # MAC et IP fixes des Caméras simulées (compose.simulation.yaml), MAC au format affiché par ArgOS.
 MACS_SIMULEES = {n: f"02:a6:05:00:00:0{n}" for n in CHEMINS_SIMULES}
 IPS_SIMULEES = {n: f"172.30.0.1{n}" for n in CHEMINS_SIMULES}
 RESEAU_SIMULATION = "cameras-simulees"
 # Interfaces ONVIF des Caméras simulées (simulation/onvif/README.md).
-SIMULATEURS_ONVIF = ("camera-simulee-2-onvif", "camera-simulee-4-onvif")
+SIMULATEURS_ONVIF = ("camera-simulee-2-onvif", "camera-simulee-4-onvif", "camera-simulee-5-onvif")
 # Lancé dans `api` : envoie une enveloppe SOAP à une adresse ONVIF ; faute SOAP → code de sortie non nul.
 _ENVOYER_SOAP = """
 import sys, urllib.request

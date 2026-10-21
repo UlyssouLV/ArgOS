@@ -5,6 +5,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 from conftest import NS, NS_IMAGE, NS_MEDIA_2, Camera
+from test_horloge import ecart_s
 from test_https import Lancement, _port_libre
 
 CHEMINS_DAHUA = "/cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1"
@@ -78,3 +79,28 @@ def test_serveurs_ntp_joints_sur_le_port_choisi(serveur_ntp):
             time.sleep(0.05)
 
     assert serveur_ntp.requetes >= 1
+
+
+def test_ntp_paresseux_derive_a_la_vitesse_choisie(serveur_ntp):
+    """`ONVIF_NTP_PARESSEUX` : calée une fois sur son serveur, l'horloge dérive ensuite de tant de secondes par heure."""
+    port = _port_libre()
+    env = {"ONVIF_PORT": str(port), "ONVIF_PORT_NTP": str(serveur_ntp.port), "ONVIF_NTP_PARESSEUX": "7200"}
+    with Lancement(env):
+        camera = Camera(f"http://127.0.0.1:{port}", None)
+        camera.appeler(
+            "<tds:SetNTP><tds:FromDHCP>false</tds:FromDHCP><tds:NTPManual><tt:Type>IPv4</tt:Type>"
+            "<tt:IPv4Address>127.0.0.1</tt:IPv4Address></tds:NTPManual></tds:SetNTP>"
+        )
+        camera.appeler(
+            "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
+            "<tds:DaylightSavings>false</tds:DaylightSavings></tds:SetSystemDateAndTime>"
+        )
+        fin = time.monotonic() + 5
+        while serveur_ntp.requetes == 0 and time.monotonic() < fin:
+            time.sleep(0.05)
+        time.sleep(3)
+        ecart = ecart_s(camera)
+
+    # 2 s de dérive par seconde : 6 s en 3 s, après un seul calage.
+    assert abs(ecart - 6) <= 4
+    assert serveur_ntp.requetes == 1

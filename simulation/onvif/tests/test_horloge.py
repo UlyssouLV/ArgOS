@@ -214,3 +214,102 @@ def test_date_incrustee_suit_l_heure_corrigee_et_le_fuseau(camera_et_serveur_ntp
     incrustee = datetime.strptime(simulee.date_incrustee(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
     assert abs((incrustee - attendue).total_seconds()) <= MARGE_S
+
+
+# --- Caméra « NTP paresseux » ----------------------------------------------------------------------------------
+
+
+def pousser_l_heure(camera, moment: datetime):
+    """Mise à l'heure : `SetSystemDateAndTime` en mode manuel, à l'heure UTC `moment`."""
+    return camera.appeler(
+        "<tds:SetSystemDateAndTime><tds:DateTimeType>Manual</tds:DateTimeType>"
+        "<tds:DaylightSavings>false</tds:DaylightSavings>"
+        "<tds:TimeZone><tt:TZ>CET-1CEST,M3.5.0,M10.5.0/3</tt:TZ></tds:TimeZone>"
+        f"<tds:UTCDateTime><tt:Date><tt:Year>{moment.year}</tt:Year><tt:Month>{moment.month}</tt:Month>"
+        f"<tt:Day>{moment.day}</tt:Day></tt:Date><tt:Time><tt:Hour>{moment.hour}</tt:Hour>"
+        f"<tt:Minute>{moment.minute}</tt:Minute><tt:Second>{moment.second}</tt:Second></tt:Time></tds:UTCDateTime>"
+        "</tds:SetSystemDateAndTime>"
+    )
+
+
+def attendre_requetes(serveur, nombre: int) -> None:
+    fin = time.monotonic() + DELAI_CALAGE_S
+    while serveur.requetes < nombre and time.monotonic() < fin:
+        time.sleep(0.05)
+
+
+def test_paresseuse_calee_s_aligne_sur_le_serveur_puis_derive_sans_le_reinterroger(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    # 2 s de dérive par seconde : alignée sur le serveur, à quelques secondes près.
+    assert abs(ecart_s(camera)) < 2 * ECART_CALE_S
+    time.sleep(3)
+    # 6 s de dérive en 3 s, sans nouvelle interrogation.
+    assert abs(ecart_s(camera) - 6) <= 2 * MARGE_S
+    assert serveur.requetes == 1
+
+
+def test_paresseuse_remise_a_l_heure_en_manuel_puis_gardee_en_mode_ntp(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+    time.sleep(2)
+    assert ecart_s(camera) >= ECART_CALE_S
+
+    # Mise à l'heure puis calage, comme le Site : heure poussée, même serveur, mode NTP.
+    assert pousser_l_heure(camera, datetime.now(UTC)).faute is None
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 2)
+
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+    horloge = camera.appeler(LIRE_HORLOGE)
+    assert horloge.texte(".//tt:DateTimeType") == "NTP"
+    assert horloge.texte(".//tt:TimeZone/tt:TZ") == "CET-1CEST,M3.5.0,M10.5.0/3"
+    assert camera.appeler("<tds:GetNTP/>").texte(".//tt:NTPManual/tt:IPv4Address") == "127.0.0.1"
+
+
+def test_paresseuse_heure_poussee_honoree_sans_interroger_le_serveur(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+    # Un serveur faux d'une heure : une interrogation se verrait.
+    serveur.avance = 3600
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    pousser_l_heure(camera, datetime.now(UTC))
+    # Retour en mode NTP sans nouveau SetNTP : pas d'interrogation, l'heure poussée est gardée.
+    passer_en_ntp(camera)
+    time.sleep(0.5)
+
+    assert serveur.requetes == 1
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+
+
+def test_paresseuse_serveur_recu_en_mode_manuel_interroge_au_passage_en_ntp(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+
+    regler_ntp(camera, "127.0.0.1")
+    time.sleep(0.3)
+    assert serveur.requetes == 0
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    assert serveur.requetes == 1
+
+
+def test_camera_ordinaire_ne_derive_pas(camera_et_serveur_ntp):
+    camera, _, _ = camera_et_serveur_ntp
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_ecart(camera, lambda e: abs(e) < ECART_CALE_S)
+
+    time.sleep(2)
+
+    assert abs(ecart_s(camera)) < ECART_CALE_S
