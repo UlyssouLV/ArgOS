@@ -32,9 +32,15 @@ Contraintes transverses :
 - **0.8.2** — Relecture des enregistrements : sur la page Enregistrement, une Caméra du résumé ouvre sa timeline sur la Conservation (plages colorées, trous visibles, Segment en écriture exclu) ; un clic lit le Segment fermé depuis son début, play / pause, enchaînement, vitesses ×1…×16 ; vidéo du serveur playback MediaMTX relayée par nginx derrière la session, sans réencodage (H.265 lisible là où le Live l’est). Une Caméra à la fois, pas de seek à la seconde (1.0.0) ni de téléchargement (Plus tard) ([PR #132](https://github.com/UlyssouLV/ArgOS/pull/132), [spec](../../specs/v0.8.2-relecture-des-enregistrements.md), [ADR 0013](../../adr/0013-relecture-des-enregistrements.md)).
 - **0.9.0** — Le Site, serveur de temps des Caméras : service `temps` (chrony) qui sert le NTP sur le réseau des caméras (macvlan, ou UDP 123 publié sur l’hôte), Heure du Site (source `pool.ntp.org` ou horloge du serveur, fuseau) réglée une fois dans l’Administration, chaque Caméra ONVIF calée dessus (`SetNTP`, mode NTP, fuseau du Site) à l’ajout, au changement et toutes les heures, avec un état par Caméra ; section Horloge et « Mettre à l’heure du Site » de la 0.6.0 retirées des Réglages. Relecture vidéo seule et réponses par plages (`206`) : Safari lit les Segments H.265 d’une Caméra qui annonce de l’audio ([#141](https://github.com/UlyssouLV/ArgOS/issues/141)) ([PR #140](https://github.com/UlyssouLV/ArgOS/pull/140), [spec](../../specs/v0.9.0-le-site-serveur-de-temps-des-cameras.md), [ADR 0014](../../adr/0014-serveur-de-temps-du-site.md)).
 
-## Prochaine : 1.0.0 — Fil rouge Site → Live RTSP
+## Prochaine : 0.9.1 — Mise à l’heure à chaque vérification
 
-**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois la 0.9.0 livrée.
+**Objectif.** Quand le Site vérifie l’Horloge des Caméras (toutes les heures et sur « Vérifier maintenant »), il met d’abord chaque Caméra ONVIF à l’heure du Serveur de temps, puis vérifie : l’Administrateur n’a plus à redémarrer une caméra dont le NTP est bien configuré mais qui ne se synchronise pas toute seule.
+
+**Hors périmètre :** section Horloge / bouton « Mettre à l’heure » dans les Réglages (retirés en 0.9.0) ; Caméras sans ONVIF ; fil rouge 1.0.0.
+
+## Ensuite : 1.0.0 — Fil rouge Site → Live RTSP
+
+**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois la 0.9.1 livrée.
 
 **Hors périmètre :** IA, PTZ, VPN, chiffrement des identifiants (Plus tard).
 

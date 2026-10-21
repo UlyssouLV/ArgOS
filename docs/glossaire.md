@@ -50,6 +50,12 @@ Le service NTP que le Site offre aux Appareils sur le réseau des caméras, à p
 
 À éviter : NTP local, horloge du Site.
 
+## Mise à l’heure {#mise-a-l-heure}
+
+Le Site donne à l’Horloge d’une Caméra l’heure du Serveur de temps du Site, puis la cale à nouveau sur le Site. Il le fait à chaque vérification, sans attendre que la Caméra dérive.
+
+À éviter : synchronisation, resynchro.
+
 ## Image {#image}
 
 Comment l’Appareil rend ce que voit son capteur (filtre infrarouge, luminosité, contraste, saturation, netteté, contre-jour, WDR), partagée par toutes ses Caméras.
