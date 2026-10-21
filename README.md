@@ -130,6 +130,8 @@ sudo ./scripts/installer-le-site.sh
 
 Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et de mise à jour — pas le clone, pas `compose.simulation.yaml`), tire les images (`docker compose pull`), crée le compte système `argos` (groupe `docker`), et pose l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
 
+L’install et chaque mise à jour réactivent la synchronisation NTP de l’OS si elle est coupée (`timedatectl set-ntp true`), pour que le repli de `temps` sur l’horloge de la machine donne une heure juste ; aucun privilège n’est donné à un conteneur (voir [ADR 0015](docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)).
+
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
 Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).

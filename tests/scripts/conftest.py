@@ -127,3 +127,24 @@ def ifconfig_macos(*prises: tuple[str, str, str]) -> str:
         "\tstatus: active\n"
         for n, (nom, adresse, masque) in enumerate(prises, start=1)
     )
+
+
+def timedatectl_simule(bin: Path, journal: Path, ntp: str) -> None:
+    """`timedatectl` de l'hôte : `show -p NTP` répond `NTP=<ntp>`, chaque appel est journalisé."""
+    chemin = bin / "timedatectl"
+    chemin.write_text(f'#!/bin/sh\necho "$*" >> "{journal}"\nif [ "$1" = show ]; then echo "NTP={ntp}"; fi\n')
+    chemin.chmod(0o755)
+
+
+def path_sans(commande: str, bin: Path, dossier: Path) -> str:
+    """PATH de `bin` puis des commandes du PATH courant, sauf `commande` (hôte sans systemd, par ex.)."""
+    copie = dossier / f"sans-{commande}"
+    copie.mkdir()
+    for repertoire in os.environ["PATH"].split(os.pathsep):
+        if not os.path.isdir(repertoire):
+            continue
+        for nom in os.listdir(repertoire):
+            source = Path(repertoire) / nom
+            if nom != commande and not os.path.lexists(copie / nom) and source.is_file() and os.access(source, os.X_OK):
+                (copie / nom).symlink_to(source)
+    return f"{bin}{os.pathsep}{copie}"

@@ -6,7 +6,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, path_sans, timedatectl_simule
 
 SCRIPT = REPO_ROOT / "scripts" / "mettre-a-jour-le-site.sh"
 DELAI_S = 15
@@ -39,6 +39,7 @@ class Site:
     """Site Ubuntu simulé : /opt/argos, curl GitHub, docker."""
 
     def __init__(self, dossier: Path) -> None:
+        self.dossier = dossier
         self.prefixe = dossier / "prefixe"
         self.racine = self.prefixe / "opt" / "argos"
         self.racine.mkdir(parents=True)
@@ -54,6 +55,9 @@ class Site:
         self.bin.mkdir()
         self.journal_docker = dossier / "docker.txt"
         self.journal_curl = dossier / "curl.txt"
+        self.journal_timedatectl = dossier / "timedatectl.txt"
+        self.path = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
+        self.synchro_ntp("yes")
         self.releases = dossier / "releases.json"
         self.archive = _artefact(dossier)
         self.releases.write_text(
@@ -111,6 +115,19 @@ esac
 """,
         )
 
+    def synchro_ntp(self, etat: str) -> None:
+        """Synchro NTP de l'OS : `yes` ou `no` (`timedatectl show -p NTP`)."""
+        timedatectl_simule(self.bin, self.journal_timedatectl, etat)
+
+    def sans_timedatectl(self) -> None:
+        (self.bin / "timedatectl").unlink()
+        self.path = path_sans("timedatectl", self.bin, self.dossier)
+
+    def appels_timedatectl(self) -> list[str]:
+        if not self.journal_timedatectl.exists():
+            return []
+        return self.journal_timedatectl.read_text().splitlines()
+
     def lancer(
         self,
         docker_corps: str | None = None,
@@ -127,7 +144,7 @@ esac
             text=True,
             env=os.environ
             | {
-                "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+                "PATH": self.path,
                 "ARGOS_PREFIX": str(self.prefixe),
             }
             | (extra_env or {}),
@@ -236,3 +253,46 @@ def test_choisit_la_plus_haute_semver_pas_l_ordre_lexicographique(tmp_path: Path
 
     assert proc.returncode == CODE_APPLIQUEE, proc.stdout + proc.stderr
     assert "ARGOS_VERSION=0.7.10" in site.env()
+
+
+def test_synchro_ntp_de_l_os_coupee_est_reactivee_et_annoncee(tmp_path: Path):
+    site = Site(tmp_path)
+    site.synchro_ntp("no")
+
+    proc = site.lancer()
+
+    assert proc.returncode == CODE_APPLIQUEE, proc.stdout + proc.stderr
+    assert "set-ntp true" in site.appels_timedatectl()
+    assert "Synchro NTP de l'hôte réactivée" in proc.stdout
+
+
+def test_synchro_ntp_reactivee_meme_sans_release_a_appliquer(tmp_path: Path):
+    site = Site(tmp_path)
+    (site.racine / ".env").write_text("ARGOS_VERSION=staging\n")
+    site.synchro_ntp("no")
+
+    proc = site.lancer()
+
+    assert proc.returncode == CODE_RIEN, proc.stdout + proc.stderr
+    assert "set-ntp true" in site.appels_timedatectl()
+
+
+def test_synchro_ntp_deja_active_aucun_reglage(tmp_path: Path):
+    site = Site(tmp_path)
+
+    proc = site.lancer()
+
+    assert proc.returncode == CODE_APPLIQUEE, proc.stdout + proc.stderr
+    assert "show -p NTP" in site.appels_timedatectl()
+    assert not any("set-ntp" in appel for appel in site.appels_timedatectl())
+
+
+def test_sans_timedatectl_la_mise_a_jour_le_dit_et_continue(tmp_path: Path):
+    site = Site(tmp_path)
+    site.sans_timedatectl()
+
+    proc = site.lancer()
+
+    assert proc.returncode == CODE_APPLIQUEE, proc.stdout + proc.stderr
+    assert "timedatectl introuvable" in proc.stdout
+    assert "ARGOS_VERSION=0.7.3" in site.env()
