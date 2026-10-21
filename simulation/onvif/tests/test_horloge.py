@@ -89,6 +89,24 @@ def test_horloge_reglee_relue_a_l_identique_et_qui_avance(camera):
     assert 0 <= ecart.total_seconds() <= 5
 
 
+def test_heure_manuelle_refusee_mode_ntp_accepte(camera_sans_heure_manuelle):
+    camera = camera_sans_heure_manuelle
+
+    refus = camera.appeler(
+        "<tds:SetSystemDateAndTime>"
+        "<tds:DateTimeType>Manual</tds:DateTimeType><tds:DaylightSavings>false</tds:DaylightSavings>"
+        "<tds:UTCDateTime><tt:Date><tt:Year>2026</tt:Year><tt:Month>10</tt:Month><tt:Day>13</tt:Day></tt:Date>"
+        "<tt:Time><tt:Hour>8</tt:Hour><tt:Minute>30</tt:Minute><tt:Second>0</tt:Second></tt:Time></tds:UTCDateTime>"
+        "</tds:SetSystemDateAndTime>"
+    )
+
+    assert (refus.statut, refus.faute) == (400, "ter:InvalidArgVal")
+    # Heure gardée : toujours ses 7 minutes d'avance.
+    assert abs(ecart_s(camera) - AVANCE_D_USINE_S) <= MARGE_S
+    assert passer_en_ntp(camera).faute is None
+    assert camera.appeler(LIRE_HORLOGE).texte(".//tt:DateTimeType") == "NTP"
+
+
 def test_passage_en_ntp_relu(camera):
     camera.appeler(
         "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"

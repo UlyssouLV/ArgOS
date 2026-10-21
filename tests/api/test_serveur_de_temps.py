@@ -21,10 +21,11 @@ EPOQUE_NTP = 2_208_988_800
 
 @pytest.fixture
 def faux_temps() -> Iterator:
-    """Démarre un faux serveur NTP sur 127.0.0.1 ; renvoie son port. Il répond `octet_0`, `strate`, `reference`."""
+    """Démarre un faux serveur NTP sur 127.0.0.1 ; renvoie son port. Il répond `octet_0`, `strate`, `reference`, et
+    l'heure de la machine décalée de `decalage_s`."""
     prises: list[socket.socket] = []
 
-    def _demarrer(strate: int, reference: bytes = b"\x00" * 4, octet_0: int = 0x24) -> int:
+    def _demarrer(strate: int, reference: bytes = b"\x00" * 4, octet_0: int = 0x24, decalage_s: float = 0) -> int:
         prise = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         prise.bind(("127.0.0.1", 0))
         prises.append(prise)
@@ -34,7 +35,7 @@ def faux_temps() -> Iterator:
                 _, client = prise.recvfrom(512)
             except OSError:
                 return
-            maintenant = time.time() + EPOQUE_NTP
+            maintenant = time.time() + decalage_s + EPOQUE_NTP
             emission = struct.pack("!II", int(maintenant), int((maintenant % 1) * 2**32))
             prise.sendto(bytes([octet_0, strate]) + bytes(10) + reference + bytes(24) + emission, client)
 
@@ -90,6 +91,27 @@ def test_temps_muet_injoignable():
 
 def test_temps_introuvable_injoignable():
     assert serveur_de_temps.interroger("temps.invalid", delai_s=0.2).source_utilisee == "injoignable"
+
+
+def test_horloge_servie_par_temps_pas_celle_de_la_machine(faux_temps):
+    # temps sert une heure en retard d'une heure sur l'OS : c'est elle qui fait référence.
+    port = faux_temps(strate=3, reference=socket.inet_aton("162.159.200.1"), decalage_s=-3600)
+
+    horloge = serveur_de_temps.horloge_servie("127.0.0.1", port)
+
+    assert horloge is not None
+    premiere = horloge()
+    assert abs((premiere - datetime.now(UTC)).total_seconds() + 3600) < 1
+    time.sleep(0.2)
+    # Elle avance d'elle-même, sans réinterroger temps.
+    assert 0.15 < (horloge() - premiere).total_seconds() < 1
+
+
+def test_horloge_servie_inconnue_quand_temps_ne_repond_pas():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as muet:
+        muet.bind(("127.0.0.1", 0))
+
+        assert serveur_de_temps.horloge_servie("127.0.0.1", muet.getsockname()[1], delai_s=0.2) is None
 
 
 @pytest.mark.parametrize(

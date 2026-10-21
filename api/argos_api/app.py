@@ -201,7 +201,13 @@ def creer_app(
     apercus = Apercus(pont, configuration.expiration_apercu)
     fuseau_hote = fuseaux.de_l_hote(Path(configuration.localtime_hote))
     adresse_temps = serveur_de_temps.adresse_annoncee(configuration.temps_adresse_cameras, configuration.ips_du_site)
-    calage = Calage(ouvrir_base, horloge, adresse_temps, fuseau_hote)
+    calage = Calage(
+        ouvrir_base,
+        horloge,
+        adresse_temps,
+        fuseau_hote,
+        lambda: serveur_de_temps.horloge_servie(configuration.temps_hote),
+    )
     dossier_temps = Path(configuration.temps_reglage)
 
     def transmettre_a_temps(reglage: heure_site.HeureDuSite) -> None:
@@ -332,15 +338,16 @@ def creer_app(
     def modifier_heure_du_site(
         modification: ModificationHeureDuSite, base: Annotated[Session, Depends(base)]
     ) -> HeureDuSiteLue:
-        """Transmet la source à temps, puis recale en fond toutes les Caméras actives."""
+        """Transmet la source à temps, puis met à l'heure et recale en fond toutes les Caméras actives."""
         reglage = heure_site.modifier(base, modification, fuseau_hote)
         transmettre_a_temps(reglage)
-        calage.caler_toutes()
+        calage.verifier_toutes_en_fond()
         return heure_du_site_lue(reglage)
 
     @app.get("/api/heure-du-site/cameras", dependencies=[Depends(administrateur_connecte)])
     def lire_horloges_des_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
-        """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande)."""
+        """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande) : état,
+        dérive avant la Mise à l'heure, écart après."""
         return cameras.horloges_verifiees(base)
 
     @app.post("/api/heure-du-site/verification", dependencies=[Depends(administrateur_connecte)])
@@ -456,8 +463,8 @@ def _routes_cameras(
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
-        """Vérifie la Caméra (calée sur le Serveur de temps du Site au besoin) avant de répondre ; un échec n'empêche
-        pas l'ajout."""
+        """Vérifie la Caméra (Mise à l'heure et calage sur le Serveur de temps du Site) avant de répondre ; un échec
+        n'empêche pas l'ajout."""
         with _erreurs_cameras():
             creee = cameras.creer(base, nouvelle, racine_enregistrements)
         return _verifiee_puis_relue(calage, base, creee.id, racine_enregistrements)

@@ -76,7 +76,7 @@ def test_horloge_du_serveur_et_fuseau_enregistres(heure_du_site: Page, api, heur
         reglage.get_by_role("button", name="Enregistrer").click()
 
     assert envoi.value.post_data_json == {"source": "horloge_serveur", "fuseau": fuseau}
-    expect(heure_du_site.get_by_role("status")).to_contain_text("les Caméras actives sont recalées")
+    expect(heure_du_site.get_by_role("status")).to_contain_text("les Caméras actives sont mises à l’heure et recalées")
     expect(valeur(heure_du_site, "Fuseau")).to_have_text(fuseau)
     expect(valeur(heure_du_site, "Source utilisée")).to_have_text("horloge du serveur", timeout=DELAI_SOURCE_MS)
     expect(reglage.get_by_label("Adresse du serveur NTP")).to_be_disabled()
@@ -118,39 +118,40 @@ def usine():
 
 
 def colonnes(ligne: Locator) -> list[Locator]:
-    return [ligne.get_by_role("cell").nth(i) for i in range(4)]
+    return [ligne.get_by_role("cell").nth(i) for i in range(5)]
 
 
 def test_tableau_des_cameras_et_verifier_maintenant(administration: Page, api, noms, usine):
-    calee_ailleurs, sans_onvif = noms("Heure"), noms("Heure")
-    for nom, numero in ((calee_ailleurs, 2), (sans_onvif, 1)):
+    a_l_heure, sans_onvif = noms("Heure"), noms("Heure")
+    for nom, numero in ((a_l_heure, 2), (sans_onvif, 1)):
         reponse = api.post("/api/cameras", json={"nom": nom, "url_rtsp": url_camera_simulee(numero, unique("ui"))})
         assert reponse.status_code == 201, reponse.text
     administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
     tableau = administration.get_by_role("table", name="Caméras")
 
+    expect(tableau.get_by_role("columnheader")).to_have_text(
+        ["Caméra", "État", "Dérive", "Écart", "Dernière vérification"]
+    )
     # Vérifiées à l'ajout.
-    nom, etat, ecart, verifiee = colonnes(tableau.get_by_role("row").filter(has_text=sans_onvif))
+    nom, etat, derive, ecart, verifiee = colonnes(tableau.get_by_role("row").filter(has_text=sans_onvif))
     expect(etat).to_have_text("sans ONVIF")
+    expect(derive).to_have_text("—")
     expect(ecart).to_have_text("—")
     expect(verifiee).to_contain_text(re.compile(r"\d{2}:\d{2}:\d{2}"))
-    expect(colonnes(tableau.get_by_role("row").filter(has_text=calee_ailleurs))[1]).to_have_text(
-        re.compile("^(calée|écart|recalée)$")
-    )
+    # Ses 7 minutes d'avance d'usine, mesurées avant la Mise à l'heure.
+    _, etat, derive, _, _ = colonnes(tableau.get_by_role("row").filter(has_text=a_l_heure))
+    expect(etat).to_have_text(re.compile("^(à l’heure|écart)$"))
+    expect(derive).to_have_text(re.compile(r"^\+4\d\d,\d s$"))
 
-    # Réglée ailleurs entre-temps : la vérification la recale.
-    compose(
-        "exec", "-T", "api", "python", "-c",
-        "from argos_api import onvif; from datetime import datetime, UTC;"
-        "onvif.caler('rtsp://admin:argos-simulee@camera-simulee-2/', onvif.Retenu(), 'ntp.example.org', 'UTC0',"
-        " lambda: datetime.now(UTC))",
-    )
-    with administration.expect_request(
-        lambda r: r.method == "POST" and r.url.endswith("/api/heure-du-site/verification"), timeout=DELAI_VERIFICATION_MS
+    with administration.expect_response(
+        lambda r: r.request.method == "POST" and r.url.endswith("/api/heure-du-site/verification"),
+        timeout=DELAI_VERIFICATION_MS,
     ):
         administration.get_by_role("button", name="Vérifier maintenant").click()
 
-    _, etat, ecart, _ = colonnes(tableau.get_by_role("row").filter(has_text=calee_ailleurs))
-    expect(etat).to_have_text("recalée", timeout=DELAI_VERIFICATION_MS)
-    expect(ecart).to_have_text(re.compile(r"^[+−-]\d+,\d s$"))
+    _, etat, derive, ecart, _ = colonnes(tableau.get_by_role("row").filter(has_text=a_l_heure))
+    expect(etat).to_have_text("à l’heure", timeout=DELAI_VERIFICATION_MS)
+    expect(derive).to_have_text(re.compile(r"^[+−-]\d,\d s$"))
+    expect(ecart).to_have_text(re.compile(r"^[+−-]\d,\d s$"))
+    expect(tableau).not_to_contain_text(re.compile("calée|recalée"))
     expect(administration.get_by_role("button", name="Vérifier maintenant")).to_be_enabled()

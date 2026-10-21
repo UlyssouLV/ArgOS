@@ -15,7 +15,9 @@ pendant lesquelles la caméra ferme chaque connexion sans répondre après un ch
 caméra qui relance son encodeur ; jamais par défaut), `ONVIF_PORT_NTP` (port où la caméra joint ses serveurs NTP ;
 123 par défaut), `ONVIF_NTP_PARESSEUX` (dérive de l'horloge en secondes par heure : la caméra ne se cale
 plus qu'au démarrage et sur `SetNTP`, comme une caméra dont le client NTP ne réinterroge pas son serveur ; vide par
-défaut : client NTP continu), `ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
+défaut : client NTP continu), `ONVIF_HEURE_MANUELLE_REFUSEE` (non vide : `SetSystemDateAndTime` en mode manuel
+refusé d'une faute, comme une caméra qui ne se laisse pas mettre à l'heure ; seul le mode NTP est accepté),
+`ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
 date incrustée dans son Flux, relu par ffmpeg : media/simulated/diffuser.sh ; aucun par défaut). HTTP et HTTPS
 servent la même caméra (même état). En mode NTP, la caméra interroge vraiment le serveur reçu par `SetNTP` et s'y cale. Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
 opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
@@ -452,14 +454,17 @@ class Camera:
         silence_apres_encodage_s: float = 0,
         port_ntp: int = PORT_NTP,
         ntp_paresseux: float | None = None,
+        heure_manuelle_refusee: bool = False,
     ) -> None:
         """`services` : `image` et `media2` en plus de l'appareil et du média 1 ; `chemins_rtsp` : un profil par chemin ;
         `silence_apres_encodage_s` : muette ce temps-là après chaque changement d'Encodage accepté ; `port_ntp` : port
         des serveurs NTP joints (123 ; un autre pour un serveur de test) ; `ntp_paresseux` : dérive de l'horloge en
-        secondes par heure, la caméra ne se calant plus qu'au démarrage et sur `SetNTP` (None : client NTP continu)."""
+        secondes par heure, la caméra ne se calant plus qu'au démarrage et sur `SetNTP` (None : client NTP continu) ;
+        `heure_manuelle_refusee` : `SetSystemDateAndTime` en mode manuel refusé d'une faute."""
         self.identifiants = identifiants
         self.port_ntp = port_ntp
         self.paresseuse = ntp_paresseux is not None
+        self.heure_manuelle_refusee = heure_manuelle_refusee
         # Synchronisation NTP : lancée au premier passage en mode NTP ou au premier serveur reçu, réveillée ensuite.
         self._synchronisation: threading.Thread | None = None
         self._reveil = threading.Event()
@@ -564,6 +569,8 @@ class Camera:
         if mode not in ("Manual", "NTP"):
             raise Faute("ter:InvalidArgVal", f"DateTimeType inconnu : {mode}")
         nouvelle_heure = None
+        if mode == "Manual" and self.heure_manuelle_refusee:
+            raise Faute("ter:InvalidArgVal", "Heure manuelle non prise en charge")
         if mode == "Manual":
             utc = requete.find("tds:UTCDateTime", NS)
             if utc is None:
@@ -1119,6 +1126,7 @@ def main() -> None:
         float(os.environ.get("ONVIF_SILENCE_APRES_ENCODAGE_S") or 0),
         int(os.environ.get("ONVIF_PORT_NTP") or PORT_NTP),
         float(os.environ["ONVIF_NTP_PARESSEUX"]) if os.environ.get("ONVIF_NTP_PARESSEUX") else None,
+        bool(os.environ.get("ONVIF_HEURE_MANUELLE_REFUSEE")),
     )
     tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
     fils = []

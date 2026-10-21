@@ -4,7 +4,7 @@ Encodage de son Flux).
 L'appelant donne l'URL RTSP de la Caméra, son codec connu et le contact retenu (schéma, port, empreinte de la clé
 mémorisée) ; il
 reçoit les Réglages lus (ou, après une modification, le résultat de chaque champ envoyé ; après un calage,
-l'Horloge relue) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
+l'Horloge relue ; après une Mise à l'heure, l'Horloge lue avant et relue après) et le contact qui a répondu, ou une `ErreurOnvif` avec son code.
 SOAP, recherche du port, TLS, profils et tokens restent ici.
 
 - Contact (docs/adr/0007-onvif-en-https-par-cle-memorisee.md) : HTTPS sur `443` d'abord, à chaque échange (une
@@ -34,7 +34,9 @@ SOAP, recherche du port, TLS, profils et tokens restent ici.
   réponse, chaque champ envoyé est `pas_pris` (`sans_reponse`) et les Réglages rendus sont ceux lus avant l'envoi.
 - Horloge : lue avec les Réglages, jamais modifiée avec eux. Le calage (docs/adr/0014-serveur-de-temps-du-site.md)
   règle le serveur NTP manuel (jamais `FromDHCP`) sur le Serveur de temps du Site, puis le mode NTP au fuseau du
-  Site ; sa vérification relit l'Horloge seule (service appareil).
+  Site. La Mise à l'heure (docs/adr/0015-mise-a-l-heure-a-chaque-verification.md) lit l'Horloge, pousse l'heure de
+  référence en mode manuel (UTC, fuseau du Site), puis cale et relit ; une faute sur l'heure poussée n'arrête pas
+  le calage. Écarts mesurés contre l'heure de référence donnée (service appareil seul).
 - Modification : chaque `Set…` part seul (un refus n'empêche pas les autres ; un paramètre d'image par
   `SetImagingSettings`, le niveau avec son mode), puis la caméra est relue une fois : un champ
   est `pris` si la valeur relue est celle demandée, `pas_pris` sinon, `refuse` si la caméra (ou ArgOS, quand
@@ -188,6 +190,14 @@ class Horloge(BaseModel):
     fuseau: str | None
     mode: Literal["manuel", "ntp"]
     serveur_ntp: str | None
+
+
+class MiseALHeure(BaseModel):
+    # Horloge lue avant l'heure poussée (son écart : la dérive), puis relue après le calage (son écart).
+    avant: Horloge
+    apres: Horloge
+    # La caméra a refusé l'heure poussée (faute ONVIF) : calée quand même.
+    refusee: bool
 
 
 class IncrustationNom(BaseModel):
@@ -415,13 +425,6 @@ def modifier_reglages(
         return camera.modifier(modification, maintenant), contact
 
 
-def lire_horloge(url_rtsp: str, retenu: Retenu, maintenant: Callable[[], datetime]) -> tuple[Horloge, Contact]:
-    """Horloge lue sur la caméra (service appareil seul), et contact qui a répondu. Lève `ErreurOnvif`."""
-    camera, contact = _joindre(url_rtsp, retenu)
-    with _erreurs_onvif():
-        return camera.lire_horloge(maintenant), contact
-
-
 def caler(
     url_rtsp: str, retenu: Retenu, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]
 ) -> tuple[Horloge, Contact]:
@@ -430,6 +433,17 @@ def caler(
     camera, contact = _joindre(url_rtsp, retenu)
     with _erreurs_onvif():
         return camera.caler(serveur_ntp, fuseau_posix, maintenant), contact
+
+
+def mettre_a_l_heure(
+    url_rtsp: str, retenu: Retenu, serveur_ntp: str, fuseau_posix: str, reference: Callable[[], datetime]
+) -> tuple[MiseALHeure, Contact]:
+    """Lit l'Horloge, pousse l'heure de `reference` en mode manuel au fuseau `fuseau_posix`, puis cale la caméra comme
+    `caler` et relit son Horloge ; écarts mesurés contre `reference`. Lève `ErreurOnvif` (un refus de l'heure poussée
+    excepté)."""
+    camera, contact = _joindre(url_rtsp, retenu)
+    with _erreurs_onvif():
+        return camera.mettre_a_l_heure(serveur_ntp, fuseau_posix, reference), contact
 
 
 def _joindre(url_rtsp: str, retenu: Retenu, codec: str | None = None) -> tuple["_Camera", Contact]:
@@ -804,8 +818,10 @@ class _Camera:
             return IMAGE_NON_REGLABLE
         return Image(reglable=True, valeurs=_valeurs_image(reglages, options), options=options)
 
-    def _horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
-        heure = self._appareil.GetSystemDateAndTime()
+    def _horloge(self, maintenant: Callable[[], datetime], heure: Any = None) -> Horloge:
+        """`heure` : réponse de `GetSystemDateAndTime` déjà lue ; sans elle, relue."""
+        if heure is None:
+            heure = self._appareil.GetSystemDateAndTime()
         date_heure_utc = _date_heure_utc(heure)
         ntp = self._appareil.GetNTP()
         fuseau_posix = heure.TimeZone.TZ if heure.TimeZone is not None else None
@@ -818,10 +834,6 @@ class _Camera:
             serveur_ntp=_serveur_ntp(ntp),
         )
 
-    def lire_horloge(self, maintenant: Callable[[], datetime]) -> Horloge:
-        self._connecter_appareil()
-        return self._horloge(maintenant)
-
     def caler(self, serveur_ntp: str, fuseau_posix: str, maintenant: Callable[[], datetime]) -> Horloge:
         self._connecter_appareil()
         # Le serveur d'abord : la caméra passe en NTP déjà tournée vers le Site.
@@ -831,6 +843,24 @@ class _Camera:
             DateTimeType="NTP", DaylightSavings=bool(heure.DaylightSavings), TimeZone={"TZ": fuseau_posix}
         )
         return self._horloge(maintenant)
+
+    def mettre_a_l_heure(self, serveur_ntp: str, fuseau_posix: str, reference: Callable[[], datetime]) -> MiseALHeure:
+        self._connecter_appareil()
+        heure = self._appareil.GetSystemDateAndTime()
+        avant = self._horloge(reference, heure)
+        # Arrondie à la seconde : la caméra n'en prend pas de fraction.
+        poussee = (reference() + timedelta(seconds=0.5)).replace(microsecond=0)
+        acceptee = self._envoyer(
+            self._appareil.SetSystemDateAndTime,
+            DateTimeType="Manual",
+            DaylightSavings=bool(heure.DaylightSavings),
+            TimeZone={"TZ": fuseau_posix},
+            UTCDateTime={
+                "Date": {"Year": poussee.year, "Month": poussee.month, "Day": poussee.day},
+                "Time": {"Hour": poussee.hour, "Minute": poussee.minute, "Second": poussee.second},
+            },
+        )
+        return MiseALHeure(avant=avant, apres=self.caler(serveur_ntp, fuseau_posix, reference), refusee=not acceptee)
 
     def modifier(self, modification: ModificationReglages, maintenant: Callable[[], datetime]) -> ResultatModification:
         lus = self.lire(maintenant)

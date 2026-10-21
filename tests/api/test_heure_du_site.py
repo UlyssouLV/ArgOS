@@ -1,8 +1,8 @@
-"""Heure du Site, calage et vérification des Caméras (docs/adr/0014-serveur-de-temps-du-site.md), vus de l'extérieur
-de la stack.
+"""Heure du Site, calage, vérification et Mise à l'heure des Caméras (docs/adr/0014-serveur-de-temps-du-site.md,
+docs/adr/0015-mise-a-l-heure-a-chaque-verification.md), vus de l'extérieur de la stack.
 
-La source réglée se vérifie sur ce que `temps` sert vraiment (lu par l'API en NTP) ; le calage et la vérification, sur
-les Caméras simulées ONVIF, qui interrogent vraiment le serveur NTP reçu. Le réglage d'origine est remis tel quel en base après
+La source réglée se vérifie sur ce que `temps` sert vraiment (lu par l'API en NTP) ; le calage, la vérification et la
+Mise à l'heure, sur les Caméras simulées ONVIF, qui interrogent vraiment le serveur NTP reçu. Le réglage d'origine est remis tel quel en base après
 chaque test qui le change.
 """
 
@@ -37,6 +37,11 @@ MARGE_USINE_S = 5
 COLONNES = ("heure_source", "heure_serveur_ntp", "fuseau")
 # Vérification de toutes les Caméras actives : 4 à la fois, une caméra muette coûte quelques secondes.
 DELAI_VERIFICATION_S = 60
+# camera-simulee-5 « NTP paresseux » accélérée : une seconde de dérive par seconde.
+DERIVE_PARESSEUSE_S_PAR_H = "3600"
+ATTENTE_DERIVE_S = 6
+# Secondes tronquées par GetSystemDateAndTime, et le temps des requêtes.
+MARGE_DERIVE_S = 3
 # Vérification en tâche de fond, raccourcie pour le test (une heure par défaut).
 INTERVALLE_VERIFICATION_TEST_S = 5
 DELAI_TACHE_DE_FOND_S = 60
@@ -234,7 +239,7 @@ def test_camera_onvif_en_clair_non_accepte_ajoutee_sans_calage(connecte, camera_
     assert abs(usine["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
 
 
-# --- Vérification des Caméras -----------------------------------------------------------------------------------
+# --- Vérification et Mise à l'heure des Caméras ----------------------------------------------------------------
 
 
 def caler_ailleurs(serveur: str, fuseau_posix: str) -> None:
@@ -244,6 +249,17 @@ def caler_ailleurs(serveur: str, fuseau_posix: str) -> None:
         "from argos_api import onvif; from datetime import datetime, UTC;"
         f"onvif.caler('rtsp://admin:argos-simulee@camera-simulee-2/', onvif.Retenu(), {serveur!r}, {fuseau_posix!r},"
         " lambda: datetime.now(UTC))",
+    )
+
+
+def decaler(secondes: float, fuseau_posix: str) -> None:
+    """Pousse dans camera-simulee-2 une heure fausse de `secondes`, puis la recale sur le Site : sans réponse NTP, elle
+    la garde, comme une caméra calée qui a dérivé."""
+    compose(
+        "exec", "-T", "api", "python", "-c",
+        "from argos_api import onvif; from datetime import datetime, UTC, timedelta;"
+        "onvif.mettre_a_l_heure('rtsp://admin:argos-simulee@camera-simulee-2/', onvif.Retenu(),"
+        f" {ADRESSE_TEMPS!r}, {fuseau_posix!r}, lambda: datetime.now(UTC) + timedelta(seconds={secondes}))",
     )
 
 
@@ -267,12 +283,32 @@ def tableau(client) -> dict[int, dict]:
     return {camera["id"]: camera for camera in reponse.json()}
 
 
+def attendre_ligne(client, id_camera: int, condition, delai_s: float = DELAI_TACHE_DE_FOND_S) -> dict:
+    fin = time.monotonic() + delai_s
+    while not condition(ligne := tableau(client)[id_camera]):
+        assert time.monotonic() < fin, ligne
+        time.sleep(1)
+    return ligne
+
+
 def recente(date: str | None) -> bool:
     return date is not None and abs((datetime.fromisoformat(date) - datetime.now(UTC)).total_seconds()) < 60
 
 
-def journal_onvif_2(depuis: str) -> str:
-    return compose("logs", "--no-log-prefix", "--since", depuis, "camera-simulee-2-onvif").stdout
+def a_l_heure(ligne: dict) -> bool:
+    return ligne["etat"] == "a_l_heure" and abs(ligne["ecart_s"]) <= ECART_CALE_S
+
+
+def journal(service: str, depuis: str) -> str:
+    return compose("logs", "--no-log-prefix", "--since", depuis, service).stdout
+
+
+@pytest.fixture
+def camera_2_sans_reponse_ntp():
+    """camera-simulee-2 dont le client NTP n'aboutit jamais : seule la Mise à l'heure la corrige."""
+    camera_simulee_2_sans_reponse_ntp()
+    yield
+    remettre_onvif_en_usine()
 
 
 @pytest.mark.parametrize(("methode", "chemin"), [("GET", "/cameras"), ("POST", "/verification")])
@@ -287,26 +323,87 @@ def test_tableau_des_cameras_actives_avec_leur_derniere_verification(connecte, c
 
     lignes = tableau(connecte)
 
-    # Vérifiée dès son ajout, quand elle a été calée.
+    # Vérifiée dès son ajout : mise à l'heure et calée.
     ligne = lignes[id_camera]
     assert ligne["nom"] == connecte.get(f"/api/cameras/{id_camera}").json()["nom"]
-    assert ligne["etat"] in ("calee", "ecart", "recalee")
+    assert ligne["etat"] in ("a_l_heure", "ecart")
+    assert ligne["derive_s"] is not None and ligne["ecart_s"] is not None
     assert recente(ligne["verifiee_le"])
     assert desactivee not in lignes
 
 
-def test_camera_calee_a_l_heure_reste_calee(connecte, camera_simulee):
-    id_camera = camera_simulee(2)
-    attendre_horloge(connecte, id_camera, lambda lue: abs(lue["ecart_s"]) < ECART_CALE_S)
+def test_ajout_mesure_la_derive_et_met_a_l_heure_une_camera_qui_ne_se_synchronise_pas(
+    connecte, camera_2_sans_reponse_ntp, camera_simulee
+):
     depuis = datetime.now(UTC).isoformat()
+
+    id_camera = camera_simulee(2)
+
+    # Ses 7 minutes d'avance d'usine, mesurées avant la Mise à l'heure ; plus rien après.
+    ligne = tableau(connecte)[id_camera]
+    assert a_l_heure(ligne), ligne
+    assert abs(ligne["derive_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
+    lue = horloge(connecte, id_camera)
+    assert (lue["mode"], lue["serveur_ntp"], lue["fuseau"]) == ("ntp", ADRESSE_TEMPS, lire(connecte)["fuseau"])
+    recu = journal("camera-simulee-2-onvif", depuis)
+    assert "SetSystemDateAndTime" in recu and "SetNTP" in recu
+
+
+def test_verifier_maintenant_remet_a_l_heure_une_camera_calee_qui_a_derive(
+    connecte, camera_2_sans_reponse_ntp, camera_simulee
+):
+    id_camera = camera_simulee(2)
+    decaler(-90, fuseau_posix_du_site(connecte))
 
     ligne = verifier_maintenant(connecte)[id_camera]
 
-    assert ligne["etat"] == "calee"
-    assert abs(ligne["ecart_s"]) < ECART_CALE_S
+    assert a_l_heure(ligne), ligne
+    assert abs(ligne["derive_s"] + 90) < MARGE_USINE_S
     assert recente(ligne["verifiee_le"])
-    # Rien n'est écrit sur une Caméra calée : la vérification ne fait que lire.
-    assert "SetNTP" not in journal_onvif_2(depuis)
+    assert abs(horloge(connecte, id_camera)["ecart_s"]) <= ECART_CALE_S
+
+
+def test_changer_l_heure_du_site_remet_a_l_heure_les_cameras_actives(
+    connecte, camera_2_sans_reponse_ntp, camera_simulee, heure_d_origine
+):
+    id_camera = camera_simulee(2)
+    decaler(150, fuseau_posix_du_site(connecte))
+    fuseau = "Indian/Reunion" if lire(connecte)["fuseau"] != "Indian/Reunion" else "Asia/Tokyo"
+
+    assert modifier(connecte, fuseau=fuseau).status_code == 200
+
+    ligne = attendre_ligne(connecte, id_camera, lambda ligne: abs(ligne["derive_s"] - 150) < MARGE_USINE_S)
+    assert a_l_heure(ligne), ligne
+    assert horloge(connecte, id_camera)["fuseau"] == fuseau
+
+
+@pytest.fixture
+def camera_5_ntp_paresseux():
+    """camera-simulee-5 « NTP paresseux », relancée d'usine et qui dérive d'une seconde par seconde."""
+    compose(
+        "up", "-d", "--force-recreate", "--wait", "camera-simulee-5-onvif",
+        env={"ONVIF_NTP_PARESSEUX_5": DERIVE_PARESSEUSE_S_PAR_H},
+    )
+    yield
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-5-onvif")
+
+
+def test_camera_ntp_paresseux_calee_qui_a_derive_remise_a_l_heure(connecte, camera_5_ntp_paresseux, camera_simulee):
+    # camera-simulee-5 : HTTP seulement, sans identifiants ; l'ONVIF en clair s'accorde après l'ajout.
+    id_camera = camera_simulee(5)
+    assert connecte.put(f"/api/cameras/{id_camera}/reglages/onvif-en-clair").status_code == 204
+    debut = time.monotonic()
+    assert a_l_heure(verifier_maintenant(connecte)[id_camera])
+    # Calée sur le Site, elle ne le réinterroge plus : elle dérive.
+    time.sleep(ATTENTE_DERIVE_S)
+
+    ligne = verifier_maintenant(connecte)[id_camera]
+
+    assert a_l_heure(ligne), ligne
+    # Une seconde par seconde, entre l'heure poussée à la première vérification et la relecture à la seconde.
+    assert ATTENTE_DERIVE_S - MARGE_DERIVE_S < ligne["derive_s"] < time.monotonic() - debut + MARGE_DERIVE_S
+    lue = horloge(connecte, id_camera)
+    assert (lue["mode"], lue["serveur_ntp"], lue["fuseau"]) == ("ntp", ADRESSE_TEMPS, lire(connecte)["fuseau"])
 
 
 def test_camera_qui_vise_un_autre_serveur_recalee(connecte, camera_simulee):
@@ -315,7 +412,7 @@ def test_camera_qui_vise_un_autre_serveur_recalee(connecte, camera_simulee):
 
     ligne = verifier_maintenant(connecte)[id_camera]
 
-    assert ligne["etat"] == "recalee"
+    assert ligne["etat"] in ("a_l_heure", "ecart")
     assert horloge(connecte, id_camera)["serveur_ntp"] == ADRESSE_TEMPS
 
 
@@ -324,26 +421,46 @@ def test_camera_a_un_autre_fuseau_recalee(connecte, camera_simulee):
     fuseau = lire(connecte)["fuseau"]
     caler_ailleurs(ADRESSE_TEMPS, "NZST-12NZDT,M9.5.0,M4.1.0/3" if fuseau != "Pacific/Auckland" else "UTC0")
 
-    ligne = verifier_maintenant(connecte)[id_camera]
+    verifier_maintenant(connecte)
 
-    assert ligne["etat"] == "recalee"
     assert horloge(connecte, id_camera)["fuseau"] == fuseau
 
 
-def test_camera_calee_avec_un_ecart_signalee_sans_recalage(connecte, camera_simulee):
-    # Son client NTP n'aboutit pas : calée sur le Site, elle garde ses 7 minutes d'avance.
-    camera_simulee_2_sans_reponse_ntp()
+def test_mise_a_l_heure_refusee_calee_quand_meme_etat_sur_l_ecart_relu(connecte, camera_simulee):
+    # Ni NTP qui aboutisse, ni heure manuelle : elle garde ses 7 minutes d'avance.
+    camera_simulee_2_sans_reponse_ntp(heure_manuelle_refusee=True)
+    depuis = datetime.now(UTC).isoformat()
     try:
         id_camera = camera_simulee(2)
-        depuis = datetime.now(UTC).isoformat()
+        caler_ailleurs("ntp.example.org", fuseau_posix_du_site(connecte))
 
         ligne = verifier_maintenant(connecte)[id_camera]
+        lue = horloge(connecte, id_camera)
     finally:
         remettre_onvif_en_usine()
 
     assert ligne["etat"] == "ecart"
+    assert abs(ligne["derive_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
     assert abs(ligne["ecart_s"] - AVANCE_D_USINE_S) < MARGE_USINE_S
-    assert "SetNTP" not in journal_onvif_2(depuis)
+    assert (lue["mode"], lue["serveur_ntp"]) == ("ntp", ADRESSE_TEMPS)
+    assert f"Caméra {id_camera} : Mise à l'heure refusée" in journal("api", depuis)
+
+
+def test_temps_injoignable_calee_quand_meme_en_echec(connecte, camera_simulee):
+    id_camera = camera_simulee(2)
+    caler_ailleurs("ntp.example.org", fuseau_posix_du_site(connecte))
+    depuis = datetime.now(UTC).isoformat()
+
+    compose("stop", "temps")
+    try:
+        ligne = verifier_maintenant(connecte)[id_camera]
+    finally:
+        compose("up", "-d", "--wait", "temps")
+
+    assert (ligne["etat"], ligne["derive_s"], ligne["ecart_s"]) == ("echec", None, None)
+    assert recente(ligne["verifiee_le"])
+    assert horloge(connecte, id_camera)["serveur_ntp"] == ADRESSE_TEMPS
+    assert "Serveur de temps du Site injoignable" in journal("api", depuis)
 
 
 def test_sans_onvif_et_echec_sans_bloquer_les_autres(connecte, camera_simulee):
@@ -360,8 +477,28 @@ def test_sans_onvif_et_echec_sans_bloquer_les_autres(connecte, camera_simulee):
     assert lignes[sans_onvif]["etat"] == "sans_onvif"
     assert lignes[en_clair_non_accorde]["etat"] == "sans_onvif"
     assert lignes[refusee]["etat"] == "echec"
-    assert all(lignes[i]["ecart_s"] is None and recente(lignes[i]["verifiee_le"]) for i in (sans_onvif, refusee))
-    assert lignes[calee]["etat"] == "recalee"
+    assert all(
+        lignes[i]["derive_s"] is None and lignes[i]["ecart_s"] is None and recente(lignes[i]["verifiee_le"])
+        for i in (sans_onvif, refusee)
+    )
+    assert lignes[calee]["etat"] in ("a_l_heure", "ecart")
+    assert horloge(connecte, calee)["serveur_ntp"] == ADRESSE_TEMPS
+
+
+def test_verifications_d_avant_la_mise_a_jour_lues_a_l_heure_sans_derive(connecte, camera_simulee):
+    calee, recalee = camera_simulee(2), camera_simulee(2)
+    alembic = ("exec", "-T", "api", "alembic")
+    compose(*alembic, "downgrade", "0014")
+    try:
+        psql(f"UPDATE cameras SET horloge_etat = 'calee', horloge_ecart_s = 0.4 WHERE id = {calee}")
+        psql(f"UPDATE cameras SET horloge_etat = 'recalee', horloge_ecart_s = -0.2 WHERE id = {recalee}")
+    finally:
+        compose(*alembic, "upgrade", "head")
+
+    lignes = tableau(connecte)
+
+    assert (lignes[calee]["etat"], lignes[calee]["derive_s"], lignes[calee]["ecart_s"]) == ("a_l_heure", None, 0.4)
+    assert (lignes[recalee]["etat"], lignes[recalee]["derive_s"]) == ("a_l_heure", None)
 
 
 @pytest.fixture
@@ -375,9 +512,8 @@ def test_verification_en_tache_de_fond_sans_rien_demander(verification_raccourci
     id_camera = camera_simulee(2)
     caler_ailleurs("ntp.example.org", fuseau_posix_du_site(connecte))
     assert horloge(connecte, id_camera)["serveur_ntp"] == "ntp.example.org"
+    depuis = tableau(connecte)[id_camera]["verifiee_le"]
 
     attendre_horloge(connecte, id_camera, lambda lue: lue["serveur_ntp"] == ADRESSE_TEMPS)
-    fin = time.monotonic() + DELAI_TACHE_DE_FOND_S
-    while (ligne := tableau(connecte)[id_camera])["etat"] != "recalee":
-        assert time.monotonic() < fin, ligne
-        time.sleep(1)
+    ligne = attendre_ligne(connecte, id_camera, lambda ligne: ligne["verifiee_le"] != depuis)
+    assert ligne["derive_s"] is not None

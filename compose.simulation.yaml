@@ -12,6 +12,8 @@
 
 x-camera-simulee: &camera-simulee
   # MediaMTX et ffmpeg, plus une police pour incruster la date (media/simulated/Dockerfile).
+  # image: + build: : même dual que le Site (CI pull ci-<sha>, local up --build).
+  image: ghcr.io/ulyssoulv/argos-camera-simulee:${ARGOS_VERSION:-0.9.0}
   build: ./media/simulated
   restart: unless-stopped
   # Remplit le gabarit camera-simulee.yml avec le chemin de la Caméra simulée, puis lance MediaMTX.
@@ -109,6 +111,7 @@ services:
   # Interfaces ONVIF des Caméras simulées 2, 4 et 5 (simulation/onvif/README.md) : chacune partage le réseau de sa
   # Caméra simulée, donc son IP et sa MAC, comme l'interface ONVIF d'une vraie caméra. Les 1 et 3 n'en ont pas.
   camera-simulee-2-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-2
@@ -138,12 +141,15 @@ services:
       # caméra qui ne répond plus après l'envoi.
       ONVIF_SILENCE_APRES_ENCODAGE_S: ${ONVIF_SILENCE_APRES_ENCODAGE_S_2:-}
       # Port où elle joint ses serveurs NTP (vide : 123) ; les tests le détournent pour une caméra calée sur le Site
-      # dont l'horloge ne se corrige pas.
+      # dont l'horloge ne se corrige pas seule.
       ONVIF_PORT_NTP: ${ONVIF_PORT_NTP_2:-}
+      # Non vide : refuse l'heure poussée en mode manuel ; les tests le règlent pour une Mise à l'heure refusée.
+      ONVIF_HEURE_MANUELLE_REFUSEE: ${ONVIF_HEURE_MANUELLE_REFUSEE_2:-}
       # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
       ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 
   camera-simulee-4-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-4
@@ -158,6 +164,7 @@ services:
       ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}
 
   camera-simulee-5-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-5

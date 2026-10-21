@@ -30,7 +30,8 @@ LONGUEUR_MOT_DE_PASSE_SUR = 12
 Etat = Literal["unknown", "online", "offline"]
 EtatEnregistrement = Literal["enregistre", "a_l_arret", "en_erreur"]
 # Dernière vérification de l'Horloge (docs/adr/0014-serveur-de-temps-du-site.md).
-EtatHorloge = Literal["calee", "ecart", "recalee", "sans_onvif", "echec"]
+# Mise à l'heure (docs/adr/0015-mise-a-l-heure-a-chaque-verification.md) : `a_l_heure` ou `ecart` selon l'écart relu.
+EtatHorloge = Literal["a_l_heure", "ecart", "sans_onvif", "echec"]
 # Au-delà de 2 × recordSegmentDuration (1 m) : l'écriture a stagné alors que l'enregistrement est ON.
 AGE_MAX_DERNIER_SEGMENT_S = 120.0
 
@@ -566,15 +567,26 @@ def caler(
     return horloge
 
 
-def lire_horloge(base: Session, id_camera: int, maintenant: Callable[[], datetime]) -> onvif.Horloge:
-    """Horloge de la caméra d'une Caméra active, lue par ONVIF ; retient le contact.
+def mettre_a_l_heure(
+    base: Session,
+    id_camera: int,
+    maintenant: Callable[[], datetime],
+    reference: Callable[[], datetime],
+    serveur_ntp: str,
+    fuseau_posix: str,
+) -> onvif.MiseALHeure:
+    """Met la caméra d'une Caméra active à l'heure de `reference`, puis la cale sur le Serveur de temps du Site, par
+    ONVIF ; retient le contact (et la clé au premier contact HTTPS).
 
     Lève `CameraIntrouvable` (inconnue ou désactivée) ou `onvif.ErreurOnvif`.
     """
-    horloge, _ = _par_onvif(
-        base, id_camera, maintenant, lambda url, retenu, _codec: onvif.lire_horloge(url, retenu, maintenant)
+    mise, _ = _par_onvif(
+        base,
+        id_camera,
+        maintenant,
+        lambda url, retenu, _codec: onvif.mettre_a_l_heure(url, retenu, serveur_ntp, fuseau_posix, reference),
     )
-    return horloge
+    return mise
 
 
 def ids_actives(base: Session) -> list[int]:
@@ -587,7 +599,9 @@ class HorlogeVerifiee(BaseModel):
     id: int
     nom: str
     etat: EtatHorloge | None
-    # Mesuré à la dernière vérification (positif : la caméra avance) ; `None` sans Horloge lue.
+    # Mesurés à la dernière vérification contre l'heure du Serveur de temps du Site (positif : la caméra avance) :
+    # avant la Mise à l'heure (dérive) et après (écart) ; `None` sans Horloge lue ou sans heure du Serveur de temps.
+    derive_s: float | None
     ecart_s: float | None
     verifiee_le: datetime | None
 
@@ -599,6 +613,7 @@ def horloges_verifiees(base: Session) -> list[HorlogeVerifiee]:
             id=camera.id,
             nom=camera.nom,
             etat=camera.horloge_etat,
+            derive_s=camera.horloge_derive_s,
             ecart_s=camera.horloge_ecart_s,
             verifiee_le=camera.horloge_verifiee_le,
         )
@@ -607,12 +622,19 @@ def horloges_verifiees(base: Session) -> list[HorlogeVerifiee]:
 
 
 def retenir_horloge(
-    base: Session, id_camera: int, etat: EtatHorloge, ecart_s: float | None, verifiee_le: datetime
+    base: Session,
+    id_camera: int,
+    etat: EtatHorloge,
+    derive_s: float | None,
+    ecart_s: float | None,
+    verifiee_le: datetime,
 ) -> None:
     base.execute(
         update(Camera)
         .where(Camera.id == id_camera)
-        .values(horloge_etat=etat, horloge_ecart_s=ecart_s, horloge_verifiee_le=verifiee_le)
+        .values(
+            horloge_etat=etat, horloge_derive_s=derive_s, horloge_ecart_s=ecart_s, horloge_verifiee_le=verifiee_le
+        )
     )
     base.commit()
 

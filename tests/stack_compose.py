@@ -289,11 +289,13 @@ def camera_simulee_2_sans_media_2() -> None:
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_SERVICES_2": "image"})
 
 
-def camera_simulee_2_sans_reponse_ntp() -> None:
+def camera_simulee_2_sans_reponse_ntp(heure_manuelle_refusee: bool = False) -> None:
     """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », qui joint ses serveurs NTP sur un port où rien
-    ne répond : calée, elle garde son avance. `remettre_onvif_en_usine` lui rend le port 123.
+    ne répond : calée, elle garde son avance tant qu'on ne la met pas à l'heure. `heure_manuelle_refusee` : elle refuse
+    aussi la Mise à l'heure. `remettre_onvif_en_usine` lui rend le port 123 et l'heure manuelle.
     """
-    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_PORT_NTP_2": "9"})
+    env = {"ONVIF_PORT_NTP_2": "9", "ONVIF_HEURE_MANUELLE_REFUSEE_2": "1" if heure_manuelle_refusee else ""}
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env=env)
 
 
 def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:

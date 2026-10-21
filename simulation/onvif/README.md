@@ -30,7 +30,9 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_SILENCE_APRES_ENCODAGE_S` (vide par défaut : jamais) rend la caméra muette ce nombre de secondes après chaque changement d'Encodage accepté (médias 1 et 2) : elle ferme chaque connexion sans répondre, sur tous ses services, comme une caméra qui relance son encodeur. C'est le cas « la caméra n'a pas répondu après l'envoi ». Pour la Caméra simulée 2, compose le lit dans `ONVIF_SILENCE_APRES_ENCODAGE_S_2`.
 
-`ONVIF_PORT_NTP` (`123` par défaut) est le port où la caméra joint ses serveurs NTP. Pour la Caméra simulée 2, compose le lit dans `ONVIF_PORT_NTP_2` : un port où rien ne répond donne une caméra calée sur le Site dont l'horloge garde son avance, le cas « écart » de la vérification des Caméras.
+`ONVIF_PORT_NTP` (`123` par défaut) est le port où la caméra joint ses serveurs NTP. Pour la Caméra simulée 2, compose le lit dans `ONVIF_PORT_NTP_2` : un port où rien ne répond donne une caméra calée sur le Site dont l'horloge garde son avance tant que le Site ne la met pas à l'heure.
+
+`ONVIF_HEURE_MANUELLE_REFUSEE` (vide par défaut) fait refuser à la caméra `SetSystemDateAndTime` en mode manuel (faute `ter:InvalidArgVal`, heure gardée) ; le mode NTP reste accepté. Pour la Caméra simulée 2, compose le lit dans `ONVIF_HEURE_MANUELLE_REFUSEE_2` : avec `ONVIF_PORT_NTP_2` détourné, c'est une caméra que la Mise à l'heure ne peut pas corriger, le cas « écart » de la vérification des Caméras.
 
 `ONVIF_NTP_PARESSEUX` (vide par défaut : vrai client NTP continu) fait de la caméra une caméra « NTP paresseux », dont le NTP est bien réglé mais qui ne se synchronise pas toute seule : sa valeur est la dérive de son horloge, en secondes par heure (voir [Horloge et serveur de temps](#horloge-et-serveur-de-temps)). Pour la Caméra simulée 5, compose le lit dans `ONVIF_NTP_PARESSEUX_5` (`60` par défaut : une minute par heure) ; les tests l'accélèrent.
 

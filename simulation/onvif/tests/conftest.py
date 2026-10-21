@@ -3,7 +3,7 @@
 `camera` répond sans identifiants (comme la Caméra simulée 4) ; `camera_protegee` exige ceux de la
 Caméra simulée 2 ; `camera_complete` est la Caméra simulée 2 (identifiants, service image, média 2, deux profils
 aux chemins Dahua) et `camera_sans_media_2` la même sans média 2 ; `camera_sans_recreation_de_la_date` ne sait
-recréer que le nom ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
+recréer que le nom ; `camera_sans_heure_manuelle` refuse l'heure poussée en mode manuel ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
 en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire ; `serveur_ntp` est un
 petit serveur NTP de test, que `camera_et_serveur_ntp` joint à la place du port 123, comme
 `camera_paresseuse_et_serveur_ntp`, une caméra « NTP paresseux » qui dérive vite.
@@ -197,6 +197,12 @@ def camera_protegee():
 def camera_sans_recreation_de_la_date():
     """Comme `camera`, mais n'annonce ni ne sait recréer l'Incrustation de la date et de l'heure."""
     yield from _lancer(None, ("Plain",))
+
+
+@pytest.fixture
+def camera_sans_heure_manuelle():
+    """Comme `camera`, mais refuse l'heure poussée en mode manuel (seul le mode NTP est accepté)."""
+    yield from _lancer(None, heure_manuelle_refusee=True)
 
 
 @pytest.fixture

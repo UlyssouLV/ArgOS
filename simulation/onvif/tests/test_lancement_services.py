@@ -1,5 +1,6 @@
-"""Services, profils et fichier de la date incrustée choisis au lancement (`ONVIF_SERVICES`, `ONVIF_CHEMINS_RTSP`,
-`ONVIF_FICHIER_DATE`), comme en conteneur."""
+"""Services, profils, fichier de la date incrustée et horloge choisis au lancement (`ONVIF_SERVICES`,
+`ONVIF_CHEMINS_RTSP`, `ONVIF_FICHIER_DATE`, `ONVIF_PORT_NTP`, `ONVIF_NTP_PARESSEUX`, `ONVIF_HEURE_MANUELLE_REFUSEE`),
+comme en conteneur."""
 
 import time
 from datetime import UTC, datetime, timedelta
@@ -104,3 +105,17 @@ def test_ntp_paresseux_derive_a_la_vitesse_choisie(serveur_ntp):
     # 2 s de dérive par seconde : 6 s en 3 s, après un seul calage.
     assert abs(ecart - 6) <= 4
     assert serveur_ntp.requetes == 1
+
+
+def test_heure_manuelle_refusee_au_lancement():
+    """`ONVIF_HEURE_MANUELLE_REFUSEE` : l'heure poussée en mode manuel est refusée d'une faute."""
+    port = _port_libre()
+    with Lancement({"ONVIF_PORT": str(port), "ONVIF_HEURE_MANUELLE_REFUSEE": "1"}):
+        reponse = Camera(f"http://127.0.0.1:{port}", None).appeler(
+            "<tds:SetSystemDateAndTime><tds:DateTimeType>Manual</tds:DateTimeType>"
+            "<tds:DaylightSavings>false</tds:DaylightSavings><tds:UTCDateTime><tt:Date><tt:Year>2026</tt:Year>"
+            "<tt:Month>10</tt:Month><tt:Day>13</tt:Day></tt:Date><tt:Time><tt:Hour>8</tt:Hour><tt:Minute>30</tt:Minute>"
+            "<tt:Second>0</tt:Second></tt:Time></tds:UTCDateTime></tds:SetSystemDateAndTime>"
+        )
+
+    assert reponse.faute == "ter:InvalidArgVal"

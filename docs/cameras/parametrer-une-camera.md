@@ -113,7 +113,16 @@ Le panneau est un formulaire. Sous chaque champ reste affichée sa **valeur d’
 
 ### L’heure de la Caméra
 
-L’heure ne se règle plus dans les Réglages de la Caméra (section Horloge, fuseau et bouton « Mettre à l’heure du Site » retirés en 0.9.0). Elle se règle **une fois pour le Site**, dans **Administration → Heure du Site** : source de l’heure (`pool.ntp.org` par défaut, ou l’horloge du serveur) et fuseau (celui du serveur par défaut). Le Site sert cette heure en NTP sur le réseau des caméras (le **Serveur de temps du Site**, [ADR 0014](../adr/0014-serveur-de-temps-du-site.md)) et **cale** chaque Caméra ONVIF dessus : serveur NTP = le Site, mode NTP, fuseau du Site. Il le fait à l’ajout, à chaque changement de l’Heure du Site, puis toutes les heures (et sur « Vérifier maintenant ») ; le tableau de la page Heure du Site donne l’état de chaque Caméra (calée, écart, recalée, sans ONVIF, échec). L’Horloge est celle de l’Appareil : la caler depuis une Caméra la cale pour toutes les Caméras de la même MAC.
+L’heure ne se règle plus dans les Réglages de la Caméra (section Horloge, fuseau et bouton « Mettre à l’heure du Site » retirés en 0.9.0). Elle se règle **une fois pour le Site**, dans **Administration → Heure du Site** : source de l’heure (`pool.ntp.org` par défaut, ou l’horloge du serveur) et fuseau (celui du serveur par défaut). Le Site sert cette heure en NTP sur le réseau des caméras (le **Serveur de temps du Site**, [ADR 0014](../adr/0014-serveur-de-temps-du-site.md)) et **cale** chaque Caméra ONVIF dessus : serveur NTP = le Site, mode NTP, fuseau du Site.
+
+À chaque vérification — à l’ajout, à chaque changement de l’Heure du Site, puis toutes les heures (et sur « Vérifier maintenant ») — le Site ne se contente pas du NTP de la caméra, qui peut ne se synchroniser qu’à son démarrage : il **met la Caméra à l’heure** ([ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md)). Il lit l’heure que sert le Serveur de temps du Site, relit l’Horloge de la caméra (sa **dérive**), y pousse cette heure en mode manuel, la recale (serveur NTP = le Site, mode NTP, fuseau du Site), puis la relit (son **écart**). Dérive et écart se mesurent contre l’heure du Serveur de temps du Site. Le tableau de la page Heure du Site donne, pour chaque Caméra, son état, sa dérive, son écart et la date de la dernière vérification :
+
+- **à l’heure** : écart relu de 2 s au plus ;
+- **écart** : plus de 2 s, par exemple une caméra qui refuse l’heure poussée (elle est recalée quand même, et le refus est journalisé) ;
+- **sans ONVIF** : voir ci-dessous ;
+- **échec** : caméra injoignable ou qui refuse ses identifiants, ou Serveur de temps du Site injoignable (la caméra est alors recalée sans être mise à l’heure, dérive et écart restent vides).
+
+Une dérive qui revient à chaque vérification, même quand la Caméra est « à l’heure », montre une caméra qui ne se synchronise pas seule. L’Horloge est celle de l’Appareil : la caler depuis une Caméra la cale pour toutes les Caméras de la même MAC.
 
 **Caméra sans ONVIF** (ou ONVIF en clair non accordé) : marquée « sans ONVIF » dans ce tableau, le Site ne peut pas la caler. La régler à la main, dans son interface web ou l’application du fabricant :
 
