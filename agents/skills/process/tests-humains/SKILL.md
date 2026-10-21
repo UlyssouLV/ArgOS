@@ -4,12 +4,14 @@ description: >-
   Record human-test results for the version’s ready-for-human child, commit
   optional screenshots, update the issue body, and close it. Use when the user
   types `/th`, says « tests humains », or reports which scenarios they ran
-  after the plan from encadrer-implement. Not `/implement`. Not `/cci`.
+  on `:staging` after `/ps`. Not `/implement`. Not `/cci`. Not `/ps`.
 ---
 
 # Tests humains (`/th`)
 
-Triggered by **`/th`** or when the user reports human-test results for the current version (after `encadrer-implement` proposed the plan). This path **is** permission to edit and close the **human-test child** only, and to commit screenshots via skill **`commit`**.
+Triggered by **`/th`** or when the user reports human-test results for the current version (after **`/ps`** published `:staging` and they played the plan). This path **is** permission to edit and close the **human-test child** only, and to commit screenshots via skill **`commit`**.
+
+Expect tests against **`ARGOS_VERSION=staging`** (early access). If the user clearly tested something else, note it in Résultats; do not block close.
 
 Paths: **`agents/roles.yml`**. Ticket shape: **`agents/issue-tracker.md`** (*Human-test child*).
 
@@ -68,11 +70,12 @@ Do **not** use `/cci`. Do not close the parent. Do not `/implement`.
 
 ## 6. Hand off
 
-Tell the user in French: ticket `#n` Closed; next **`/code-review`**, then **Finalise la version** if the review is accepted.
+Tell the user in French: ticket `#n` Closed; next **Finalise la version** (review, gate et `:staging` ont déjà été faits avant `/th`).
 
 ## Not this skill
 
 - Propose the plan after the last implement → `encadrer-implement`
+- Gate + publish `:staging` → `preparer-staging` (`/ps`)
 - Close an implementation child → `fermer-ticket-enfant` (`/cci`)
 - Release / squash → `finaliser-la-version`
 - Commit only → `commit` (`/c`)

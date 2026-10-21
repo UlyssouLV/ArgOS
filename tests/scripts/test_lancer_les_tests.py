@@ -100,7 +100,11 @@ class Depot:
             "roles:\n  test-roots:\n    paths:\n" + chemins
         )
 
-    def lancer(self, *, extra_env: dict[str, str] | None = None) -> Resultat:
+    def lancer(
+        self,
+        *racines: str,
+        extra_env: dict[str, str] | None = None,
+    ) -> Resultat:
         chemin = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
         if not self.avec_uv:
             chemin = f"{self.bin}{os.pathsep}/usr/bin{os.pathsep}/bin"
@@ -112,8 +116,9 @@ class Depot:
         }
         if extra_env:
             env.update(extra_env)
+        cmd = ["bash", str(self.depot / "scripts" / "lancer-les-tests.sh"), *racines]
         proc = subprocess.run(
-            ["bash", str(self.depot / "scripts" / "lancer-les-tests.sh")],
+            cmd,
             cwd=self.depot,
             capture_output=True,
             text=True,
@@ -222,3 +227,20 @@ def test_le_script_installe_uv_s_il_manque(tmp_path):
         for ligne in resultat.journal
     )
     assert any(ligne.startswith("uv sync --no-build") for ligne in resultat.journal)
+
+
+def test_le_script_ne_lance_que_les_racines_passees_en_argument(depot):
+    resultat = depot.lancer("tests/beta/")
+
+    assert resultat.code == 0, resultat.sortie
+    pytest_cwd = [ligne for ligne in resultat.journal if "python -m pytest" in ligne]
+    assert len(pytest_cwd) == 1
+    assert "tests/beta" in pytest_cwd[0]
+
+
+def test_le_script_refuse_une_racine_absente_de_test_roots(depot):
+    resultat = depot.lancer("tests/inconnue/")
+
+    assert resultat.code != 0
+    assert "inconnue" in resultat.sortie
+    assert not any("python -m pytest" in ligne for ligne in resultat.journal)

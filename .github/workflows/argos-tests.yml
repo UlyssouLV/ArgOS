@@ -1,24 +1,83 @@
-# Suite complète des racines `test-roots` (équivalent `/t -a`), y compris les PR en brouillon.
-# Check GitHub (protection de branche) : « ArgOS tests ».
+# Suites `test-roots` en jobs parallèles (équivalent `/t -a` sur chaque racine).
+# Check GitHub (protection de branche) : job agrégateur « ArgOS tests ».
+# Relance manuelle ciblée : Actions → ArgOS tests → Run workflow → suite.
 name: ArgOS tests
 
 on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Suite à lancer (all = toutes les racines test-roots)"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - tests/flux/
+          - tests/api/
+          - tests/regles-sessions/
+          - tests/web/
+          - tests/scripts/
+          - simulation/onvif/
 
 concurrency:
-  group: argos-tests-${{ github.event.pull_request.number }}
+  group: argos-tests-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  argos-tests:
-    name: ArgOS tests
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    outputs:
+      roots: ${{ steps.roots.outputs.roots }}
     steps:
       - uses: actions/checkout@v4
-      - run: bash scripts/lancer-les-tests.sh
+      - id: roots
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SUITE: ${{ inputs.suite }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$SUITE" != "all" ] && [ -n "$SUITE" ]; then
+            printf '%s\n' "$SUITE" > roots.txt
+          else
+            python3 scripts/lire_test_roots.py > roots.txt
+          fi
+          ROOTS=$(python3 -c 'import json, pathlib; print(json.dumps([l for l in pathlib.Path("roots.txt").read_text().splitlines() if l.strip()]))')
+          echo "roots=$ROOTS" >> "$GITHUB_OUTPUT"
+          echo "$ROOTS"
+
+  suite:
+    name: ${{ matrix.root }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        root: ${{ fromJson(needs.plan.outputs.roots) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/lancer-les-tests.sh "${{ matrix.root }}"
+
+  argos-tests:
+    name: ArgOS tests
+    needs: [plan, suite]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Agréger le résultat des suites
+        run: |
+          set -euo pipefail
+          plan='${{ needs.plan.result }}'
+          suites='${{ needs.suite.result }}'
+          echo "plan=${plan} suites=${suites}"
+          if [ "$plan" != "success" ] || [ "$suites" != "success" ]; then
+            exit 1
+          fi

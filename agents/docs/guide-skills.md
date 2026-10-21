@@ -345,12 +345,30 @@ Ouvre la version 1.3.0
 
 **Corps :** inutile en général (le ticket suffit).
 
-TDD du ticket (plugin `/implement`). La **fin** : **`/t`**, **`/c -p`**, **`/qg -w`** (skip immédiat s’il n’y a pas de credentials Sonar), **`/cqg`** si le gate est rouge, **`/cci #<n>`**, puis le suivant ou **Finalise la version**. Skill `encadrer-implement`. Ne pas l’appeler à la place de `/implement`.
+TDD du ticket (plugin `/implement`). La **fin** : **`/t`**, **`/c -p`**, **`/cci #<n>`**, puis le suivant, ou plan `/th` + handoff **`/code-review` → `/ps` → `/th`**, ou **Finalise** si tout est Closed. Skill `encadrer-implement`. Ne pas l’appeler à la place de `/implement`.
 
 **Exemple :**
 
 ```
 /implement #42
+```
+
+
+
+### Préparer le staging
+
+**Commande :** `/ps`
+
+**Options :** aucune.
+
+**Corps :** « Prépare le staging » après une `/code-review` acceptée.
+
+Quality gate (`/qg -w`, `/cqg` si besoin), publie `:staging` depuis la branche de version, puis handoff **`/th`**. Skill `preparer-staging`.
+
+**Exemple :**
+
+```
+/ps
 ```
 
 
@@ -363,11 +381,12 @@ TDD du ticket (plugin `/implement`). La **fin** : **`/t`**, **`/c -p`**, **`/qg 
 
 **Corps :** inutile.
 
-Enfants Closed + docs à jour (`/c -a -p` si besoin), puis **`/crel`**, puis **`/mpr`**. Skill `finaliser-la-version`.
+Enfants Closed (dont tests humains) + docs à jour (`/c -a -p` si besoin), gate seulement si `HEAD` a bougé depuis `/ps`, puis **`/crel`**, puis **`/mpr`**. Skill `finaliser-la-version`.
 
 **Exemple :**
 
 ```
 Finalise la version
 ```
+
 

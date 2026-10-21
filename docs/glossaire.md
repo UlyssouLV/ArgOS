@@ -190,7 +190,7 @@ Bande temporelle sur la fenêtre de Conservation d’une Caméra en Relecture : 
 
 ## Staging {#staging}
 
-Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.
+Canal d’images du Site sur le registre (`:staging`) : early access de la version en cours (publié depuis la branche de version après review et quality gate, avant `/th` et avant promo Release). Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.
 
 À éviter : préproduction git, branche staging, serveur de test.
 

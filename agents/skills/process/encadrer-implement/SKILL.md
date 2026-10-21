@@ -5,9 +5,9 @@ description: >-
   step: `/t`, `/c -p`, `/cci #<n>`, then auto-chain the next unblocked
   ready-for-agent child in a new blank Claude Code conversation (fallback:
   ask the human to open one and `/implement`), or fill the human-test plan
-  and point to `/th`, or (all Closed) `/code-review` then Finalise. Do not
-  wait for the quality gate. Do not run `/code-review` here. Load this as
-  soon as /implement tests pass.
+  and point to `/code-review` then `/ps` then `/th`, or (all Closed)
+  Finalise. Do not wait for the quality gate. Do not run `/code-review` or
+  `/ps` here. Load this as soon as /implement tests pass.
 ---
 
 # Wrap `/implement`
@@ -26,7 +26,7 @@ Stage **only** the ticket files. Never `.env`, `*.db`, `.venv/`, secrets. Do **n
 
 Then run skill **`commit`** as if the user had typed **`/c -p`**.
 
-Do **not** `/qg`, `/qg -w`, or `/cqg`. Do **not** leave the child Open while Sonar runs. Do **not** add a label for that wait. The gate is one read of the PR `HEAD`, in `finaliser-la-version`.
+Do **not** `/qg`, `/qg -w`, or `/cqg`. Do **not** leave the child Open while Sonar runs. Do **not** add a label for that wait. The gate and `:staging` publish are skill **`preparer-staging`** (`/ps`), after `/code-review`.
 
 ## 3. Close the child
 
@@ -59,19 +59,19 @@ Only reach this block when steps **1–3 succeeded** (tests green, commit+push O
 
 **Else if an open `ready-for-human` human-test child remains** (format: `agents/issue-tracker.md`, *Human-test child*):
 
-1. Build a **concrete** numbered test plan in product language from the parent spec and the Closed implementation children (what a human can click / verify). Partial runs are allowed later.
+1. Build a **concrete** numbered test plan in product language from the parent spec and the Closed implementation children (what a human can click / verify on **`:staging`**). Partial runs are allowed later.
 2. `gh issue edit` that issue: replace `## Plan de tests` with checkboxes for each scenario (leave `## Résultats` and `## Ce qu’on peut faire maintenant` for `/th`).
 3. Stop after telling the user, in French (adapt `#n` / PR):
 
-   Tous les tickets d’implémentation sont Closed. Plan de tests humains proposé sur #<n>. Jouez ce que vous voulez (plan partiel OK). Quand c’est fait, lancez **`/th`** avec les résultats (et des captures si vous en avez). Ne lancez pas `/code-review` tant que #<n> est Open.
+   Tous les tickets d’implémentation sont Closed. Plan de tests humains proposé sur #<n>. Ensuite, dans l’ordre : **`/code-review`** → **`/ps`** (gate + publier `:staging`) → jouer le plan sur les images `:staging` → **`/th`**. Ne lancez pas `/th` avant que `/ps` ait fini.
 
-4. Do **not** propose `/code-review` or Finalise here. Do not merge, tag, or start the next version.
+4. Do **not** run `/code-review`, `/ps`, `/th`, or Finalise here. Do not merge, tag, or start the next version.
 
 **Else if all in-scope children are Closed** (including the human-test child):
 
 - Stop after telling the user, in French, exactly this handoff (adapt only the parent/PR numbers if useful):
 
-  Tous les tickets sont Closed (implémentation et tests humains). Lancez `/code-review`. Si la revue est bonne, lancez le skill **Finalise la version** (`finaliser-la-version`) : le quality gate est lu à ce moment-là, et s’il n’est pas OK c’est `/cqg`, pas la release.
+  Tous les tickets sont Closed (implémentation et tests humains). Lancez **Finalise la version** (`finaliser-la-version`) : release + squash. Le quality gate et `:staging` ont déjà été faits dans `/ps` ; Finalise ne relit le gate que si `HEAD` a bougé.
 
 - Do not merge, tag, or start the next version.
 
@@ -83,6 +83,7 @@ Only reach this block when steps **1–3 succeeded** (tests green, commit+push O
 - Fix the gate only → `corriger-quality-gate` (`/cqg`)
 - Close a child only → `fermer-ticket-enfant` (`/cci`)
 - Human-test results / close → `tests-humains` (`/th`)
+- Gate + publish `:staging` → `preparer-staging` (`/ps`)
 - Opening or merging the PR, GitHub Release, deleting the branch → `finaliser-la-version`
 - Re-implementing Closed children
 - `needs-triage` work that is not a child of this PR
