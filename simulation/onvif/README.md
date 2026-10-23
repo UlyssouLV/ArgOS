@@ -36,6 +36,10 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_NTP_PARESSEUX` (vide par défaut : vrai client NTP continu) fait de la caméra une caméra « NTP paresseux », dont le NTP est bien réglé mais qui ne se synchronise pas toute seule : sa valeur est la dérive de son horloge, en secondes par heure (voir [Horloge et serveur de temps](#horloge-et-serveur-de-temps)). Pour la Caméra simulée 5, compose le lit dans `ONVIF_NTP_PARESSEUX_5` (`60` par défaut : une minute par heure) ; les tests l'accélèrent.
 
+`ONVIF_FUSEAU_DECALAGE_SEUL` (vide par défaut) fait de la caméra une imitation de la vraie caméra des tests humains de la 0.9.1 ([`Cam 01`](../../docs/cameras/compatibilite.md#cam-01)) : du fuseau reçu, elle ne garde que le nom et le décalage (`CET-1CEST,M3.5.0,M10.5.0/3` → `CET-1`), n'applique jamais l'heure d'été (`DaylightSavings` relu faux) et lit à l'envers un fuseau nommé `UTC` (`UTC-2` → `UTC2`, UTC−2) ; elle incruste l'heure locale qui en découle. La Caméra simulée 5 l'a toujours : sa date incrustée n'est juste que si le Site lui envoie le décalage du moment.
+
+`ONVIF_FUSEAU_FIGE` (vide par défaut) fait garder à la caméra son fuseau (`AWST-8` d'usine) quel que soit celui reçu. Pour la Caméra simulée 2, compose le lit dans `ONVIF_FUSEAU_FIGE_2` : à l'heure en UTC mais au mauvais décalage, c'est le cas « écart » d'une date incrustée fausse.
+
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
 ## Horloge et serveur de temps

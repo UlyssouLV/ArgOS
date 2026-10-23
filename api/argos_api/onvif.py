@@ -829,7 +829,7 @@ class _Camera:
             date_heure_utc=date_heure_utc,
             ecart_s=(date_heure_utc - maintenant()).total_seconds(),
             fuseau_posix=fuseau_posix,
-            fuseau=fuseaux.nom_lisible(fuseau_posix) if fuseau_posix else None,
+            fuseau=fuseaux.nom_lisible(fuseau_posix, maintenant()) if fuseau_posix else None,
             mode="ntp" if heure.DateTimeType == "NTP" else "manuel",
             serveur_ntp=_serveur_ntp(ntp),
         )
@@ -838,10 +838,8 @@ class _Camera:
         self._connecter_appareil()
         # Le serveur d'abord : la caméra passe en NTP déjà tournée vers le Site.
         self._appareil.SetNTP(FromDHCP=False, NTPManual=[_adresse_ntp(serveur_ntp)])
-        heure = self._appareil.GetSystemDateAndTime()
-        self._appareil.SetSystemDateAndTime(
-            DateTimeType="NTP", DaylightSavings=bool(heure.DaylightSavings), TimeZone={"TZ": fuseau_posix}
-        )
+        # Fuseau sans règles d'heure d'été (décalage du moment) : la caméra n'a pas d'heure d'été à appliquer.
+        self._appareil.SetSystemDateAndTime(DateTimeType="NTP", DaylightSavings=False, TimeZone={"TZ": fuseau_posix})
         return self._horloge(maintenant)
 
     def mettre_a_l_heure(self, serveur_ntp: str, fuseau_posix: str, reference: Callable[[], datetime]) -> MiseALHeure:
@@ -853,7 +851,7 @@ class _Camera:
         acceptee = self._envoyer(
             self._appareil.SetSystemDateAndTime,
             DateTimeType="Manual",
-            DaylightSavings=bool(heure.DaylightSavings),
+            DaylightSavings=False,
             TimeZone={"TZ": fuseau_posix},
             UTCDateTime={
                 "Date": {"Year": poussee.year, "Month": poussee.month, "Day": poussee.day},

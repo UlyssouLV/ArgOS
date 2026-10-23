@@ -5,17 +5,20 @@ Chaque Caméra active est vérifiée à son ajout (avant la réponse), à chaque
 fond), toutes les heures et sur « Vérifier maintenant », par une seule procédure sans condition : lire l'heure que sert
 `temps` (en NTP) ; lire l'Horloge de la Caméra (la dérive) ; y pousser cette heure en mode manuel, au fuseau du Site ;
 la caler (serveur NTP = le Site, mode NTP, fuseau du Site), même si elle visait un autre serveur ; relire son Horloge
-(l'écart). Dérive et écart se mesurent contre l'heure de `temps`, jamais contre l'horloge de l'OS. L'écart relu
-décide de l'état : `a_l_heure` jusqu'à `ECART_SIGNALE_S`, `ecart` au-delà, même si la Caméra a refusé l'heure poussée
-(journalisé). `temps` muet : rien n'est poussé ni mesuré, la Caméra est calée seule et marquée `echec`. Le résultat de
-chaque Caméra (état, dérive, écart, date) est retenu. Un échec ONVIF (pas d'ONVIF, ONVIF en clair non accepté,
-caméra injoignable) est retenu et journalisé, jamais remonté : il ne bloque ni l'ajout ni les autres Caméras.
+(l'écart). Le fuseau envoyé est le décalage du moment du fuseau du Site, sans règles d'heure d'été ; une vérification
+de toutes les Caméras a aussi lieu à chaque changement d'heure (`changement_d_heure`). Dérive et écart se mesurent
+contre l'heure de `temps`, jamais contre l'horloge de l'OS. L'écart relu et le décalage du fuseau relu décident de
+l'état : `a_l_heure` si l'écart ne dépasse pas `ECART_SIGNALE_S` et si le décalage relu est celui du Site, `ecart`
+sinon (journalisé), même si la Caméra a refusé l'heure poussée (journalisé). `temps` muet : rien n'est poussé ni
+mesuré, la Caméra est calée seule et marquée `echec`. Le résultat de chaque Caméra (état, dérive, écart, date) est
+retenu. Un échec ONVIF (pas d'ONVIF, ONVIF en clair non accepté, caméra injoignable) est retenu et journalisé, jamais
+remonté : il ne bloque ni l'ajout ni les autres Caméras.
 """
 
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -63,7 +66,7 @@ class Calage:
         reference = self._heure_de_temps()
         with self._ouvrir_base() as base:
             fuseau = heure_site.lire(base, self._fuseau_hote).fuseau
-            posix = fuseaux.posix(fuseau)
+            posix = fuseaux.posix_du_moment(fuseau, self._maintenant())
             derive_s = ecart_s = None
             etat: EtatHorloge
             try:
@@ -79,7 +82,8 @@ class Calage:
                     if mise.refusee:
                         journal.warning("Calage : Caméra %s : Mise à l'heure refusée, calée quand même", id_camera)
                     derive_s, ecart_s = mise.avant.ecart_s, mise.apres.ecart_s
-                    etat = "ecart" if abs(ecart_s) > ECART_SIGNALE_S else "a_l_heure"
+                    decalage_juste = _decalage_juste(id_camera, mise.apres.fuseau_posix, posix)
+                    etat = "ecart" if abs(ecart_s) > ECART_SIGNALE_S or not decalage_juste else "a_l_heure"
             except cameras.CameraIntrouvable:
                 return
             except onvif.ErreurOnvif as erreur:
@@ -107,3 +111,25 @@ class Calage:
     def _actives(self) -> list[int]:
         with self._ouvrir_base() as base:
             return cameras.ids_actives(base)
+
+
+def _decalage_juste(id_camera: int, relu: str | None, envoye: str) -> bool:
+    """Le fuseau relu sur la Caméra a le décalage de celui envoyé : la date qu'elle incruste est l'heure locale du
+    Site. Sinon, journalise pourquoi elle n'est pas à l'heure."""
+    attendu = fuseaux.decalage(envoye)
+    lu = fuseaux.decalage(relu) if relu else None
+    if lu == attendu:
+        return True
+    journal.warning(
+        "Calage : Caméra %s en écart : fuseau relu %s (%s), le Site envoie %s (%s)",
+        id_camera, relu, _texte_decalage(lu), envoye, _texte_decalage(attendu),
+    )
+    return False
+
+
+def _texte_decalage(decalage: timedelta | None) -> str:
+    if decalage is None:
+        return "décalage illisible"
+    signe = "-" if decalage < timedelta() else "+"
+    heures, reste = divmod(int(abs(decalage).total_seconds()), 3600)
+    return f"UTC{signe}{heures:02d}:{reste // 60:02d}"

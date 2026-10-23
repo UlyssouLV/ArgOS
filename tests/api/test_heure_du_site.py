@@ -14,6 +14,7 @@ import pytest
 
 from stack_compose import (
     api_verifiant_les_cameras_toutes_les,
+    camera_simulee_2_au_fuseau_fige,
     camera_simulee_2_sans_reponse_ntp,
     compose,
     remettre_onvif_en_usine,
@@ -264,10 +265,11 @@ def decaler(secondes: float, fuseau_posix: str) -> None:
 
 
 def fuseau_posix_du_site(client) -> str:
-    """Fuseau POSIX que la Caméra calée a reçu : celui qu'elle relit."""
+    """Fuseau POSIX que la Caméra calée a reçu (le décalage du moment du fuseau du Site) : celui qu'elle relit."""
     return compose(
         "exec", "-T", "api", "python", "-c",
-        f"from argos_api import fuseaux; print(fuseaux.posix({lire(client)['fuseau']!r}))",
+        "from argos_api import fuseaux; from datetime import datetime, UTC;"
+        f"print(fuseaux.posix_du_moment({lire(client)['fuseau']!r}, datetime.now(UTC)))",
     ).stdout.strip()
 
 
@@ -517,3 +519,102 @@ def test_verification_en_tache_de_fond_sans_rien_demander(verification_raccourci
     attendre_horloge(connecte, id_camera, lambda lue: lue["serveur_ntp"] == ADRESSE_TEMPS)
     ligne = attendre_ligne(connecte, id_camera, lambda ligne: ligne["verifiee_le"] != depuis)
     assert ligne["derive_s"] is not None
+
+
+# --- Fuseau envoyé : le décalage du moment ---------------------------------------------------------------------
+
+
+# camera-simulee-4 sur le réseau des Caméras simulées : HTTP seulement, sans identifiants.
+ADRESSE_ONVIF_4 = "http://172.30.0.14/onvif/device_service"
+DELAI_INCRUSTATION_S = 5
+SOAP = (
+    '<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"'
+    ' xmlns:tt="http://www.onvif.org/ver10/schema"><env:Body>{}</env:Body></env:Envelope>'
+)
+
+
+def soap_camera_4(corps: str) -> str:
+    """Opération SOAP envoyée à camera-simulee-4 depuis le réseau des Caméras (conteneur de l'API) ; sa réponse."""
+    return compose(
+        "exec", "-T", "api", "python", "-c",
+        "import sys, urllib.request;"
+        f"r = urllib.request.Request({ADRESSE_ONVIF_4!r}, data=sys.argv[1].encode(),"
+        " headers={'Content-Type': 'application/soap+xml'});"
+        "print(urllib.request.urlopen(r, timeout=5).read().decode())",
+        SOAP.format(corps),
+    ).stdout
+
+
+def date_incrustee_5() -> datetime:
+    """Date et heure qu'incruste camera-simulee-5 dans son Flux (heure locale de son fuseau, sans fuseau)."""
+    texte = compose("exec", "-T", "camera-simulee-5", "cat", "/horloge/date.txt").stdout.strip()
+    return datetime.strptime(texte, "%Y-%m-%d %H:%M:%S")
+
+
+def attendre_date_incrustee_5(fuseau: ZoneInfo) -> None:
+    """La date incrustée par camera-simulee-5 rejoint l'heure locale de `fuseau` (le fichier est réécrit toutes les
+    0,2 s)."""
+    fin = time.monotonic() + DELAI_INCRUSTATION_S
+    while True:
+        ecart = (date_incrustee_5() - datetime.now(fuseau).replace(tzinfo=None)).total_seconds()
+        if abs(ecart) <= MARGE_DERIVE_S:
+            return
+        assert time.monotonic() < fin, f"date incrustée à {ecart:+.0f} s de l'heure locale du Site"
+        time.sleep(0.5)
+
+
+@pytest.mark.parametrize("fuseau", ["Europe/Paris", "America/New_York", "UTC", "America/Cayenne"])
+def test_camera_qui_ne_garde_que_le_decalage_incruste_l_heure_locale_du_site(
+    connecte, camera_simulee, heure_d_origine, fuseau
+):
+    # camera-simulee-5, comme la vraie caméra des tests humains : elle ne garde que le décalage du fuseau reçu,
+    # n'applique jamais l'heure d'été et lit `UTC` à l'envers.
+    assert modifier(connecte, fuseau=fuseau).status_code == 200
+    id_camera = camera_simulee(5)
+    assert connecte.put(f"/api/cameras/{id_camera}/reglages/onvif-en-clair").status_code == 204
+
+    ligne = verifier_maintenant(connecte)[id_camera]
+
+    assert a_l_heure(ligne), ligne
+    attendre_date_incrustee_5(ZoneInfo(fuseau))
+    assert horloge(connecte, id_camera)["fuseau"] == fuseau
+
+
+def test_fuseau_envoye_sans_heure_d_ete_et_daylight_savings_a_false(connecte, camera_simulee):
+    # Réglée ailleurs avec l'heure d'été : le Site ne recopie plus cette valeur.
+    soap_camera_4(
+        "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
+        "<tds:DaylightSavings>true</tds:DaylightSavings>"
+        "<tds:TimeZone><tt:TZ>CET-1CEST,M3.5.0,M10.5.0/3</tt:TZ></tds:TimeZone></tds:SetSystemDateAndTime>"
+    )
+    id_camera = camera_simulee(4)
+    assert connecte.put(f"/api/cameras/{id_camera}/reglages/onvif-en-clair").status_code == 204
+
+    verifier_maintenant(connecte)
+
+    relue = soap_camera_4("<tds:GetSystemDateAndTime/>")
+    assert "<tt:DaylightSavings>false</tt:DaylightSavings>" in relue
+    assert f"<tt:TZ>{fuseau_posix_du_site(connecte)}</tt:TZ>" in relue
+    assert "," not in horloge(connecte, id_camera)["fuseau_posix"]
+
+
+@pytest.fixture
+def camera_2_au_fuseau_fige():
+    """camera-simulee-2 qui garde son fuseau d'usine (`AWST-8`) quel que soit celui reçu."""
+    camera_simulee_2_au_fuseau_fige()
+    yield
+    remettre_onvif_en_usine()
+
+
+def test_camera_au_mauvais_decalage_en_ecart_meme_a_l_heure_en_utc(
+    connecte, camera_2_au_fuseau_fige, camera_simulee, heure_d_origine
+):
+    assert modifier(connecte, fuseau="Europe/Paris").status_code == 200
+    depuis = datetime.now(UTC).isoformat()
+    id_camera = camera_simulee(2)
+
+    ligne = verifier_maintenant(connecte)[id_camera]
+
+    assert ligne["etat"] == "ecart", ligne
+    assert abs(ligne["ecart_s"]) <= ECART_CALE_S
+    assert f"Caméra {id_camera} en écart : fuseau relu AWST-8 (UTC+08:00)" in journal("api", depuis)

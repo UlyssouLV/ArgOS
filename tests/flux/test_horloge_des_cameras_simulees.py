@@ -149,3 +149,11 @@ def test_seule_camera_simulee_5_est_ntp_paresseux():
     assert services["camera-simulee-5-onvif"]["environment"]["ONVIF_NTP_PARESSEUX"]
     for interface in ("camera-simulee-2-onvif", "camera-simulee-4-onvif"):
         assert "ONVIF_NTP_PARESSEUX" not in services[interface]["environment"], interface
+
+
+def test_seule_camera_simulee_5_ne_garde_que_le_decalage_du_fuseau():
+    services = configuration(FICHIER_PROD, FICHIER_SIMULATION)["services"]
+
+    assert services["camera-simulee-5-onvif"]["environment"]["ONVIF_FUSEAU_DECALAGE_SEUL"]
+    for interface in ("camera-simulee-2-onvif", "camera-simulee-4-onvif"):
+        assert "ONVIF_FUSEAU_DECALAGE_SEUL" not in services[interface]["environment"], interface

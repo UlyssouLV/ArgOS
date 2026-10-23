@@ -20,3 +20,26 @@ L'horloge de l'OS reste hors de portée des conteneurs (toujours pas de `SYS_TIM
 - Le tableau des Caméras montre la dérive constatée sur l'heure écoulée : une caméra qui ne se synchronise pas seule se voit, même quand elle est « à l'heure ».
 - Les états `calée` et `recalée` disparaissent (`à l'heure`, `écart`, `sans ONVIF`, `échec`).
 - Sous Mac, rien ne touche l'horloge de l'hôte : Docker Desktop tient l'heure de sa VM depuis macOS.
+
+## Avenant (0.9.1) — fuseau envoyé en décalage du moment
+
+Aux tests humains, une vraie caméra ([`Cam 01`](../cameras/compatibilite.md#cam-01)) était « à l'heure » en UTC mais incrustait une heure de retard : elle ne garde que le décalage du fuseau reçu (`CET-1CEST,M3.5.0,M10.5.0/3` devient `CET-1CEST`, affiché UTC+1), n'applique jamais l'heure d'été, que `DaylightSavings` vaille vrai ou faux, et lit à l'envers un fuseau nommé `UTC` (`UTC-2` affiché UTC−2). Avec un décalage fixe (`CEST-2`), elle affiche juste.
+
+Le Site envoie donc aux Caméras le **décalage horaire du moment** de son fuseau, sous son abréviation et sans règles d'heure d'été : `CEST-2` en été, `CET-1` en hiver pour `Europe/Paris`, calculé par `zoneinfo` (paquet `tzdata`). Quand l'abréviation n'est pas en lettres (`+01`) ou vaut `UTC` / `GMT`, il la remplace par un nom neutre, `ARGOS` (`ARGOS-1`, `ARGOS0`). `SetSystemDateAndTime` part toujours avec `DaylightSavings=false`, dans la Mise à l'heure comme dans le calage : la valeur lue sur la caméra n'est plus recopiée.
+
+Comme le décalage change deux fois par an, une vérification de toutes les Caméras actives a aussi lieu **à l'instant de chaque changement d'heure** du fuseau du Site, recalculé après chaque changement et à chaque changement de fuseau ; la vérification horaire reste.
+
+Le tableau ne mesurait que l'heure UTC : il ne pouvait pas voir une date incrustée fausse. Une Caméra n'est plus « à l'heure » que si son écart relu ne dépasse pas 2 s **et** si le décalage de son fuseau POSIX relu (le décalage de l'heure normale, règles et nom d'heure d'été ignorés, comme le fait la caméra) est celui envoyé ; sinon elle est « écart », et le journal dit quel fuseau elle a relu.
+
+### Considered Options
+
+- **Décalage du moment, sans règles** (retenu) : marche sur une caméra qui sait appliquer l'heure d'été comme sur une qui ne sait pas ; le prix est une vérification de plus, deux fois par an.
+- **Règles d'heure d'été POSIX** (0.9.0) : justes sur le papier, fausses sur `Cam 01`, et rien ne dit à l'avance si une caméra les applique.
+- **`DaylightSavings=true` avec le fuseau d'hiver** : sans effet sur `Cam 01`, et sa signification varie d'une caméra à l'autre.
+- **Liste de caméras connues, chacune son format** : à tenir à jour sans fin ; la [liste des caméras qualifiées](../cameras/compatibilite.md) dit seulement ce qui a été vérifié.
+
+### Consequences
+
+- Entre l'instant du changement d'heure et la fin de la vérification, une Caméra garde l'ancien décalage quelques secondes.
+- Un Site arrêté pendant un changement d'heure le reprend à son redémarrage (vérification horaire au démarrage).
+- Le fuseau relu en ONVIF montre le décalage du moment (`CEST-2`) ; le Site le reconnaît et affiche le nom du fuseau (`Europe/Paris`).

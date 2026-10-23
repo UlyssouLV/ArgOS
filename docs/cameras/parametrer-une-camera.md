@@ -115,10 +115,14 @@ Le panneau est un formulaire. Sous chaque champ reste affichée sa **valeur d’
 
 L’heure ne se règle plus dans les Réglages de la Caméra (section Horloge, fuseau et bouton « Mettre à l’heure du Site » retirés en 0.9.0). Elle se règle **une fois pour le Site**, dans **Administration → Heure du Site** : source de l’heure (`pool.ntp.org` par défaut, ou l’horloge du serveur) et fuseau (celui du serveur par défaut). Le Site sert cette heure en NTP sur le réseau des caméras (le **Serveur de temps du Site**, [ADR 0014](../adr/0014-serveur-de-temps-du-site.md)) et **cale** chaque Caméra ONVIF dessus : serveur NTP = le Site, mode NTP, fuseau du Site.
 
-À chaque vérification — à l’ajout, à chaque changement de l’Heure du Site, puis toutes les heures (et sur « Vérifier maintenant ») — le Site ne se contente pas du NTP de la caméra, qui peut ne se synchroniser qu’à son démarrage : il **met la Caméra à l’heure** ([ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md)). Il lit l’heure que sert le Serveur de temps du Site, relit l’Horloge de la caméra (sa **dérive**), y pousse cette heure en mode manuel, la recale (serveur NTP = le Site, mode NTP, fuseau du Site), puis la relit (son **écart**). Dérive et écart se mesurent contre l’heure du Serveur de temps du Site. Le tableau de la page Heure du Site donne, pour chaque Caméra, son état, sa dérive, son écart et la date de la dernière vérification :
+À chaque vérification — à l’ajout, à chaque changement de l’Heure du Site, toutes les heures, à chaque changement d’heure (et sur « Vérifier maintenant ») — le Site ne se contente pas du NTP de la caméra, qui peut ne se synchroniser qu’à son démarrage : il **met la Caméra à l’heure** ([ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md)). Il lit l’heure que sert le Serveur de temps du Site, relit l’Horloge de la caméra (sa **dérive**), y pousse cette heure en mode manuel, la recale (serveur NTP = le Site, mode NTP, fuseau du Site), puis la relit (son **écart**). Dérive et écart se mesurent contre l’heure du Serveur de temps du Site.
 
-- **à l’heure** : écart relu de 2 s au plus ;
-- **écart** : plus de 2 s, par exemple une caméra qui refuse l’heure poussée (elle est recalée quand même, et le refus est journalisé) ;
+Le fuseau envoyé est le **décalage du moment** du fuseau du Site, sans règles d’heure d’été (`CEST-2` en été, `CET-1` en hiver pour `Europe/Paris`), avec `DaylightSavings` à faux : une caméra qui ne sait pas appliquer l’heure d’été incruste quand même l’heure locale du Site. Le Site vérifie donc aussi toutes les Caméras **à l’instant de chaque changement d’heure** ([avenant à l’ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md#avenant-091--fuseau-envoyé-en-décalage-du-moment), [caméras qualifiées](compatibilite.md)).
+
+Le tableau de la page Heure du Site donne, pour chaque Caméra, son état, sa dérive, son écart et la date de la dernière vérification :
+
+- **à l’heure** : écart relu de 2 s au plus, et fuseau relu au décalage du Site ;
+- **écart** : plus de 2 s, par exemple une caméra qui refuse l’heure poussée (elle est recalée quand même, et le refus est journalisé), ou un fuseau relu à un autre décalage que celui du Site, même à l’heure en UTC : sa date incrustée est fausse (le journal dit quel fuseau elle a gardé) ;
 - **sans ONVIF** : voir ci-dessous ;
 - **échec** : caméra injoignable ou qui refuse ses identifiants, ou Serveur de temps du Site injoignable (la caméra est alors recalée sans être mise à l’heure, dérive et écart restent vides).
 

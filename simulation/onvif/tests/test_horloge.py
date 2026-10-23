@@ -234,20 +234,66 @@ def test_date_incrustee_suit_l_heure_corrigee_et_le_fuseau(camera_et_serveur_ntp
     assert abs((incrustee - attendue).total_seconds()) <= MARGE_S
 
 
-# --- Caméra « NTP paresseux » ----------------------------------------------------------------------------------
-
-
-def pousser_l_heure(camera, moment: datetime):
-    """Mise à l'heure : `SetSystemDateAndTime` en mode manuel, à l'heure UTC `moment`."""
+def pousser_l_heure(
+    camera, moment: datetime, fuseau: str = "CET-1CEST,M3.5.0,M10.5.0/3", heure_ete: bool = False
+):
+    """Mise à l'heure : `SetSystemDateAndTime` en mode manuel, à l'heure UTC `moment`, au `fuseau`."""
     return camera.appeler(
         "<tds:SetSystemDateAndTime><tds:DateTimeType>Manual</tds:DateTimeType>"
-        "<tds:DaylightSavings>false</tds:DaylightSavings>"
-        "<tds:TimeZone><tt:TZ>CET-1CEST,M3.5.0,M10.5.0/3</tt:TZ></tds:TimeZone>"
+        f"<tds:DaylightSavings>{str(heure_ete).lower()}</tds:DaylightSavings>"
+        f"<tds:TimeZone><tt:TZ>{fuseau}</tt:TZ></tds:TimeZone>"
         f"<tds:UTCDateTime><tt:Date><tt:Year>{moment.year}</tt:Year><tt:Month>{moment.month}</tt:Month>"
         f"<tt:Day>{moment.day}</tt:Day></tt:Date><tt:Time><tt:Hour>{moment.hour}</tt:Hour>"
         f"<tt:Minute>{moment.minute}</tt:Minute><tt:Second>{moment.second}</tt:Second></tt:Time></tds:UTCDateTime>"
         "</tds:SetSystemDateAndTime>"
     )
+
+
+# --- Caméra qui ne garde que le décalage du fuseau (vraie caméra des tests humains) -------------------------------
+
+
+def date_incrustee(simulee) -> datetime:
+    return datetime.strptime(simulee.date_incrustee(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+
+
+def attendue_a(decalage_h: float) -> datetime:
+    """Heure réelle au décalage `decalage_h` : celle qu'incruste la caméra remise à l'heure."""
+    return datetime.fromtimestamp(time.time() + decalage_h * 3600, UTC)
+
+
+@pytest.mark.parametrize(
+    ("recu", "relu", "decalage_h"),
+    [
+        # Règles d'heure d'été perdues : UTC+1 été comme hiver.
+        ("CET-1CEST,M3.5.0,M10.5.0/3", "CET-1", 1),
+        ("CEST-2", "CEST-2", 2),
+        ("CET-1", "CET-1", 1),
+        ("EST5EDT,M3.2.0,M11.1.0", "EST5", -5),
+        # Fuseau nommé UTC lu à l'envers.
+        ("UTC-2", "UTC2", -2),
+        ("ARGOS-1", "ARGOS-1", 1),
+    ],
+)
+def test_decalage_seul_garde_le_decalage_sans_heure_d_ete(camera_decalage_seul, recu, relu, decalage_h):
+    camera, simulee = camera_decalage_seul
+
+    reponse = pousser_l_heure(camera, datetime.now(UTC), recu, heure_ete=True)
+
+    assert reponse.statut == 200
+    lue = camera.appeler(LIRE_HORLOGE)
+    assert lue.texte(".//tt:TimeZone/tt:TZ") == relu
+    assert lue.texte(".//tt:DaylightSavings") == "false"
+    assert abs((date_incrustee(simulee) - attendue_a(decalage_h)).total_seconds()) <= MARGE_S
+
+
+def test_fuseau_fige_garde_le_sien(camera_fuseau_fige):
+    reponse = pousser_l_heure(camera_fuseau_fige, datetime.now(UTC), "CEST-2")
+
+    assert reponse.statut == 200
+    assert camera_fuseau_fige.appeler(LIRE_HORLOGE).texte(".//tt:TimeZone/tt:TZ") == "AWST-8"
+
+
+# --- Caméra « NTP paresseux » ----------------------------------------------------------------------------------
 
 
 def attendre_requetes(serveur, nombre: int) -> None:

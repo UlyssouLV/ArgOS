@@ -298,6 +298,12 @@ def camera_simulee_2_sans_reponse_ntp(heure_manuelle_refusee: bool = False) -> N
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env=env)
 
 
+def camera_simulee_2_au_fuseau_fige() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », qui garde son fuseau (`AWST-8`) quel que soit
+    celui reçu. `remettre_onvif_en_usine` lui rend ensuite le fuseau reçu."""
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_FUSEAU_FIGE_2": "1"})
+
+
 def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:
     """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », muette `secondes` après un changement
     d'Encodage. `remettre_onvif_en_usine` lui rend ensuite une réponse immédiate.

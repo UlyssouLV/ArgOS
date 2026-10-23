@@ -6,7 +6,8 @@ aux chemins Dahua) et `camera_sans_media_2` la même sans média 2 ; `camera_san
 recréer que le nom ; `camera_sans_heure_manuelle` refuse l'heure poussée en mode manuel ; `camera_https_et_http` est une seule caméra avec identifiants, service image et média 2, jointe
 en HTTPS et en HTTP (comme la Caméra simulée 2), certificat créé dans un dossier temporaire ; `serveur_ntp` est un
 petit serveur NTP de test, que `camera_et_serveur_ntp` joint à la place du port 123, comme
-`camera_paresseuse_et_serveur_ntp`, une caméra « NTP paresseux » qui dérive vite.
+`camera_paresseuse_et_serveur_ntp`, une caméra « NTP paresseux » qui dérive vite ; `camera_decalage_seul` ne garde que
+le décalage du fuseau reçu, comme la vraie caméra des tests humains, et `camera_fuseau_fige` garde le sien.
 Chaque test part d'une caméra neuve, « sortie d'usine ».
 """
 
@@ -203,6 +204,20 @@ def camera_sans_recreation_de_la_date():
 def camera_sans_heure_manuelle():
     """Comme `camera`, mais refuse l'heure poussée en mode manuel (seul le mode NTP est accepté)."""
     yield from _lancer(None, heure_manuelle_refusee=True)
+
+
+@pytest.fixture
+def camera_decalage_seul():
+    """Comme `camera`, mais ne garde que le décalage du fuseau reçu (jamais d'heure d'été) et lit `UTC` à l'envers."""
+    camera = camera_onvif.Camera(fuseau_decalage_seul=True)
+    with _servir(camera) as url:
+        yield Camera(url, None), camera
+
+
+@pytest.fixture
+def camera_fuseau_fige():
+    """Comme `camera`, mais garde son fuseau d'usine quel que soit celui reçu."""
+    yield from _lancer(None, fuseau_fige=True)
 
 
 @pytest.fixture

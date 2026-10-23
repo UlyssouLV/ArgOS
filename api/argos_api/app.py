@@ -39,6 +39,7 @@ from argos_api import (
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.calage import Calage
+from argos_api.changement_d_heure import VerificationAuChangementDHeure
 from argos_api.cameras import (
     AdresseMiseAJour,
     CameraCorrespondante,
@@ -210,6 +211,12 @@ def creer_app(
     )
     dossier_temps = Path(configuration.temps_reglage)
 
+    def fuseau_du_site() -> str:
+        with ouvrir_base() as base:
+            return heure_site.lire(base, fuseau_hote).fuseau
+
+    au_changement_d_heure = VerificationAuChangementDHeure(fuseau_du_site, horloge, calage.verifier_toutes)
+
     def transmettre_a_temps(reglage: heure_site.HeureDuSite) -> None:
         """Volume absent ou illisible : temps garde sa source, l'API marche."""
         try:
@@ -240,7 +247,9 @@ def creer_app(
         ]
         for boucle in boucles:
             boucle.demarrer()
+        au_changement_d_heure.demarrer()
         yield
+        au_changement_d_heure.arreter()
         for boucle in boucles:
             boucle.arreter()
         calage.arreter()
@@ -338,10 +347,12 @@ def creer_app(
     def modifier_heure_du_site(
         modification: ModificationHeureDuSite, base: Annotated[Session, Depends(base)]
     ) -> HeureDuSiteLue:
-        """Transmet la source à temps, puis met à l'heure et recale en fond toutes les Caméras actives."""
+        """Transmet la source à temps, puis met à l'heure et recale en fond toutes les Caméras actives ; reprogramme la
+        vérification au prochain changement d'heure du fuseau."""
         reglage = heure_site.modifier(base, modification, fuseau_hote)
         transmettre_a_temps(reglage)
         calage.verifier_toutes_en_fond()
+        au_changement_d_heure.reprogrammer()
         return heure_du_site_lue(reglage)
 
     @app.get("/api/heure-du-site/cameras", dependencies=[Depends(administrateur_connecte)])

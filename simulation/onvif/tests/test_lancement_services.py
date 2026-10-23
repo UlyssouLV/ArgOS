@@ -1,5 +1,6 @@
 """Services, profils, fichier de la date incrustée et horloge choisis au lancement (`ONVIF_SERVICES`,
-`ONVIF_CHEMINS_RTSP`, `ONVIF_FICHIER_DATE`, `ONVIF_PORT_NTP`, `ONVIF_NTP_PARESSEUX`, `ONVIF_HEURE_MANUELLE_REFUSEE`),
+`ONVIF_CHEMINS_RTSP`, `ONVIF_FICHIER_DATE`, `ONVIF_PORT_NTP`, `ONVIF_NTP_PARESSEUX`, `ONVIF_HEURE_MANUELLE_REFUSEE`,
+`ONVIF_FUSEAU_DECALAGE_SEUL`),
 comme en conteneur."""
 
 import time
@@ -119,3 +120,20 @@ def test_heure_manuelle_refusee_au_lancement():
         )
 
     assert reponse.faute == "ter:InvalidArgVal"
+
+
+def test_fuseau_decalage_seul_au_lancement():
+    """`ONVIF_FUSEAU_DECALAGE_SEUL` : la caméra ne garde que le nom et le décalage du fuseau reçu."""
+    port = _port_libre()
+    with Lancement({"ONVIF_PORT": str(port), "ONVIF_FUSEAU_DECALAGE_SEUL": "1"}):
+        camera = Camera(f"http://127.0.0.1:{port}", None)
+        camera.appeler(
+            "<tds:SetSystemDateAndTime><tds:DateTimeType>Manual</tds:DateTimeType>"
+            "<tds:DaylightSavings>true</tds:DaylightSavings>"
+            "<tds:TimeZone><tt:TZ>CET-1CEST,M3.5.0,M10.5.0/3</tt:TZ></tds:TimeZone><tds:UTCDateTime><tt:Date>"
+            "<tt:Year>2026</tt:Year><tt:Month>10</tt:Month><tt:Day>13</tt:Day></tt:Date><tt:Time><tt:Hour>8</tt:Hour>"
+            "<tt:Minute>30</tt:Minute><tt:Second>0</tt:Second></tt:Time></tds:UTCDateTime></tds:SetSystemDateAndTime>"
+        )
+        fuseau = camera.appeler("<tds:GetSystemDateAndTime/>").texte(".//tt:TimeZone/tt:TZ")
+
+    assert fuseau == "CET-1"

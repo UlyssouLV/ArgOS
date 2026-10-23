@@ -103,7 +103,7 @@ En dev, chacune des cinq Caméras simulées montre un parcours :
 | `camera-simulee-2` | **Cette caméra demande un mot de passe** : identifiant `admin`, mot de passe `argos-simulee` ; chemin style Dahua trouvé ensuite |
 | `camera-simulee-3` | **Flux introuvable** : chemin RTSP `/flux` |
 | `camera-simulee-4` | Flux trouvé seul, chemin style Hikvision, en **H.265** : Aperçu en HLS, ou « Ce navigateur ne lit pas le H.265 » (§ 5) |
-| `camera-simulee-5` | Flux trouvé seul, chemin style Hikvision ; son horloge dérive une fois calée sur le Site (« NTP paresseux », voir [Paramétrer une Caméra](parametrer-une-camera.md)) |
+| `camera-simulee-5` | Flux trouvé seul, chemin style Hikvision ; son horloge dérive une fois calée sur le Site (« NTP paresseux », voir [Paramétrer une Caméra](parametrer-une-camera.md)), et elle ne garde que le décalage du fuseau reçu, comme [`Cam 01`](compatibilite.md#cam-01) |
 
 ## 8. Diagnostiquer
 

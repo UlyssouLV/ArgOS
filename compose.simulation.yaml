@@ -145,6 +145,9 @@ services:
       ONVIF_PORT_NTP: ${ONVIF_PORT_NTP_2:-}
       # Non vide : refuse l'heure poussée en mode manuel ; les tests le règlent pour une Mise à l'heure refusée.
       ONVIF_HEURE_MANUELLE_REFUSEE: ${ONVIF_HEURE_MANUELLE_REFUSEE_2:-}
+      # Les tests lui font garder son fuseau quel que soit celui reçu (`ONVIF_FUSEAU_FIGE_2`) : le cas « écart » d'une
+      # Caméra à l'heure en UTC dont la date incrustée est fausse.
+      ONVIF_FUSEAU_FIGE: ${ONVIF_FUSEAU_FIGE_2:-}
       # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
       ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 
@@ -178,6 +181,10 @@ services:
       # « NTP paresseux » : se cale sur son serveur NTP au démarrage et sur SetNTP seulement, puis dérive de tant de
       # secondes par heure (1 min/h : un écart visible en quelques minutes) ; les tests l'accélèrent.
       ONVIF_NTP_PARESSEUX: ${ONVIF_NTP_PARESSEUX_5:-60}
+      # Comme la vraie caméra des tests humains : ne garde que le décalage du fuseau reçu, jamais d'heure d'été, et lit
+      # à l'envers un fuseau nommé UTC ; la date qu'elle incruste n'est juste que si le Site lui envoie le décalage du
+      # moment.
+      ONVIF_FUSEAU_DECALAGE_SEUL: "1"
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:
