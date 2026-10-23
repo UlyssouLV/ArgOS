@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Équivalent de `/t -a` pour un runner CI ou une reproduction locale : `.env` d'exemple,
 # stack Docker avec Caméras simulées, pytest sur chaque racine `test-roots`.
-# Usage : bash scripts/lancer-les-tests.sh [racine ...]
-# Sans argument : toutes les racines de agents/roles.yml.
-# Avec des arguments : uniquement ces racines (doivent figurer dans test-roots).
+# Usage : bash scripts/lancer-les-tests.sh [--depuis-registre] [racine ...]
+# Sans racine : toutes les racines de agents/roles.yml.
+# --depuis-registre : pull + up sans --build (ARGOS_VERSION déjà exporté, ex. ci-<sha>).
 set -euo pipefail
 
 DEPOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,6 +11,15 @@ cd "$DEPOT"
 
 COMPTE="administrateur"
 PHRASE="argos-dev-phrase-de-passe-de-test"
+DEPUIS_REGISTRE=0
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == "--depuis-registre" ]]; then
+        DEPUIS_REGISTRE=1
+    else
+        ARGS+=("$arg")
+    fi
+done
 
 ecrire_env() {
     local cle="$1" valeur="$2" tmp
@@ -28,11 +37,11 @@ while IFS= read -r racine; do
     TOUTES+=("$racine")
 done < <(python3 "$DEPOT/scripts/lire_test_roots.py")
 
-if [[ $# -eq 0 ]]; then
+if [[ ${#ARGS[@]} -eq 0 ]]; then
     RACINES=("${TOUTES[@]}")
 else
     RACINES=()
-    for demande in "$@"; do
+    for demande in "${ARGS[@]}"; do
         trouve=0
         for connue in "${TOUTES[@]}"; do
             if [[ "$demande" == "$connue" ]]; then
@@ -59,13 +68,25 @@ cp .env.example .env
 ecrire_env ARGOS_IDENTIFIANT "$COMPTE"
 ecrire_env ARGOS_MOT_DE_PASSE "$PHRASE"
 
+COMPOSE=(docker compose -f compose.yaml -f compose.simulation.yaml)
+
+if [[ "$DEPUIS_REGISTRE" -eq 1 ]]; then
+    if [[ -z "${ARGOS_VERSION:-}" ]]; then
+        echo "ARGOS_VERSION requis avec --depuis-registre (ex. ci-<sha>)." >&2
+        exit 1
+    fi
+    ecrire_env ARGOS_VERSION "$ARGOS_VERSION"
+    "${COMPOSE[@]}" pull
+    "${COMPOSE[@]}" up -d --wait
+else
+    "${COMPOSE[@]}" up -d --build --wait
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf --proto '=https' --proto-redir '=https' --tlsv1.2 \
         https://astral.sh/uv/install.sh | sh
     export PATH="${HOME}/.local/bin:${PATH}"
 fi
-
-docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait
 
 for racine in "${RACINES[@]}"; do
     [[ -z "$racine" ]] && continue

@@ -15,3 +15,4 @@ Une seule branche `main` : **staging** et **production** sont des **canaux d'ima
 - `ARGOS_VERSION=staging` sert les Sites / postes de test humains ; un semver sert la prod.
 - Multi-arch (`amd64` + `arm64`) pour que machines perso et Sites Ubuntu tirent le même canal.
 - Le workflow **Publier images staging** est déclenché à la main / par `/ps` sur la ref de la PR, pas par un push `main`.
+- La CI des PR pousse aussi des étiquettes jetables **`ci-<sha>`** (Site + simulation) : un job build, puis les suites **pull** sans rebuild (distinct de `:staging`).

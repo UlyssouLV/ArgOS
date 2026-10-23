@@ -244,3 +244,33 @@ def test_le_script_refuse_une_racine_absente_de_test_roots(depot):
     assert resultat.code != 0
     assert "inconnue" in resultat.sortie
     assert not any("python -m pytest" in ligne for ligne in resultat.journal)
+
+
+def test_le_script_depuis_registre_pull_sans_build(depot):
+    resultat = depot.lancer(
+        "--depuis-registre",
+        "tests/beta/",
+        extra_env={"ARGOS_VERSION": "ci-abc"},
+    )
+
+    assert resultat.code == 0, resultat.sortie
+    assert resultat.env["ARGOS_VERSION"] == "ci-abc"
+    assert any(
+        "compose" in ligne and "pull" in ligne and "--build" not in ligne
+        for ligne in resultat.journal
+    )
+    assert any(
+        "compose" in ligne
+        and "up -d --wait" in ligne
+        and "--build" not in ligne
+        for ligne in resultat.journal
+    )
+    assert not any("up -d --build --wait" in ligne for ligne in resultat.journal)
+
+
+def test_le_script_depuis_registre_exige_argos_version(depot):
+    resultat = depot.lancer("--depuis-registre", "tests/beta/", extra_env={"ARGOS_VERSION": ""})
+
+    assert resultat.code != 0
+    assert "ARGOS_VERSION" in resultat.sortie
+    assert not any("python -m pytest" in ligne for ligne in resultat.journal)

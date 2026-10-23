@@ -1,6 +1,8 @@
-# Suites `test-roots` en jobs parallèles (équivalent `/t -a` sur chaque racine).
+# Suites `test-roots` en jobs parallèles.
+# Un job build pousse les images ci-<sha> ; les suites pullent sans --build.
 # Check GitHub (protection de branche) : job agrégateur « ArgOS tests ».
-# Relance manuelle ciblée : Actions → ArgOS tests → Run workflow → suite.
+# Relance manuelle ciblée : Actions → ArgOS tests → Run workflow → suite
+# (rebuild les images du même SHA, puis la suite choisie).
 name: ArgOS tests
 
 on:
@@ -29,6 +31,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   plan:
@@ -36,8 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       roots: ${{ steps.roots.outputs.roots }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+      - id: tag
+        run: echo "tag=ci-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - id: roots
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -53,9 +59,25 @@ jobs:
           echo "roots=$ROOTS" >> "$GITHUB_OUTPUT"
           echo "$ROOTS"
 
+  build:
+    name: Build images
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - env:
+          ARGOS_VERSION: ${{ needs.plan.outputs.tag }}
+        run: bash scripts/publier-images-ci.sh
+
   suite:
     name: ${{ matrix.root }}
-    needs: plan
+    needs: [plan, build]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -64,11 +86,18 @@ jobs:
         root: ${{ fromJson(needs.plan.outputs.roots) }}
     steps:
       - uses: actions/checkout@v4
-      - run: bash scripts/lancer-les-tests.sh "${{ matrix.root }}"
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - env:
+          ARGOS_VERSION: ${{ needs.plan.outputs.tag }}
+        run: bash scripts/lancer-les-tests.sh --depuis-registre "${{ matrix.root }}"
 
   argos-tests:
     name: ArgOS tests
-    needs: [plan, suite]
+    needs: [plan, build, suite]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -76,8 +105,9 @@ jobs:
         run: |
           set -euo pipefail
           plan='${{ needs.plan.result }}'
+          build='${{ needs.build.result }}'
           suites='${{ needs.suite.result }}'
-          echo "plan=${plan} suites=${suites}"
-          if [ "$plan" != "success" ] || [ "$suites" != "success" ]; then
+          echo "plan=${plan} build=${build} suites=${suites}"
+          if [ "$plan" != "success" ] || [ "$build" != "success" ] || [ "$suites" != "success" ]; then
             exit 1
           fi
