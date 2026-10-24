@@ -52,7 +52,7 @@ Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) por
 
 Version **0.7.1** : chaque pull request vers `main` lance automatiquement la suite de tests complète (équivalent `/t -a`, stack Docker comprise) via GitHub Actions. Le check affiché est **`ArgOS tests`** : à exiger dans la protection de branche de `main` pour qu’une PR rouge ne puisse pas être fusionnée (voir [checks requis sur main](agents/docs/checks-requis-sur-main.md)).
 
-Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` après CI verte sur `main`, canal [Production](docs/glossaire.md#production-canal) par retag manuel vers `X.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
+Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` en early access avant `/th`, canal [Production](docs/glossaire.md#production-canal) par retag manuel vers `X.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
 
 Version **0.8.0** : l’Administrateur active l’**enregistrement continu** d’une Caméra depuis l’Administration (OFF à l’ajout) ; MediaMTX écrit des segments fMP4 (~1 minute) dans le volume Docker `enregistrements`, sans réencodage, avec une conservation d’**une heure**. Un indicateur montre l’état, le chemin du dossier et l’âge du dernier segment ; pas de relecture depuis l’UI (voir [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md), [ADR 0011](docs/adr/0011-enregistrement-continu-par-mediamtx.md)).
 
@@ -130,6 +130,8 @@ sudo ./scripts/installer-le-site.sh
 
 Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et de mise à jour — pas le clone, pas `compose.simulation.yaml`), tire les images (`docker compose pull`), crée le compte système `argos` (groupe `docker`), et pose l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
 
+L’install et chaque mise à jour réactivent la synchronisation NTP de l’OS si elle est coupée (`timedatectl set-ntp true`), pour que le repli de `temps` sur l’horloge de la machine donne une heure juste ; aucun privilège n’est donné à un conteneur (voir [ADR 0015](docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)). Les décalages horaires envoyés aux Caméras viennent de la base des fuseaux de l’OS (paquet `tzdata`, tenu à jour par les correctifs de sécurité d’Ubuntu), montée en lecture seule dans `api` : un pays qui change ses règles d’heure est suivi sans nouvelle version d’ArgOS ; sans elle, la base embarquée dans l’image sert. La page Heure du Site dit laquelle est utilisée.
+
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
 Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
@@ -159,7 +161,7 @@ Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.9.0.ta
 
 ## Essayer staging
 
-Canal [Staging](docs/glossaire.md#staging) (`:staging`) : dernier digest vert de `main`. Utile pour valider sur une machine perso **avant** de promouvoir vers la production (workflow Actions **Promouvoir images vers Release**, manuel, une fois staging à jour).
+Canal [Staging](docs/glossaire.md#staging) (`:staging`) : early access de la version en cours (après review + quality gate, avant promo prod). Utile pour les tests humains et pour valider sur une machine perso **avant** de promouvoir vers la production (workflow Actions **Promouvoir images vers Release**, manuel, une fois staging à jour).
 
 **macOS et Windows** : Docker Desktop + clone de ce dépôt. Pas d’installation produit type Ubuntu (`/opt/argos`, systemd) — Windows n’est documenté que pour cet essai.
 

@@ -9,6 +9,7 @@ import {
   lireHorlogesDesCameras,
   modifierHeureDuSite,
   MOTIF_SERVEUR_NTP,
+  texteBaseDesFuseaux,
   texteEcart,
   texteHeure,
   texteSourceUtilisee,
@@ -82,7 +83,7 @@ export function HeureDuSite() {
         true,
       );
       setErreur(null);
-      setMessage("Heure du Site enregistrée : les Caméras actives sont recalées.");
+      setMessage("Heure du Site enregistrée : les Caméras actives sont mises à l’heure et recalées.");
     } catch (e) {
       setErreur(messageEchec(e));
       setMessage(null);
@@ -151,6 +152,10 @@ export function HeureDuSite() {
                 "inconnue : renseigner l’IP du Site (MTX_WEBRTCADDITIONALHOSTS) ; aucune Caméra n’est calée"}
             </dd>
           </div>
+          <div>
+            <dt>Base des fuseaux</dt>
+            <dd>{texteBaseDesFuseaux(heure.base_des_fuseaux)}</dd>
+          </div>
         </dl>
       )}
       <form className="reglage-heure" aria-label="Régler l’Heure du Site" onSubmit={(e) => void enregistrer(e)}>
@@ -200,7 +205,8 @@ export function HeureDuSite() {
           </select>
         </label>
         <p className="aide">
-          Enregistrer recale toutes les Caméras actives : serveur NTP = le Site, fuseau = celui du Site.
+          Enregistrer met à l’heure et recale toutes les Caméras actives : serveur NTP = le Site, fuseau = celui du
+          Site.
         </p>
         <button type="submit" disabled={heure === null || inchangee || enCours}>
           Enregistrer
@@ -209,8 +215,8 @@ export function HeureDuSite() {
       <section className="horloges-cameras" aria-labelledby="titre-horloges-cameras">
         <h2 id="titre-horloges-cameras">Caméras</h2>
         <p className="aide">
-          Vérifiées toutes les heures : une Caméra qui ne vise plus le Serveur de temps du Site ou n’a plus le fuseau
-          du Site est recalée ; un écart de plus de 2 s sur une Caméra calée est signalé.
+          Vérifiées toutes les heures : chaque Caméra est mise à l’heure du Serveur de temps du Site, puis recalée
+          dessus. La dérive est mesurée avant, l’écart après ; au-delà de 2 s d’écart, elle n’est pas à l’heure.
         </p>
         <button type="button" disabled={verificationEnCours} onClick={() => void verifierMaintenant()}>
           {verificationEnCours ? "Vérification…" : "Vérifier maintenant"}
@@ -221,7 +227,8 @@ export function HeureDuSite() {
               <tr>
                 <th scope="col">Caméra</th>
                 <th scope="col">État</th>
-                <th scope="col">Écart mesuré</th>
+                <th scope="col">Dérive</th>
+                <th scope="col">Écart</th>
                 <th scope="col">Dernière vérification</th>
               </tr>
             </thead>
@@ -230,6 +237,7 @@ export function HeureDuSite() {
                 <tr key={camera.id} className={camera.etat ? `horloge-${camera.etat}` : undefined}>
                   <td>{camera.nom}</td>
                   <td>{libelleEtatHorloge(camera.etat)}</td>
+                  <td>{texteEcart(camera.derive_s)}</td>
                   <td>{texteEcart(camera.ecart_s)}</td>
                   <td>
                     {camera.verifiee_le === null

@@ -10,14 +10,15 @@ Chaque Caméra simulée est un conteneur à part, comme une vraie caméra IP : u
 | `camera-simulee-2` | `172.30.0.12` / `02:a6:05:00:00:02` | `rtsp://admin:argos-simulee@camera-simulee-2/cam/realmonitor?channel=1&subtype=0` | Dahua | `cam2.mp4` | 8MP 4K Dahua CCTV System Sample Video — Night Time             |
 | `camera-simulee-3` | `172.30.0.13` / `02:a6:05:00:00:03` | `rtsp://camera-simulee-3/flux` | exotique (aucun chemin courant) | `cam3.mp4` | Example of Hi-Definition Video Surveillance of a Factory Floor |
 | `camera-simulee-4` | `172.30.0.14` / `02:a6:05:00:00:04` | `rtsp://camera-simulee-4/Streaming/Channels/101` | Hikvision, en **H.265** | `cam4.mp4` | `cam1.mp4` réencodée en H.265 (voir plus bas) |
+| `camera-simulee-5` | `172.30.0.15` / `02:a6:05:00:00:05` | `rtsp://camera-simulee-5/Streaming/Channels/101` | Hikvision | `cam3.mp4` | la même vidéo que `camera-simulee-3` |
 
 `camera-simulee-4` annonce aussi une **piste audio** PCM 16 bits 8 kHz mono (un souffle, `AUDIO_IPCM` dans `compose.simulation.yaml`, générée par [`diffuser.sh`](diffuser.sh)), comme la caméra H.265 réelle du bug #141 : ses Segments portent une piste `ipcm`, que la Relecture retire ([ADR 0013](../../docs/adr/0013-relecture-des-enregistrements.md)).
 
-Les Caméras simulées 2 et 4 répondent aussi en **ONVIF** (Réglages de la Caméra) : voir [`simulation/onvif/`](../../simulation/onvif/README.md).
+Les Caméras simulées 2, 4 et 5 répondent aussi en **ONVIF** (Réglages de la Caméra) : voir [`simulation/onvif/`](../../simulation/onvif/README.md). La 5 est « NTP paresseux » : calée sur le Site, son horloge dérive quand même.
 
 ## Date incrustée des Caméras simulées ONVIF
 
-Les 1 et 3 diffusent leur vidéo **sans réencodage** (`-c copy`). Les 2 et 4 incrustent en bas à gauche la date et l'heure de leur horloge ONVIF (7 minutes d'avance au démarrage, puis calée en NTP), que leur interface ONVIF écrit dans un fichier partagé (`FICHIER_DATE`, volume `camera-simulee-N-horloge`) et que `drawtext` relit à chaque image : leur vidéo est alors **réencodée à la volée** dans son codec (H.264 pour la 2, H.265 `hvc1` pour la 4), `ultrafast`, keyframe toutes les 2 s, sans B-frames. L'image des Caméras simulées ([`Dockerfile`](Dockerfile)) est `bluenviron/mediamtx:1.21.1-ffmpeg` plus une police (DejaVu).
+Les 1 et 3 diffusent leur vidéo **sans réencodage** (`-c copy`). Les 2, 4 et 5 incrustent en bas à gauche la date et l'heure de leur horloge ONVIF (7 minutes d'avance au démarrage, puis calée en NTP), que leur interface ONVIF écrit dans un fichier partagé (`FICHIER_DATE`, volume `camera-simulee-N-horloge`) et que `drawtext` relit à chaque image : leur vidéo est alors **réencodée à la volée** dans son codec (H.264 pour la 2 et la 5, H.265 `hvc1` pour la 4), `ultrafast`, keyframe toutes les 2 s, sans B-frames. L'image des Caméras simulées ([`Dockerfile`](Dockerfile)) est `bluenviron/mediamtx:1.21.1-ffmpeg` plus une police (DejaVu).
 
 ## Identifiants de `camera-simulee-2`
 

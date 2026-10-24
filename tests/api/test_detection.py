@@ -1,7 +1,7 @@
 """Détection des Caméras, vue de l'extérieur de la stack.
 
 La simulation ajoute son sous-réseau (172.30.0.0/24) à ceux de `.env` : la Détection y trouve les
-quatre Caméras simulées comme de vraies caméras. Seuls les Candidats de ce sous-réseau sont vérifiés,
+cinq Caméras simulées comme de vraies caméras. Seuls les Candidats de ce sous-réseau sont vérifiés,
 `.env` pouvant autoriser aussi le réseau local de la machine.
 """
 
@@ -37,7 +37,7 @@ def test_get_decrit_la_configuration(connecte):
     assert 554 in etat["ports"]
 
 
-def test_post_trouve_les_quatre_cameras_simulees_ni_la_base_ni_le_pont(connecte):
+def test_post_trouve_les_cameras_simulees_ni_la_base_ni_le_pont(connecte):
     cameras_simulees = {ip for n in MACS_SIMULEES for ip in adresses_ip(f"camera-simulee-{n}")}
     argos = adresses_ip("db") | adresses_ip("mediamtx") | adresses_ip("api")
 

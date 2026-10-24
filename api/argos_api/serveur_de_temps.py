@@ -1,5 +1,6 @@
 """Serveur de temps du Site (`temps`, docs/adr/0014-serveur-de-temps-du-site.md), vu de l'API : la source qu'il doit
 suivre, transmise par un fichier du volume qu'ils partagent ; ce qu'il sert vraiment, lu en NTP comme une Caméra ;
+l'heure qu'il sert, référence de la Mise à l'heure (docs/adr/0015-mise-a-l-heure-a-chaque-verification.md) ;
 l'adresse annoncée aux Caméras.
 
 Sans dépendance hors stdlib : testé seul (tests/api/test_serveur_de_temps.py).
@@ -8,8 +9,10 @@ Sans dépendance hors stdlib : testé seul (tests/api/test_serveur_de_temps.py).
 import os
 import socket
 import struct
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Literal
@@ -71,6 +74,18 @@ def interroger(hote: str, port: int = PORT_NTP, delai_s: float = DELAI_S) -> Eta
     if reference == REFERENCE_DU_REPLI:
         return EtatServi("horloge_serveur", heure=heure)
     return EtatServi("ntp", reference, heure)
+
+
+def horloge_servie(hote: str, port: int = PORT_NTP, delai_s: float = DELAI_S) -> Callable[[], datetime] | None:
+    """Heure UTC que sert `temps`, lue une fois en NTP puis avancée sur l'horloge monotone de l'API (jamais sur
+    l'heure de son OS) ; `None` : temps ne répond pas."""
+    avant = time.monotonic()
+    heure = interroger(hote, port, delai_s).heure
+    if heure is None:
+        return None
+    # Heure émise par temps à mi-chemin de l'aller-retour.
+    lue_a = (avant + time.monotonic()) / 2
+    return lambda: heure + timedelta(seconds=time.monotonic() - lue_a)
 
 
 def adresse_annoncee(ip_temps: str, ips_du_site: str) -> str | None:

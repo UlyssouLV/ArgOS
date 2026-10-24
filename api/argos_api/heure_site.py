@@ -43,6 +43,8 @@ class HeureDuSiteLue(BaseModel):
     heure: datetime | None
     # Adresse du Serveur de temps du Site annoncée aux Caméras ; `None` : inconnue, aucune Caméra n'est calée.
     adresse_serveur_de_temps: str | None
+    # Base des fuseaux d'où viennent les décalages envoyés aux Caméras, relue à chaque appel.
+    base_des_fuseaux: fuseaux.BaseDesFuseaux
 
 
 class ModificationHeureDuSite(BaseModel):
@@ -99,4 +101,5 @@ def avec_ce_que_sert_temps(reglage: HeureDuSite, servi: EtatServi, adresse: str 
         reference=servi.reference,
         heure=servi.heure,
         adresse_serveur_de_temps=adresse,
+        base_des_fuseaux=fuseaux.base(),
     )

@@ -3,14 +3,14 @@ name: finaliser-la-version
 description: >-
   When the user says « Finalise la version », « finalize the version »,
   « clôture la version », or asks to ship/squash-merge the current version
-  PR, create the GitHub Release, and delete the feature branch. Reads the
-  Sonar quality gate once on the PR HEAD before the tag. Not for a single
-  child ticket or /implement.
+  PR, create the GitHub Release, and delete the feature branch. Re-reads the
+  Sonar quality gate on the PR HEAD only if it moved since `/ps`. Not for a
+  single child ticket or /implement.
 ---
 
 # Finalise the version
 
-Triggered by **« Finalise la version »** (or equivalent), only after the user accepted a **`/code-review`** of this branch. Do **not** run `/code-review` here. Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`). The quality gate is step 3, after that review and after the docs.
+Triggered by **« Finalise la version »** (or equivalent), only after **`/th`** closed the human-test child (and thus after **`/ps`** / `:staging`). Do **not** run `/code-review` or `/ps` here. Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`). The quality gate is step 3: skip if this `HEAD` was already **`OK`** in `/ps`; re-run if docs (or anything) moved `HEAD`.
 
 A version = one feature branch + one PR that ships a **set** of child issues (parent spec). Starting a version is skill `ouvrir-la-version`.
 
@@ -58,17 +58,19 @@ If anything is stale (except soft-skip on missing suivi / docs-site role / missi
 
 ## 3. Quality gate
 
-One read, on the PR `HEAD` after the docs commit. This analysis covers the branch, not one child. Do not reopen children. Do not add a label.
+The primary gate was **`/ps`** before `/th`. Here: only if needed after step 2. Do not reopen children. Do not add a label.
 
 Load `.env` the same way **`quality-gate`** does. If any of that skill’s three `SONAR_*` keys is missing or empty → continue. One line that Sonar is skipped. Do not `/qg`. Do not `/cqg`.
 
-Otherwise run **`quality-gate`** as if **`/qg -w`**.
+Otherwise run **`quality-gate`** as if **`/qg`** (no wait yet):
 
-- No analysis for `HEAD` after the wait → **stop**. Do not `/crel` or `/mpr`.
-- **`OK`** → continue.
+- Analysis for this `HEAD` already **`OK`** → one line (unchanged since `/ps` or docs did not move the SHA); continue.
+- No analysis for this `HEAD`, or not **`OK`** → run **`/qg -w`**. Still no analysis → **stop**. Do not `/crel` or `/mpr`.
+- **`OK`** after wait → continue.
 - Not **`OK`** (`ERROR`, `WARN`, …) → run skill **`corriger-quality-gate`** as if **`/cqg`**.
   - That skill stopped without a code change (policy / user needed) → **stop**. Do not `/crel` or `/mpr`.
   - Working tree dirty after the fix → run **`/t`** (fail → **stop**). Stage the files that fix touched and run skill **`commit`** as if **`/c -p`**. Then **`/qg -w`** once. Not **`OK`**, or no analysis this time → **stop**. Do not `/crel` or `/mpr`.
+  - After a fix that changes `HEAD`: tell the user in French that `:staging` and `/th` may be stale; prefer re-run **`/ps`** then a short `/th` before release. If they insist on shipping this SHA anyway, continue only after they type **oui**.
 
 ## 4. Release, then squash
 
@@ -99,4 +101,5 @@ Do not start the next version’s branch unless the user asks.
 - Child wrap → `encadrer-implement`
 - Open a version → `ouvrir-la-version`
 - Human-test results / close → `tests-humains` (`/th`)
+- Gate + publish `:staging` → `preparer-staging` (`/ps`)
 - Feuille de route de dev only → `augmenter-la-feuille-de-route-dev` (`/afr`)

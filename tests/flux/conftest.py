@@ -1,6 +1,7 @@
 """Fixture de session : la stack Docker Compose tourne avec la simulation, Caméras simulées prêtes."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,13 +12,15 @@ FICHIER_PROD = "compose.yaml"
 FICHIER_SIMULATION = "compose.simulation.yaml"
 RESEAU_SIMULATION = "cameras-simulees"
 SOUS_RESEAU_SIMULATION = "172.30.0.0/24"
-CAMERAS_SIMULEES = ["camera-simulee-1", "camera-simulee-2", "camera-simulee-3", "camera-simulee-4"]
-# Chemins de vraies caméras : style Hikvision, style Dahua (requête comprise), chemin exotique, Hikvision en H.265.
+CAMERAS_SIMULEES = ["camera-simulee-1", "camera-simulee-2", "camera-simulee-3", "camera-simulee-4", "camera-simulee-5"]
+# Chemins de vraies caméras : style Hikvision, style Dahua (requête comprise), chemin exotique, Hikvision en H.265,
+# Hikvision.
 CHEMINS = {
     "camera-simulee-1": "Streaming/Channels/101",
     "camera-simulee-2": "cam/realmonitor?channel=1&subtype=0",
     "camera-simulee-3": "flux",
     "camera-simulee-4": "Streaming/Channels/101",
+    "camera-simulee-5": "Streaming/Channels/101",
 }
 # Codec diffusé, tel que nommé par ffprobe : camera-simulee-4 en H.265 (HEVC), les autres en H.264.
 CODECS = {camera: "hevc" if camera == "camera-simulee-4" else "h264" for camera in CAMERAS_SIMULEES}
@@ -29,20 +32,26 @@ IPS = {
     "camera-simulee-2": "172.30.0.12",
     "camera-simulee-3": "172.30.0.13",
     "camera-simulee-4": "172.30.0.14",
+    "camera-simulee-5": "172.30.0.15",
 }
 MACS = {
     "camera-simulee-1": "02:a6:05:00:00:01",
     "camera-simulee-2": "02:a6:05:00:00:02",
     "camera-simulee-3": "02:a6:05:00:00:03",
     "camera-simulee-4": "02:a6:05:00:00:04",
+    "camera-simulee-5": "02:a6:05:00:00:05",
 }
 
 
-def compose(*args: str, fichiers: tuple[str, ...] = (FICHIER_PROD, FICHIER_SIMULATION)) -> str:
+def compose(
+    *args: str, fichiers: tuple[str, ...] = (FICHIER_PROD, FICHIER_SIMULATION), env: dict[str, str] | None = None
+) -> str:
+    """`env` : variables de plus, lues par l'interpolation des fichiers compose."""
     options = [option for fichier in fichiers for option in ("-f", fichier)]
     return subprocess.run(
         ["docker", "compose", *options, *args],
         cwd=REPO_ROOT,
+        env=os.environ | (env or {}),
         capture_output=True,
         text=True,
         check=True,

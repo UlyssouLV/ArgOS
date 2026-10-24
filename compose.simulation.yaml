@@ -1,15 +1,19 @@
 # Simulation de dev, superposée à compose.yaml (jamais en prod) :
 #   docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait
-# Quatre Caméras simulées, quatre hôtes distincts comme de vraies caméras : chacune diffuse sa vidéo
+# Cinq Caméras simulées, cinq hôtes distincts comme de vraies caméras : chacune diffuse sa vidéo
 # (media/simulated/camN.mp4) en boucle, en RTSP (port 554), sur un chemin de vraie caméra :
-# style Hikvision (1), style Dahua avec identifiants (2), chemin exotique `flux` (3), style Hikvision en H.265 (4).
+# style Hikvision (1), style Dahua avec identifiants (2), chemin exotique `flux` (3), style Hikvision en H.265 (4),
+# style Hikvision (5).
 # Aucun port publié : on les regarde par le Live, une fois déclarées comme Caméras (media/simulated/README.md).
 # MAC et IP fixes, comme l'étiquette et le bail d'une vraie caméra : la Détection et l'essai les lisent.
-# Les Caméras simulées 2 et 4 répondent aussi en ONVIF (simulation/onvif/README.md) : leur Flux, réencodé, porte la
-# date et l'heure de leur horloge, qu'elles calent en NTP sur temps quand le Site les cale (Heure du Site).
+# Les Caméras simulées 2, 4 et 5 répondent aussi en ONVIF (simulation/onvif/README.md) : leur Flux, réencodé, porte
+# la date et l'heure de leur horloge, qu'elles calent en NTP sur temps quand le Site les cale (Heure du Site). La 5 est
+# « NTP paresseux » : elle ne se cale qu'au démarrage et sur SetNTP, puis dérive.
 
 x-camera-simulee: &camera-simulee
   # MediaMTX et ffmpeg, plus une police pour incruster la date (media/simulated/Dockerfile).
+  # image: + build: : même dual que le Site (CI pull ci-<sha>, local up --build).
+  image: ghcr.io/ulyssoulv/argos-camera-simulee:${ARGOS_VERSION:-0.9.0}
   build: ./media/simulated
   restart: unless-stopped
   # Remplit le gabarit camera-simulee.yml avec le chemin de la Caméra simulée, puis lance MediaMTX.
@@ -88,9 +92,26 @@ services:
       # Annonce aussi une piste audio PCM (`ipcm` dans les Segments), comme la caméra H.265 réelle du bug #141.
       AUDIO_IPCM: "1"
 
-  # Interfaces ONVIF des Caméras simulées 2 et 4 (simulation/onvif/README.md) : chacune partage le réseau de sa
+  camera-simulee-5:
+    <<: *camera-simulee
+    networks:
+      cameras-simulees:
+        ipv4_address: 172.30.0.15
+        mac_address: "02:a6:05:00:00:05"
+    volumes:
+      - ./media/simulated/camera-simulee.yml:/camera-simulee.yml:ro
+      - ./media/simulated/diffuser.sh:/diffuser.sh:ro
+      - ./media/simulated/cam3.mp4:/media/video.mp4:ro
+      # Date de son horloge, écrite par camera-simulee-5-onvif, incrustée dans le Flux.
+      - camera-simulee-5-horloge:/horloge:ro
+    environment:
+      FICHIER_DATE: /horloge/date.txt
+      CHEMIN_FLUX: Streaming/Channels/101
+
+  # Interfaces ONVIF des Caméras simulées 2, 4 et 5 (simulation/onvif/README.md) : chacune partage le réseau de sa
   # Caméra simulée, donc son IP et sa MAC, comme l'interface ONVIF d'une vraie caméra. Les 1 et 3 n'en ont pas.
   camera-simulee-2-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-2
@@ -120,12 +141,18 @@ services:
       # caméra qui ne répond plus après l'envoi.
       ONVIF_SILENCE_APRES_ENCODAGE_S: ${ONVIF_SILENCE_APRES_ENCODAGE_S_2:-}
       # Port où elle joint ses serveurs NTP (vide : 123) ; les tests le détournent pour une caméra calée sur le Site
-      # dont l'horloge ne se corrige pas.
+      # dont l'horloge ne se corrige pas seule.
       ONVIF_PORT_NTP: ${ONVIF_PORT_NTP_2:-}
+      # Non vide : refuse l'heure poussée en mode manuel ; les tests le règlent pour une Mise à l'heure refusée.
+      ONVIF_HEURE_MANUELLE_REFUSEE: ${ONVIF_HEURE_MANUELLE_REFUSEE_2:-}
+      # Les tests lui font garder son fuseau quel que soit celui reçu (`ONVIF_FUSEAU_FIGE_2`) : le cas « écart » d'une
+      # Caméra à l'heure en UTC dont la date incrustée est fausse.
+      ONVIF_FUSEAU_FIGE: ${ONVIF_FUSEAU_FIGE_2:-}
       # Profils des flux principal et secondaire, aux chemins de son URL RTSP (MediaMTX ne sert que le premier).
       ONVIF_CHEMINS_RTSP: /cam/realmonitor?channel=1&subtype=0,/cam/realmonitor?channel=1&subtype=1
 
   camera-simulee-4-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
     build: ./simulation/onvif
     restart: unless-stopped
     network_mode: service:camera-simulee-4
@@ -138,6 +165,26 @@ services:
       ONVIF_PORT: "80"
       # Types d'Incrustation recréables ; les tests en retirent un pour simuler une caméra qui ne sait pas.
       ONVIF_TYPES_CREABLES: ${ONVIF_TYPES_CREABLES_4:-Plain,DateAndTime}
+
+  camera-simulee-5-onvif:
+    image: ghcr.io/ulyssoulv/argos-onvif-simule:${ARGOS_VERSION:-0.9.0}
+    build: ./simulation/onvif
+    restart: unless-stopped
+    network_mode: service:camera-simulee-5
+    volumes:
+      - camera-simulee-5-horloge:/horloge
+    environment:
+      # Date incrustée dans le Flux de camera-simulee-5 (media/simulated/diffuser.sh).
+      ONVIF_FICHIER_DATE: /horloge/date.txt
+      # HTTP seulement, sans identifiants, média 1 seul, comme la 4.
+      ONVIF_PORT: "80"
+      # « NTP paresseux » : se cale sur son serveur NTP au démarrage et sur SetNTP seulement, puis dérive de tant de
+      # secondes par heure (1 min/h : un écart visible en quelques minutes) ; les tests l'accélèrent.
+      ONVIF_NTP_PARESSEUX: ${ONVIF_NTP_PARESSEUX_5:-60}
+      # Comme la vraie caméra des tests humains : ne garde que le décalage du fuseau reçu, jamais d'heure d'été, et lit
+      # à l'envers un fuseau nommé UTC ; la date qu'elle incruste n'est juste que si le Site lui envoie le décalage du
+      # moment.
+      ONVIF_FUSEAU_DECALAGE_SEUL: "1"
 
   # Le pont relaie les Caméras simulées déclarées vers le navigateur.
   mediamtx:
@@ -172,11 +219,12 @@ volumes:
   # Date de l'horloge de chaque Caméra simulée ONVIF, de son interface ONVIF vers son Flux.
   camera-simulee-2-horloge:
   camera-simulee-4-horloge:
+  camera-simulee-5-horloge:
 
 networks:
   cameras-simulees:
     ipam:
       config:
         - subnet: 172.30.0.0/24
-          # Adresses dynamiques (pont, API) : hors des adresses fixes de temps (.10) et des Caméras simulées (.11 à .14).
+          # Adresses dynamiques (pont, API) : hors des adresses fixes de temps (.10) et des Caméras simulées (.11 à .15).
           ip_range: 172.30.0.128/26

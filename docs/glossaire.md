@@ -40,7 +40,7 @@ Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes se
 
 ## Heure du Site {#heure-du-site}
 
-La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses Caméras. Une Caméra est calée sur le Site quand son Horloge suit le Serveur de temps du Site avec le fuseau du Site.
+La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses Caméras. Une Caméra est calée sur le Site quand son Horloge suit le Serveur de temps du Site avec le fuseau du Site, envoyé au décalage du moment (sans règles d’heure d’été), pris dans la base des fuseaux du serveur (embarquée dans ArgOS en secours).
 
 À éviter : heure système, horloge du Site, heure du serveur.
 
@@ -49,6 +49,12 @@ La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses C
 Le service NTP que le Site offre aux Appareils sur le réseau des caméras, à partir de l’Heure du Site.
 
 À éviter : NTP local, horloge du Site.
+
+## Mise à l’heure {#mise-a-l-heure}
+
+Le Site donne à l’Horloge d’une Caméra l’heure du Serveur de temps du Site, puis la cale à nouveau sur le Site. Il le fait à chaque vérification, sans attendre que la Caméra dérive.
+
+À éviter : synchronisation, resynchro.
 
 ## Image {#image}
 
@@ -184,7 +190,7 @@ Bande temporelle sur la fenêtre de Conservation d’une Caméra en Relecture : 
 
 ## Staging {#staging}
 
-Canal d’images du Site sur le registre (`:staging`) : dernier digest vert de `main`, pour essayer avant une Release. Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.
+Canal d’images du Site sur le registre (`:staging`) : early access de la version en cours (publié depuis la branche de version après review et quality gate, avant `/th` et avant promo Release). Un Site Ubuntu de test ou une machine perso (Docker) peut le suivre.
 
 À éviter : préproduction git, branche staging, serveur de test.
 
