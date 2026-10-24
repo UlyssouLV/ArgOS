@@ -3,16 +3,27 @@
 La chaîne POSIX envoyée aux Caméras est le décalage du moment du fuseau, sans règles d'heure d'été (`CEST-2` en été,
 `CET-1` en hiver) : une caméra qui ne sait pas les appliquer incruste quand même l'heure locale
 (docs/adr/0015-mise-a-l-heure-a-chaque-verification.md, avenant). La chaîne POSIX qui clôt le fichier TZif d'un
-fuseau (paquet `tzdata`, `CET-1CEST,M3.5.0,M10.5.0/3`) décrit ses règles ; elle reconnaît le fuseau de l'hôte.
+fuseau (`CET-1CEST,M3.5.0,M10.5.0/3`) décrit ses règles ; elle reconnaît le fuseau de l'hôte.
+
+Règles et décalages viennent de la base des fuseaux de l'hôte quand il en monte une (`/usr/share/zoneinfo`, tenue à
+jour par l'OS), sinon du paquet `tzdata` embarqué ; jamais de celle de l'image. Une base qui change de version est
+reprise sans redémarrage, à la lecture suivante de `base()` (docs/adr/0015-mise-a-l-heure-a-chaque-verification.md,
+second avenant).
 """
 
 import math
 import re
+import threading
+import zoneinfo
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from importlib.resources import files
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo, available_timezones
+
+import tzdata
 
 # Fuseau du Site quand celui de l'hôte est illisible.
 FUSEAU_DE_REPLI = "UTC"
@@ -55,8 +66,66 @@ _DEBUT_POSIX = re.compile(r"^(?:[A-Za-z]{3,}|<[A-Za-z0-9+-]{3,}>)([+-]?)(\d{1,2}
 _HORIZON_CHANGEMENT = timedelta(days=400)
 
 
+# `hote` : la base montée depuis l'hôte ; `embarquee` : le paquet `tzdata` de l'image, en secours.
+Origine = Literal["hote", "embarquee"]
+
+
+@dataclass(frozen=True)
+class BaseDesFuseaux:
+    version: str | None
+    origine: Origine
+
+
+_EMBARQUEE = BaseDesFuseaux(version=tzdata.IANA_VERSION, origine="embarquee")
+_verrou = threading.Lock()
+_dossier_hote: Path | None = None
+_base = _EMBARQUEE
+# Ni la base de l'image (`/usr/share/zoneinfo` de Debian, figée à sa construction) ni une autre : le paquet `tzdata`.
+zoneinfo.reset_tzpath([])
+
+
+def utiliser_la_base_de_l_hote(dossier: Path | None) -> None:
+    """Base des fuseaux de l'hôte, montée en `dossier` ; `None`, ou un dossier sans version : base embarquée."""
+    global _dossier_hote
+    with _verrou:
+        _dossier_hote = dossier
+    base()
+
+
+def base() -> BaseDesFuseaux:
+    """Base des fuseaux en usage, relue : si sa version a changé (mise à jour de l'OS), les caches sont vidés et les
+    calculs suivants la suivent."""
+    global _base
+    with _verrou:
+        version = _version_de_l_hote(_dossier_hote) if _dossier_hote is not None else None
+        lue = _EMBARQUEE if version is None else BaseDesFuseaux(version=version, origine="hote")
+        if lue != _base:
+            zoneinfo.reset_tzpath([str(_dossier_hote)] if lue.origine == "hote" else [])
+            ZoneInfo.clear_cache()
+            for calcul in (_noms_iana, posix, _noms_par_posix):
+                calcul.cache_clear()
+            _base = lue
+        return _base
+
+
+def _version_de_l_hote(dossier: Path) -> str | None:
+    """Version de la base `dossier` (`+VERSION`, sinon l'en-tête de `tzdata.zi`) ; `None` : pas de base lisible."""
+    try:
+        return (dossier / "+VERSION").read_text().strip() or None
+    except (OSError, UnicodeDecodeError):
+        pass
+    try:
+        with (dossier / "tzdata.zi").open() as zi:
+            entete = zi.readline()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not entete.startswith("# version"):
+        return None
+    return entete.removeprefix("# version").strip() or None
+
+
 def connu(nom: str) -> bool:
-    """`nom` est un fuseau IANA du paquet `tzdata` (seul cas où `posix` peut le lire)."""
+    """`nom` est un fuseau IANA de la base (seul cas où `posix` peut le lire)."""
     return nom in _noms_iana()
 
 
@@ -67,8 +136,15 @@ def _noms_iana() -> frozenset[str]:
 
 @cache
 def posix(nom: str) -> str:
-    """Chaîne POSIX du fuseau IANA `nom` (ex. `Europe/Paris` → `CET-1CEST,M3.5.0,M10.5.0/3`)."""
-    return _posix_du_tzif(files("tzdata").joinpath("zoneinfo", *nom.split("/")).read_bytes())
+    """Chaîne POSIX du fuseau IANA `nom` (ex. `Europe/Paris` → `CET-1CEST,M3.5.0,M10.5.0/3`), lue dans la base de
+    l'hôte si elle a ce fuseau, sinon dans la base embarquée (comme `zoneinfo`)."""
+    morceaux = nom.split("/")
+    if _base.origine == "hote" and _dossier_hote is not None:
+        try:
+            return _posix_du_tzif(_dossier_hote.joinpath(*morceaux).read_bytes())
+        except OSError:
+            pass
+    return _posix_du_tzif(files("tzdata").joinpath("zoneinfo", *morceaux).read_bytes())
 
 
 def _posix_du_tzif(tzif: bytes) -> str:
@@ -90,7 +166,7 @@ def de_l_hote(localtime: Path) -> str:
 
 
 def _posix_sur(nom: str) -> str | None:
-    """Chaîne POSIX de `nom`, `None` si son fichier manque au paquet `tzdata`."""
+    """Chaîne POSIX de `nom`, `None` si son fichier manque à la base."""
     try:
         return posix(nom)
     except (OSError, ValueError):

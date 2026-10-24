@@ -9,6 +9,7 @@ import {
   lireHorlogesDesCameras,
   modifierHeureDuSite,
   MOTIF_SERVEUR_NTP,
+  texteBaseDesFuseaux,
   texteEcart,
   texteHeure,
   texteSourceUtilisee,
@@ -150,6 +151,10 @@ export function HeureDuSite() {
               {heure.adresse_serveur_de_temps ??
                 "inconnue : renseigner l’IP du Site (MTX_WEBRTCADDITIONALHOSTS) ; aucune Caméra n’est calée"}
             </dd>
+          </div>
+          <div>
+            <dt>Base des fuseaux</dt>
+            <dd>{texteBaseDesFuseaux(heure.base_des_fuseaux)}</dd>
           </div>
         </dl>
       )}

@@ -8,6 +8,7 @@ chaque test qui le change.
 
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -133,6 +134,19 @@ def test_par_defaut_pool_ntp_org_et_fuseau_de_l_hote(connecte, heure_d_origine):
     # Même décalage que l'heure locale de cette machine, hôte de la stack.
     maintenant = datetime.now(UTC)
     assert maintenant.astimezone(ZoneInfo(lue["fuseau"])).utcoffset() == maintenant.astimezone().utcoffset()
+
+
+def version_de_la_base_de_cette_machine() -> str:
+    """Version de `/usr/share/zoneinfo` de l'hôte de la stack, comme l'API la lit (`+VERSION`, sinon `tzdata.zi`)."""
+    base = Path("/usr/share/zoneinfo")
+    if (base / "+VERSION").exists():
+        return (base / "+VERSION").read_text().strip()
+    return (base / "tzdata.zi").read_text().splitlines()[0].removeprefix("# version").strip()
+
+
+def test_base_des_fuseaux_de_l_hote(connecte):
+    """L'hôte de la stack monte sa base des fuseaux : c'est elle qui sert, pas la base embarquée."""
+    assert lire(connecte)["base_des_fuseaux"] == {"version": version_de_la_base_de_cette_machine(), "origine": "hote"}
 
 
 def test_heure_servie_par_temps_et_adresse_annoncee(connecte):

@@ -40,7 +40,7 @@ Date, heure, fuseau et serveur de temps d’un Appareil, partagés par toutes se
 
 ## Heure du Site {#heure-du-site}
 
-La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses Caméras. Une Caméra est calée sur le Site quand son Horloge suit le Serveur de temps du Site avec le fuseau du Site, envoyé au décalage du moment (sans règles d’heure d’été).
+La source de l’heure et le fuseau du Site, réglés une fois pour toutes ses Caméras. Une Caméra est calée sur le Site quand son Horloge suit le Serveur de temps du Site avec le fuseau du Site, envoyé au décalage du moment (sans règles d’heure d’été), pris dans la base des fuseaux du serveur (embarquée dans ArgOS en secours).
 
 À éviter : heure système, horloge du Site, heure du serveur.
 

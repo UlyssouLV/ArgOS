@@ -12,7 +12,11 @@ export type HeureDuSite = {
   reference: string | null;
   heure: string | null;
   adresse_serveur_de_temps: string | null;
+  base_des_fuseaux: BaseDesFuseaux;
 };
+
+/** Base des fuseaux d'où viennent les décalages envoyés aux Caméras : celle du serveur, ou celle de l'image. */
+export type BaseDesFuseaux = { version: string | null; origine: "hote" | "embarquee" };
 
 export type ModificationHeureDuSite = Partial<Pick<HeureDuSite, "source" | "serveur_ntp" | "fuseau">>;
 
@@ -53,6 +57,10 @@ export function texteSourceUtilisee(heure: HeureDuSite): string {
     default:
       return "Serveur de temps du Site injoignable";
   }
+}
+
+export function texteBaseDesFuseaux(base: BaseDesFuseaux): string {
+  return `${base.version ?? "version inconnue"} (${base.origine === "hote" ? "serveur" : "embarquée dans ArgOS"})`;
 }
 
 /** Date et heure au fuseau du Site ; `null` : inconnue. */

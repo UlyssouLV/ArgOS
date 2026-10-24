@@ -64,6 +64,8 @@ class Calage:
             )
             return
         reference = self._heure_de_temps()
+        # Base des fuseaux mise à jour par l'OS depuis la vérification précédente : prise maintenant.
+        fuseaux.base()
         with self._ouvrir_base() as base:
             fuseau = heure_site.lire(base, self._fuseau_hote).fuseau
             posix = fuseaux.posix_du_moment(fuseau, self._maintenant())

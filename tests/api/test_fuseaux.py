@@ -10,9 +10,11 @@ import re
 import threading
 import time
 from datetime import UTC, datetime, timedelta
+from importlib.resources import files
 from zoneinfo import ZoneInfo
 
 import pytest
+import tzdata
 
 from argos_api import fuseaux
 from argos_api.changement_d_heure import VerificationAuChangementDHeure
@@ -171,5 +173,70 @@ def test_instant_recalcule_apres_un_fuseau_illisible():
     programme.demarrer()
     try:
         attendre(lambda: programme.prevue == datetime(2026, 10, 25, 1, tzinfo=UTC))
+    finally:
+        programme.arreter()
+
+
+@pytest.fixture
+def base_de_l_hote(tmp_path):
+    """Base des fuseaux de l'hôte, montée dans `api` : ici `Africa/Casablanca` y suit les règles d'`Europe/Paris`
+    (UTC+1, heure d'été), là où la base embarquée le met à UTC+0 ou UTC+1 sans changement d'heure en octobre."""
+    (tmp_path / "+VERSION").write_text("2099a\n")
+    poser(tmp_path, "Africa/Casablanca", "Europe/Paris")
+    fuseaux.utiliser_la_base_de_l_hote(tmp_path)
+    yield tmp_path
+    fuseaux.utiliser_la_base_de_l_hote(None)
+
+
+def poser(dossier, nom: str, regles: str) -> None:
+    """`nom` suit, dans la base `dossier`, les règles du fuseau `regles` de la base embarquée."""
+    fichier = dossier.joinpath(*nom.split("/"))
+    fichier.parent.mkdir(parents=True, exist_ok=True)
+    fichier.write_bytes(files("tzdata").joinpath("zoneinfo", *regles.split("/")).read_bytes())
+
+
+def test_decalage_et_changement_d_heure_pris_dans_la_base_de_l_hote(base_de_l_hote):
+    assert fuseaux.base() == fuseaux.BaseDesFuseaux(version="2099a", origine="hote")
+    assert fuseaux.posix_du_moment("Africa/Casablanca", ETE) == "CEST-2"
+    assert fuseaux.prochain_changement("Africa/Casablanca", datetime(2026, 10, 23, tzinfo=UTC)) == datetime(
+        2026, 10, 25, 1, tzinfo=UTC
+    )
+    # Ce que la base de l'hôte n'a pas reste lu dans la base embarquée.
+    assert fuseaux.posix_du_moment("America/New_York", ETE) == "EDT4"
+
+
+def test_version_lue_dans_tzdata_zi_sans_plus_version(base_de_l_hote):
+    (base_de_l_hote / "+VERSION").unlink()
+    (base_de_l_hote / "tzdata.zi").write_text("# version 2099b\n# redo posix_only\n")
+
+    assert fuseaux.base() == fuseaux.BaseDesFuseaux(version="2099b", origine="hote")
+
+
+@pytest.mark.parametrize("dossier", [None, "vide", "absent"])
+def test_sans_base_de_l_hote_la_base_embarquee_sert(tmp_path, dossier):
+    """Hôte sans base : Docker crée un dossier vide à la place du montage."""
+    fuseaux.utiliser_la_base_de_l_hote({None: None, "vide": tmp_path, "absent": tmp_path / "absent"}[dossier])
+    try:
+        assert fuseaux.base() == fuseaux.BaseDesFuseaux(version=tzdata.IANA_VERSION, origine="embarquee")
+        assert fuseaux.posix_du_moment("Europe/Paris", ETE) == "CEST-2"
+    finally:
+        fuseaux.utiliser_la_base_de_l_hote(None)
+
+
+def test_base_de_l_hote_remplacee_pendant_que_l_api_tourne(base_de_l_hote):
+    horloge = HorlogeSimulee(datetime(2026, 10, 23, tzinfo=UTC))
+    programme = VerificationAuChangementDHeure(lambda: "Africa/Casablanca", horloge, lambda: None, pas_s=0.01)
+    programme.demarrer()
+    try:
+        attendre(lambda: programme.prevue == datetime(2026, 10, 25, 1, tzinfo=UTC))
+        assert fuseaux.posix_du_moment("Africa/Casablanca", ETE) == "CEST-2"
+
+        # Mise à jour de l'OS : Casablanca passe aux règles de Tokyo (UTC+9, sans changement d'heure).
+        poser(base_de_l_hote, "Africa/Casablanca", "Asia/Tokyo")
+        (base_de_l_hote / "+VERSION").write_text("2099b\n")
+
+        attendre(lambda: programme.prevue is None)
+        assert fuseaux.base().version == "2099b"
+        assert fuseaux.posix_du_moment("Africa/Casablanca", ETE) == "JST-9"
     finally:
         programme.arreter()

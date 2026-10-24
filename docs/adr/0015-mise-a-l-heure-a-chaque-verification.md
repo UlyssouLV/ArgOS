@@ -43,3 +43,21 @@ Le tableau ne mesurait que l'heure UTC : il ne pouvait pas voir une date incrust
 - Entre l'instant du changement d'heure et la fin de la vérification, une Caméra garde l'ancien décalage quelques secondes.
 - Un Site arrêté pendant un changement d'heure le reprend à son redémarrage (vérification horaire au démarrage).
 - Le fuseau relu en ONVIF montre le décalage du moment (`CEST-2`) ; le Site le reconnaît et affiche le nom du fuseau (`Europe/Paris`).
+
+## Second avenant (0.9.1) — base des fuseaux de l'hôte d'abord
+
+Aux tests humains (Caméra simulée 5), `Africa/Casablanca` incrustait une heure d'avance : le Maroc a changé ses règles en 2026, la base IANA 2026e de l'hôte (macOS, Ubuntu à jour) le met à UTC+0, le paquet Python `tzdata` 2026.4 figé dans l'image à UTC+1. Le Site envoyait le décalage de sa propre base et se comparait à elle : il se disait « à l'heure » avec une heure d'erreur. L'image mélangeait en plus deux bases (`zoneinfo` lisait le `tzdata` de Debian figé à la construction de l'image, la chaîne POSIX venait du paquet Python).
+
+`api` prend donc ses règles dans la **base des fuseaux de l'hôte** : `/usr/share/zoneinfo` est monté en lecture seule (`/usr/share/zoneinfo-hote`), et `zoneinfo` comme la liste des fuseaux le lisent d'abord. Un hôte sans base (dossier absent, créé vide par Docker, ou sans version lisible) donne le paquet `tzdata` embarqué, tenu à sa dernière version ; la base Debian de l'image n'est jamais lue. La version (`+VERSION`, sinon l'en-tête de `tzdata.zi`) est relue à chaque vérification et à chaque pas de la vérification au changement d'heure : une base mise à jour par l'OS vide les caches et donne le nouveau décalage, et le nouvel instant du prochain changement d'heure, sans redémarrage. `GET /api/heure-du-site` et la page Heure du Site disent quelle base sert (version, serveur ou embarquée).
+
+### Considered Options
+
+- **Base de l'hôte d'abord, embarquée en secours** (retenu) : Ubuntu publie la base IANA par ses correctifs de sécurité (`unattended-upgrades`), un pays qui change ses règles est suivi sans release d'ArgOS.
+- **Paquet `tzdata` embarqué seul, monté à chaque release** : le retard revient à chaque changement de règles dans le monde, jusqu'à la release et à la mise à jour du Site.
+- **Fuseau fixe saisi par l'Administrateur** (décalage à la main) : juste, mais à changer à la main deux fois par an, ce que l'avenant précédent a voulu éviter.
+
+### Consequences
+
+- Un Site Ubuntu suit sa base `tzdata` : l'OS doit garder le paquet `tzdata` installé et à jour (c'est le cas par défaut).
+- Sous Mac, Docker Desktop monte la base de macOS : le Site suit les mises à jour de macOS.
+- La date incrustée par une caméra peut suivre une base plus récente que celle d'ArgOS, jamais l'inverse sur un Site à jour.

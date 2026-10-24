@@ -59,6 +59,7 @@ def test_heure_source_fuseau_et_adresse_du_serveur_de_temps(heure_du_site: Page,
     expect(valeur(heure_du_site, "Source utilisée")).not_to_be_empty()
     expect(valeur(heure_du_site, "Fuseau")).to_contain_text(lue["fuseau"])
     expect(valeur(heure_du_site, "Adresse du Serveur de temps")).to_have_text(ADRESSE_TEMPS)
+    expect(valeur(heure_du_site, "Base des fuseaux")).to_have_text(f"{lue['base_des_fuseaux']['version']} (serveur)")
     reglage = heure_du_site.get_by_role("form", name="Régler l’Heure du Site")
     expect(reglage.get_by_label("Adresse du serveur NTP")).to_have_value(lue["serveur_ntp"])
     expect(reglage.get_by_label("Fuseau du Site")).to_have_value(lue["fuseau"])

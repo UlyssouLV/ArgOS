@@ -200,6 +200,7 @@ def creer_app(
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
     pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
     apercus = Apercus(pont, configuration.expiration_apercu)
+    fuseaux.utiliser_la_base_de_l_hote(Path(configuration.zoneinfo_hote))
     fuseau_hote = fuseaux.de_l_hote(Path(configuration.localtime_hote))
     adresse_temps = serveur_de_temps.adresse_annoncee(configuration.temps_adresse_cameras, configuration.ips_du_site)
     calage = Calage(

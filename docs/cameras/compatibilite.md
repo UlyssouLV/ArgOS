@@ -22,7 +22,7 @@ La caméra de dev décrite dans [Paramétrer une Caméra](parametrer-une-camera.
 | `UTC-2` | `FNT2` | UTC−2 ❌ (sens inversé) |
 | `CET-1` | `CET-1CEST` | UTC+1 ✅ (hiver) |
 
-Elle ne garde que le décalage du fuseau (en le renommant à sa façon), n'applique jamais l'heure d'été et inverse le sens d'un fuseau nommé `UTC`. Depuis la 0.9.1, le Site lui envoie le décalage du moment, sans règles ([avenant à l'ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md#avenant-091--fuseau-envoyé-en-décalage-du-moment)) : sa date incrustée est l'heure locale du Site, été comme hiver, et le Site la recale à chaque changement d'heure. La Caméra simulée 5 l'imite (`ONVIF_FUSEAU_DECALAGE_SEUL`, [simulation ONVIF](../../simulation/onvif/README.md)).
+Elle ne garde que le décalage du fuseau (en le renommant à sa façon), n'applique jamais l'heure d'été et inverse le sens d'un fuseau nommé `UTC`. Depuis la 0.9.1, le Site lui envoie le décalage du moment, sans règles ([avenant à l'ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md#avenant-091--fuseau-envoyé-en-décalage-du-moment)) : sa date incrustée est l'heure locale du Site, été comme hiver, et le Site la recale à chaque changement d'heure. Ce décalage vient de la base des fuseaux du serveur ([second avenant](../adr/0015-mise-a-l-heure-a-chaque-verification.md#second-avenant-091--base-des-fuseaux-de-lhôte-dabord)) : pour qualifier une caméra, noter la base affichée sur la page Heure du Site. La Caméra simulée 5 l'imite (`ONVIF_FUSEAU_DECALAGE_SEUL`, [simulation ONVIF](../../simulation/onvif/README.md)).
 
 ## Qualifier une nouvelle caméra
 

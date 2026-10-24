@@ -50,6 +50,8 @@ class Configuration(BaseSettings):
     intervalle_verification: float = Field(3600, gt=0, validation_alias="ARGOS_VERIFICATION_INTERVALLE_S")
     # `/etc/localtime` de l'hôte, monté : fuseau du Site par défaut.
     localtime_hote: str = Field("/etc/localtime-hote", validation_alias="ARGOS_LOCALTIME_HOTE")
+    # `/usr/share/zoneinfo` de l'hôte, monté : base des fuseaux tenue à jour par l'OS ; absent ou vide, base embarquée.
+    zoneinfo_hote: str = Field("/usr/share/zoneinfo-hote", validation_alias="ARGOS_ZONEINFO_HOTE")
 
     def adresses_reseau_cameras(self) -> set[IPv4Address]:
         """Une adresse invalide est ignorée : le réseau des caméras n'empêche jamais l'API de démarrer."""

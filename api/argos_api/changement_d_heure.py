@@ -3,7 +3,8 @@
 
 Le Site envoie aux Caméras le décalage du moment de son fuseau, sans règles d'heure d'été : à chaque changement
 d'heure, il leur envoie le nouveau. L'instant est recalculé après chaque changement et à chaque changement de fuseau
-(`reprogrammer`). L'horloge est relue tous les `pas_s` au plus : un saut d'horloge ne fait pas manquer l'instant.
+(`reprogrammer`), et quand la base des fuseaux change de version (mise à jour de l'OS de l'hôte). L'horloge et la
+base sont relues tous les `pas_s` au plus : un saut d'horloge ne fait pas manquer l'instant.
 """
 
 import logging
@@ -52,6 +53,7 @@ class VerificationAuChangementDHeure:
 
     def _tourner(self) -> None:
         while not self._arret.is_set():
+            base = fuseaux.base()
             try:
                 self.prevue = fuseaux.prochain_changement(self._fuseau(), self._maintenant())
             except Exception:
@@ -59,6 +61,9 @@ class VerificationAuChangementDHeure:
                 journal.exception("Changement d'heure : prochain instant non calculé")
                 self.prevue = None
             while not self._reveil.wait(self._attente_s()):
+                if (actuelle := fuseaux.base()) != base:
+                    journal.info("Changement d'heure : base des fuseaux %s, instant recalculé", actuelle.version)
+                    break
                 if self.prevue is None:
                     # Fuseau illisible, ou sans changement dans l'année : recalculé à chaque pas.
                     break
