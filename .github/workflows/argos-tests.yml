@@ -31,7 +31,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   plan:
@@ -64,6 +63,9 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -80,6 +82,9 @@ jobs:
     needs: [plan, build]
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
