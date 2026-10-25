@@ -24,6 +24,18 @@ const sidebars: SidebarsConfig = {
         },
       ],
     },
+    {
+      type: 'category',
+      label: 'Heure et calage',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'features/heure/serveur-de-temps-et-calage',
+          label: 'Serveur de temps et calage',
+        },
+      ],
+    },
   ],
   changelogSidebar: [
     {

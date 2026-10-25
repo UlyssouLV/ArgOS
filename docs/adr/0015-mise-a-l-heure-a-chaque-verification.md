@@ -1,5 +1,7 @@
 # Mise à l’heure des Caméras à chaque vérification
 
+Vue produit (calage, changement d’heure, enregistrements) : [Serveur de temps et calage des Caméras](../features/heure/serveur-de-temps-et-calage.md).
+
 Complète l'[ADR 0014](0014-serveur-de-temps-du-site.md) : une Caméra calée (mode NTP vers le Serveur de temps du Site, fuseau du Site) peut quand même dériver, parce que son client NTP n'interroge le serveur qu'au démarrage ou trop rarement. Le Site ne s'en remet donc plus au seul NTP de la caméra. À **chaque** vérification (ajout, changement de l'Heure du Site, toutes les heures, « Vérifier maintenant »), il **met à l'heure** chaque Caméra ONVIF active : il lit l'heure en NTP auprès de `temps`, la pousse par `SetSystemDateAndTime` en mode manuel (UTC, fuseau du Site), puis recale la caméra comme en 0.9.0 (`SetNTP` vers l'IP annoncée, mode NTP au fuseau du Site) et relit son Horloge. Une faute sur la mise à l'heure n'arrête pas le calage : l'écart relu décide de l'état.
 
 La **dérive** (avant) et l'**écart** (après) se mesurent contre l'heure servie par `temps` (la source choisie dans l'Heure du Site, ou son repli), plus contre l'horloge de l'OS de `api`. Sans réponse de `temps`, rien n'est poussé ni mesuré : la caméra est recalée et marquée en échec.

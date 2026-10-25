@@ -8,7 +8,7 @@ Pour aller plus loin : [Paramétrer une Caméra](parametrer-une-camera.md), [ADR
 
 | Caméra | Marque, modèle, firmware (`GetDeviceInformation`) | Ce qu'elle fait d'un fuseau | Ce qu'Argos lui envoie | Qualifiée |
 | --- | --- | --- | --- | --- |
-| [`Cam 01`](#cam-01) | `H264`, `IPC_GK7201V200_G3H_S38` (puce Goke, firmware XiongMai) ; version du firmware à relever | Garde le décalage seul, jamais d'heure d'été, `UTC` lu à l'envers | Décalage du moment (`CEST-2` / `CET-1`), `DaylightSavings=false`, ONVIF en HTTP sur `8899` | 0.9.1 |
+| [`Cam 01`](#cam-01) | `H264`, `IPC_GK7201V200_G3H_S38` (puce Goke, firmware XiongMai), firmware `V1.00.T01.000929ST.10010.141000.S.ONVIF 21.06` | Garde le décalage seul, jamais d'heure d'été, `UTC` lu à l'envers | Décalage du moment (`CEST-2` / `CET-1`), `DaylightSavings=false`, ONVIF en HTTP sur `8899` | 0.9.1 |
 
 ### Cam 01
 
@@ -22,7 +22,7 @@ La caméra de dev décrite dans [Paramétrer une Caméra](parametrer-une-camera.
 | `UTC-2` | `FNT2` | UTC−2 ❌ (sens inversé) |
 | `CET-1` | `CET-1CEST` | UTC+1 ✅ (hiver) |
 
-Elle ne garde que le décalage du fuseau (en le renommant à sa façon), n'applique jamais l'heure d'été et inverse le sens d'un fuseau nommé `UTC`. Depuis la 0.9.1, le Site lui envoie le décalage du moment, sans règles ([avenant à l'ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md#avenant-091--fuseau-envoyé-en-décalage-du-moment)) : sa date incrustée est l'heure locale du Site, été comme hiver, et le Site la recale à chaque changement d'heure. Ce décalage vient de la base des fuseaux du serveur ([second avenant](../adr/0015-mise-a-l-heure-a-chaque-verification.md#second-avenant-091--base-des-fuseaux-de-lhôte-dabord)) : pour qualifier une caméra, noter la base affichée sur la page Heure du Site. La Caméra simulée 5 l'imite (`ONVIF_FUSEAU_DECALAGE_SEUL`, [simulation ONVIF](../../simulation/onvif/README.md)).
+Elle ne garde que le décalage du fuseau (en le renommant à sa façon), n'applique jamais l'heure d'été et inverse le sens d'un fuseau nommé `UTC`. Depuis la 0.9.1, le Site lui envoie le décalage du moment, sans règles ([avenant à l'ADR 0015](../adr/0015-mise-a-l-heure-a-chaque-verification.md#avenant-091--fuseau-envoyé-en-décalage-du-moment)) : sa date incrustée est l'heure locale du Site, été comme hiver, et le Site la recale à chaque changement d'heure. Ce décalage vient de la base des fuseaux du serveur ([second avenant](../adr/0015-mise-a-l-heure-a-chaque-verification.md#second-avenant-091--base-des-fuseaux-de-lhôte-dabord)) : pour qualifier une caméra, noter la base affichée sur la page Heure du Site. Qualifiée le 25/10/2026 (tests humains de la 0.9.1, #148) : les 23 fuseaux proposés par Heure du Site, un par un, en heure d'hiver, donnent la date incrustée de l'heure locale de chaque fuseau (à la latence du Live près) ; elle garde `ARGOS0` en `UTC0`. La Caméra simulée 5 l'imite (`ONVIF_FUSEAU_DECALAGE_SEUL`, [simulation ONVIF](../../simulation/onvif/README.md)).
 
 ## Qualifier une nouvelle caméra
 
