@@ -25,6 +25,22 @@ ecrire_env() {
     ' "$FICHIER_ENV" > "$tmp" && mv "$tmp" "$FICHIER_ENV"
 }
 
+# Repli de `temps` sur l'horloge du serveur : l'OS de l'hôte reste synchronisé en NTP (ADR 0015).
+synchroniser_l_hote_en_ntp() {
+    if ! command -v timedatectl >/dev/null 2>&1; then
+        echo "timedatectl introuvable : synchro NTP de l'hôte non vérifiée."
+        return 0
+    fi
+    if [ "$(timedatectl show -p NTP 2>/dev/null)" != "NTP=no" ]; then
+        return 0
+    fi
+    if timedatectl set-ntp true; then
+        echo "Synchro NTP de l'hôte réactivée (timedatectl set-ntp true)."
+    else
+        echo "[ATTENTION] timedatectl set-ntp true a échoué : synchro NTP de l'hôte toujours coupée." >&2
+    fi
+}
+
 if ! command -v docker >/dev/null 2>&1; then
     echo "[ERREUR] Docker n'est pas installé (commande « docker » introuvable)." >&2
     exit 1
@@ -34,6 +50,8 @@ if [ ! -f "$DEPOT/compose.yaml" ] || [ ! -f "$DEPOT/.env.example" ]; then
     echo "[ERREUR] compose.yaml ou .env.example introuvable à côté du script ($DEPOT)." >&2
     exit 1
 fi
+
+synchroniser_l_hote_en_ntp
 
 # shellcheck source=lib-fichiers-site.sh
 . "$(dirname "$0")/lib-fichiers-site.sh"

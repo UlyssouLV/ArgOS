@@ -12,7 +12,11 @@ export type HeureDuSite = {
   reference: string | null;
   heure: string | null;
   adresse_serveur_de_temps: string | null;
+  base_des_fuseaux: BaseDesFuseaux;
 };
+
+/** Base des fuseaux d'où viennent les décalages envoyés aux Caméras : celle du serveur, ou celle de l'image. */
+export type BaseDesFuseaux = { version: string | null; origine: "hote" | "embarquee" };
 
 export type ModificationHeureDuSite = Partial<Pick<HeureDuSite, "source" | "serveur_ntp" | "fuseau">>;
 
@@ -55,6 +59,10 @@ export function texteSourceUtilisee(heure: HeureDuSite): string {
   }
 }
 
+export function texteBaseDesFuseaux(base: BaseDesFuseaux): string {
+  return `${base.version ?? "version inconnue"} (${base.origine === "hote" ? "serveur" : "embarquée dans ArgOS"})`;
+}
+
 /** Date et heure au fuseau du Site ; `null` : inconnue. */
 export function texteHeure(dateUtc: Date | null, fuseau: string): string {
   if (dateUtc === null) return "inconnue";
@@ -62,12 +70,14 @@ export function texteHeure(dateUtc: Date | null, fuseau: string): string {
 }
 
 /** Dernière vérification de l'Horloge d'une Caméra active ; `etat` `null` : jamais vérifiée. */
-export type EtatHorloge = "calee" | "ecart" | "recalee" | "sans_onvif" | "echec";
+export type EtatHorloge = "a_l_heure" | "ecart" | "sans_onvif" | "echec";
 
 export type HorlogeVerifiee = {
   id: number;
   nom: string;
   etat: EtatHorloge | null;
+  // Mesurés contre l'heure du Serveur de temps du Site : avant la Mise à l'heure (dérive), après (écart).
+  derive_s: number | null;
   ecart_s: number | null;
   verifiee_le: string | null;
 };
@@ -87,12 +97,10 @@ export async function verifierLesCameras(): Promise<HorlogeVerifiee[]> {
 
 export function libelleEtatHorloge(etat: EtatHorloge | null): string {
   switch (etat) {
-    case "calee":
-      return "calée";
+    case "a_l_heure":
+      return "à l’heure";
     case "ecart":
       return "écart";
-    case "recalee":
-      return "recalée";
     case "sans_onvif":
       return "sans ONVIF";
     case "echec":
@@ -102,7 +110,7 @@ export function libelleEtatHorloge(etat: EtatHorloge | null): string {
   }
 }
 
-/** Écart mesuré, signé (positif : la Caméra avance) ; `—` sans Horloge lue. */
+/** Dérive ou écart mesuré, signé (positif : la Caméra avance) ; `—` sans mesure. */
 export function texteEcart(ecartS: number | null): string {
   if (ecartS === null) return "—";
   const nombre = ecartS.toLocaleString("fr-FR", {

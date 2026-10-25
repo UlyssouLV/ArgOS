@@ -39,6 +39,7 @@ from argos_api import (
 from argos_api.apercu import Apercus, AucunApercu, EssaiAnnule
 from argos_api.boucle import BoucleDeFond
 from argos_api.calage import Calage
+from argos_api.changement_d_heure import VerificationAuChangementDHeure
 from argos_api.cameras import (
     AdresseMiseAJour,
     CameraCorrespondante,
@@ -199,10 +200,23 @@ def creer_app(
     ouvrir_base = sessionmaker(create_engine(configuration.url_base))
     pont = Pont(configuration.url_api_mediamtx, configuration.delai_mediamtx)
     apercus = Apercus(pont, configuration.expiration_apercu)
+    fuseaux.utiliser_la_base_de_l_hote(Path(configuration.zoneinfo_hote))
     fuseau_hote = fuseaux.de_l_hote(Path(configuration.localtime_hote))
     adresse_temps = serveur_de_temps.adresse_annoncee(configuration.temps_adresse_cameras, configuration.ips_du_site)
-    calage = Calage(ouvrir_base, horloge, adresse_temps, fuseau_hote)
+    calage = Calage(
+        ouvrir_base,
+        horloge,
+        adresse_temps,
+        fuseau_hote,
+        lambda: serveur_de_temps.horloge_servie(configuration.temps_hote),
+    )
     dossier_temps = Path(configuration.temps_reglage)
+
+    def fuseau_du_site() -> str:
+        with ouvrir_base() as base:
+            return heure_site.lire(base, fuseau_hote).fuseau
+
+    au_changement_d_heure = VerificationAuChangementDHeure(fuseau_du_site, horloge, calage.verifier_toutes)
 
     def transmettre_a_temps(reglage: heure_site.HeureDuSite) -> None:
         """Volume absent ou illisible : temps garde sa source, l'API marche."""
@@ -234,7 +248,9 @@ def creer_app(
         ]
         for boucle in boucles:
             boucle.demarrer()
+        au_changement_d_heure.demarrer()
         yield
+        au_changement_d_heure.arreter()
         for boucle in boucles:
             boucle.arreter()
         calage.arreter()
@@ -332,15 +348,18 @@ def creer_app(
     def modifier_heure_du_site(
         modification: ModificationHeureDuSite, base: Annotated[Session, Depends(base)]
     ) -> HeureDuSiteLue:
-        """Transmet la source à temps, puis recale en fond toutes les Caméras actives."""
+        """Transmet la source à temps, puis met à l'heure et recale en fond toutes les Caméras actives ; reprogramme la
+        vérification au prochain changement d'heure du fuseau."""
         reglage = heure_site.modifier(base, modification, fuseau_hote)
         transmettre_a_temps(reglage)
-        calage.caler_toutes()
+        calage.verifier_toutes_en_fond()
+        au_changement_d_heure.reprogrammer()
         return heure_du_site_lue(reglage)
 
     @app.get("/api/heure-du-site/cameras", dependencies=[Depends(administrateur_connecte)])
     def lire_horloges_des_cameras(base: Annotated[Session, Depends(base)]) -> list[HorlogeVerifiee]:
-        """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande)."""
+        """Dernière vérification de l'Horloge de chaque Caméra active (toutes les heures, et à la demande) : état,
+        dérive avant la Mise à l'heure, écart après."""
         return cameras.horloges_verifiees(base)
 
     @app.post("/api/heure-du-site/verification", dependencies=[Depends(administrateur_connecte)])
@@ -456,8 +475,8 @@ def _routes_cameras(
 
     @routes.post("", status_code=status.HTTP_201_CREATED)
     def creer(nouvelle: NouvelleCamera, base: Base) -> CameraLue:
-        """Vérifie la Caméra (calée sur le Serveur de temps du Site au besoin) avant de répondre ; un échec n'empêche
-        pas l'ajout."""
+        """Vérifie la Caméra (Mise à l'heure et calage sur le Serveur de temps du Site) avant de répondre ; un échec
+        n'empêche pas l'ajout."""
         with _erreurs_cameras():
             creee = cameras.creer(base, nouvelle, racine_enregistrements)
         return _verifiee_puis_relue(calage, base, creee.id, racine_enregistrements)

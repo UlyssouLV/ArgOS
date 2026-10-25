@@ -1,6 +1,6 @@
 # Canal production : retaggue le digest :staging vers X.Y.Z et :latest (sans rebuild),
-# et joint l'artefact du Site. Déclenchement manuel : attendre que « Publier images staging »
-# soit vert pour le SHA voulu, puis lancer ce workflow avec le tag vX.Y.Z.
+# et joint l'artefact du Site. Déclenchement manuel : après `/ps` + `/th` + Release,
+# lancer ce workflow avec le tag vX.Y.Z (même digest early access).
 name: Promouvoir images vers Release
 
 on:

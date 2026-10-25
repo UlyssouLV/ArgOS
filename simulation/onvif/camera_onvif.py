@@ -13,7 +13,14 @@ caméra ancienne), `ONVIF_SERVICES` (services en plus de l'appareil et du média
 virgules : un ou deux profils ; `/Streaming/Channels/101` par défaut), `ONVIF_SILENCE_APRES_ENCODAGE_S` (secondes
 pendant lesquelles la caméra ferme chaque connexion sans répondre après un changement d'Encodage accepté, comme une
 caméra qui relance son encodeur ; jamais par défaut), `ONVIF_PORT_NTP` (port où la caméra joint ses serveurs NTP ;
-123 par défaut), `ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
+123 par défaut), `ONVIF_NTP_PARESSEUX` (dérive de l'horloge en secondes par heure : la caméra ne se cale
+plus qu'au démarrage et sur `SetNTP`, comme une caméra dont le client NTP ne réinterroge pas son serveur ; vide par
+défaut : client NTP continu), `ONVIF_HEURE_MANUELLE_REFUSEE` (non vide : `SetSystemDateAndTime` en mode manuel
+refusé d'une faute, comme une caméra qui ne se laisse pas mettre à l'heure ; seul le mode NTP est accepté),
+`ONVIF_FUSEAU_DECALAGE_SEUL` (non vide : la caméra ne garde que le nom et le décalage du fuseau reçu, n'applique
+jamais l'heure d'été et lit à l'envers un fuseau nommé `UTC`, comme la vraie caméra des tests humains),
+`ONVIF_FUSEAU_FIGE` (non vide : la caméra garde son fuseau quel que soit celui reçu : sa date incrustée est fausse),
+`ONVIF_FICHIER_DATE` (fichier où la caméra écrit sans cesse la
 date incrustée dans son Flux, relu par ffmpeg : media/simulated/diffuser.sh ; aucun par défaut). HTTP et HTTPS
 servent la même caméra (même état). En mode NTP, la caméra interroge vraiment le serveur reçu par `SetNTP` et s'y cale. Chaque requête est journalisée avec son schéma et son port (`https:443`, `http:8899`), puis le nom de son
 opération SOAP : les tests y lisent ce que la caméra a reçu, et par où.
@@ -24,6 +31,7 @@ import base64
 import hashlib
 import hmac
 import os
+import re
 import socket
 import ssl
 import struct
@@ -185,8 +193,11 @@ def _encodeurs_d_usine() -> list[Encodeur]:
 class Etat:
     """État « sortie d'usine » d'une caméra de dev XiongMai, en mémoire seulement."""
 
-    # Horloge : écart entre l'heure de la caméra et l'heure réelle, pour qu'elle avance.
+    # Horloge : écart entre l'heure de la caméra et l'heure réelle à l'instant `reglee_le`, pour qu'elle avance ;
+    # elle s'en écarte ensuite de `derive` secondes par seconde.
     decalage: timedelta = AVANCE_D_USINE
+    reglee_le: datetime = field(default_factory=lambda: datetime.now(UTC))
+    derive: float = 0
     mode: str = "Manual"
     heure_ete: bool = False
     fuseau: str = "AWST-8"
@@ -204,7 +215,13 @@ class Etat:
     verrou: threading.Lock = field(default_factory=threading.Lock)
 
     def heure(self) -> datetime:
-        return datetime.now(UTC) + self.decalage
+        return datetime.now(UTC) + self.decalage_actuel()
+
+    def decalage_actuel(self) -> timedelta:
+        return self.decalage + (datetime.now(UTC) - self.reglee_le) * self.derive
+
+    def regler(self, decalage: timedelta) -> None:
+        self.decalage, self.reglee_le = decalage, datetime.now(UTC)
 
 
 # --- Lecture des requêtes ---------------------------------------------------------------------------------------
@@ -301,6 +318,23 @@ def heure_locale(moment: datetime, fuseau: str) -> time.struct_time:
             else:
                 os.environ["TZ"] = avant
             time.tzset()
+
+
+# Nom POSIX en lettres puis décalage : ce que garde une caméra qui ne sait pas appliquer l'heure d'été.
+_NOM_ET_DECALAGE = re.compile(r"^([A-Za-z]{3,})([+-]?)(\d{1,2}(?::\d{2}){0,2})")
+
+
+def decalage_seul(fuseau: str) -> str:
+    """Ce que la vraie caméra des tests humains garde d'un fuseau POSIX : son nom et son décalage, sans heure d'été
+    (`CET-1CEST,M3.5.0,M10.5.0/3` → `CET-1`), le décalage d'un fuseau nommé `UTC` inversé (`UTC-2` → `UTC2`, UTC−2).
+    Illisible : gardé tel quel."""
+    lu = _NOM_ET_DECALAGE.match(fuseau)
+    if lu is None:
+        return fuseau
+    nom, signe, decalage = lu.groups()
+    if nom == "UTC":
+        signe = "" if signe == "-" else "-"
+    return f"{nom}{signe}{decalage}"
 
 
 # `TZ` est propre au processus : un fuseau à la fois.
@@ -440,20 +474,34 @@ class Camera:
         chemins_rtsp: tuple[str, ...] = CHEMINS_RTSP,
         silence_apres_encodage_s: float = 0,
         port_ntp: int = PORT_NTP,
+        ntp_paresseux: float | None = None,
+        heure_manuelle_refusee: bool = False,
+        fuseau_decalage_seul: bool = False,
+        fuseau_fige: bool = False,
     ) -> None:
         """`services` : `image` et `media2` en plus de l'appareil et du média 1 ; `chemins_rtsp` : un profil par chemin ;
         `silence_apres_encodage_s` : muette ce temps-là après chaque changement d'Encodage accepté ; `port_ntp` : port
-        des serveurs NTP joints (123 ; un autre pour un serveur de test)."""
+        des serveurs NTP joints (123 ; un autre pour un serveur de test) ; `ntp_paresseux` : dérive de l'horloge en
+        secondes par heure, la caméra ne se calant plus qu'au démarrage et sur `SetNTP` (None : client NTP continu) ;
+        `heure_manuelle_refusee` : `SetSystemDateAndTime` en mode manuel refusé d'une faute ; `fuseau_decalage_seul` : ne
+        garde que le nom et le décalage du fuseau reçu, jamais d'heure d'été, et lit à l'envers un fuseau nommé `UTC` ;
+        `fuseau_fige` : garde son fuseau quel que soit celui reçu."""
         self.identifiants = identifiants
         self.port_ntp = port_ntp
+        self.paresseuse = ntp_paresseux is not None
+        self.heure_manuelle_refusee = heure_manuelle_refusee
+        self.fuseau_decalage_seul = fuseau_decalage_seul
+        self.fuseau_fige = fuseau_fige
         # Synchronisation NTP : lancée au premier passage en mode NTP ou au premier serveur reçu, réveillée ensuite.
         self._synchronisation: threading.Thread | None = None
         self._reveil = threading.Event()
+        # Caméra paresseuse : interrogation due au démarrage et à chaque `SetNTP`, faite au prochain réveil en mode NTP.
+        self._interrogation_due = True
         self.silence_apres_encodage_s = silence_apres_encodage_s
         # Instant (`time.monotonic`) jusqu'auquel la caméra ne répond plus.
         self.muette_jusqu_a = 0.0
         self.types_creables = types_creables
-        self.etat = Etat()
+        self.etat = Etat(derive=(ntp_paresseux or 0) / 3600)
         if not 1 <= len(chemins_rtsp) <= len(self.etat.encodeurs):
             raise ValueError(f"Un ou {len(self.etat.encodeurs)} profils, pas {len(chemins_rtsp)}")
         self.profils = [
@@ -548,6 +596,8 @@ class Camera:
         if mode not in ("Manual", "NTP"):
             raise Faute("ter:InvalidArgVal", f"DateTimeType inconnu : {mode}")
         nouvelle_heure = None
+        if mode == "Manual" and self.heure_manuelle_refusee:
+            raise Faute("ter:InvalidArgVal", "Heure manuelle non prise en charge")
         if mode == "Manual":
             utc = requete.find("tds:UTCDateTime", NS)
             if utc is None:
@@ -563,9 +613,13 @@ class Camera:
         etat = self.etat
         etat.mode = mode
         etat.heure_ete = _texte(requete, "tds:DaylightSavings") == "true"
-        etat.fuseau = _texte(requete, "tds:TimeZone/tt:TZ") or etat.fuseau
+        if not self.fuseau_fige:
+            etat.fuseau = _texte(requete, "tds:TimeZone/tt:TZ") or etat.fuseau
+        if self.fuseau_decalage_seul:
+            etat.heure_ete = False
+            etat.fuseau = decalage_seul(etat.fuseau)
         if nouvelle_heure is not None:
-            etat.decalage = nouvelle_heure - datetime.now(UTC)
+            etat.regler(nouvelle_heure - datetime.now(UTC))
         if mode == "NTP":
             self._synchroniser_sans_attendre()
         return "<tds:SetSystemDateAndTimeResponse/>"
@@ -591,6 +645,7 @@ class Camera:
             raise Faute("ter:InvalidArgVal", f"Type d'adresse NTP inconnu : {type_ntp}")
         self.etat.serveur_ntp = _exiger(manuel, f"tt:{ADRESSES_NTP[type_ntp]}")
         self.etat.type_ntp = type_ntp
+        self._interrogation_due = True
         self._synchroniser_sans_attendre()
         return "<tds:SetNTPResponse/>"
 
@@ -606,12 +661,17 @@ class Camera:
     def _synchroniser(self) -> None:
         """En mode NTP, se cale sur le serveur reçu dès qu'on la réveille, puis toutes les `PERIODE_NTP_S` secondes.
 
+        Paresseuse : seulement si une interrogation est due (démarrage, `SetNTP`), une fois, jamais périodiquement.
         Serveur injoignable : l'horloge est gardée telle quelle, et le service ONVIF continue de répondre."""
         while True:
-            self._reveil.wait(PERIODE_NTP_S)
+            self._reveil.wait(None if self.paresseuse else PERIODE_NTP_S)
             self._reveil.clear()
             with self.etat.verrou:
                 serveur = self.etat.serveur_ntp if self.etat.mode == "NTP" else None
+                if self.paresseuse and not self._interrogation_due:
+                    serveur = None
+                elif self.paresseuse and serveur is not None:
+                    self._interrogation_due = False
             if serveur is None:
                 continue
             try:
@@ -620,8 +680,8 @@ class Camera:
                 print(f"NTP : {serveur} injoignable ({erreur}), horloge gardée", file=sys.stderr, flush=True)
                 continue
             with self.etat.verrou:
-                ecart = decalage - self.etat.decalage
-                self.etat.decalage = decalage
+                ecart = decalage - self.etat.decalage_actuel()
+                self.etat.regler(decalage)
             print(f"NTP : calée sur {serveur} (corrigée de {ecart.total_seconds():+.3f} s)", file=sys.stderr, flush=True)
 
     def date_incrustee(self) -> str:
@@ -1096,6 +1156,10 @@ def main() -> None:
         _liste("ONVIF_CHEMINS_RTSP") or CHEMINS_RTSP,
         float(os.environ.get("ONVIF_SILENCE_APRES_ENCODAGE_S") or 0),
         int(os.environ.get("ONVIF_PORT_NTP") or PORT_NTP),
+        float(os.environ["ONVIF_NTP_PARESSEUX"]) if os.environ.get("ONVIF_NTP_PARESSEUX") else None,
+        bool(os.environ.get("ONVIF_HEURE_MANUELLE_REFUSEE")),
+        bool(os.environ.get("ONVIF_FUSEAU_DECALAGE_SEUL")),
+        bool(os.environ.get("ONVIF_FUSEAU_FIGE")),
     )
     tls_max = VERSIONS_TLS[os.environ["ONVIF_TLS_MAX"]] if os.environ.get("ONVIF_TLS_MAX") else None
     fils = []

@@ -47,6 +47,9 @@ services:
       - reglage-temps:/temps
       # Fuseau de l'hôte : fuseau du Site par défaut. Le contenu suffit (Docker suit le lien).
       - /etc/localtime:/etc/localtime-hote:ro
+      # Base des fuseaux de l'hôte, tenue à jour par l'OS : décalages envoyés aux Caméras (ADR 0015, second
+      # avenant). Hôte sans ce dossier : Docker le crée vide, la base embarquée dans l'image sert.
+      - /usr/share/zoneinfo:/usr/share/zoneinfo-hote:ro
     # Aucun port publié : l'API n'est servie que par web, sous l'origine HTTPS (/api).
     environment:
       # Compte de l'Administrateur : voir .env.example.

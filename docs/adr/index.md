@@ -22,3 +22,4 @@ Ce n’est ni une spec produit, ni un tutoriel. C’est le journal des choix str
 | [0012](./0012-suivi-stockage-et-conservation-reglable.md) | Suivi stockage et conservation réglable sur le volume actuel |
 | [0013](./0013-relecture-des-enregistrements.md) | Relecture des enregistrements (transport et granularité) |
 | [0014](./0014-serveur-de-temps-du-site.md) | Serveur de temps du Site sur le réseau des caméras |
+| [0015](./0015-mise-a-l-heure-a-chaque-verification.md) | Mise à l’heure des Caméras à chaque vérification |

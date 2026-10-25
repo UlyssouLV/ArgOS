@@ -1,32 +1,20 @@
-# Canal staging : après une suite verte sur main, pousse :staging (pas de rebuild à la Release).
+# Canal staging (early access) : digests :staging pour /th après review + quality gate.
+# Déclenché depuis la branche de version (skill `/ps`), pas depuis main.
 # Paquets publics : GHCR crée les images en privé ; après la première poussée, Danger Zone →
 # Change visibility → Public pour argos-api, argos-web, argos-pont, argos-certificats, argos-temps
 # (tirables ensuite sans authentification). L'API GitHub ne change pas cette visibilité.
 name: Publier images staging
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 concurrency:
   group: publish-staging
   cancel-in-progress: true
 
 jobs:
-  argos-tests:
-    name: ArgOS tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - run: bash scripts/lancer-les-tests.sh
-
   publier-staging:
     name: "Publier :staging"
-    needs: argos-tests
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:

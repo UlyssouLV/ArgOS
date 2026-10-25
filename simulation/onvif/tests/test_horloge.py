@@ -89,6 +89,24 @@ def test_horloge_reglee_relue_a_l_identique_et_qui_avance(camera):
     assert 0 <= ecart.total_seconds() <= 5
 
 
+def test_heure_manuelle_refusee_mode_ntp_accepte(camera_sans_heure_manuelle):
+    camera = camera_sans_heure_manuelle
+
+    refus = camera.appeler(
+        "<tds:SetSystemDateAndTime>"
+        "<tds:DateTimeType>Manual</tds:DateTimeType><tds:DaylightSavings>false</tds:DaylightSavings>"
+        "<tds:UTCDateTime><tt:Date><tt:Year>2026</tt:Year><tt:Month>10</tt:Month><tt:Day>13</tt:Day></tt:Date>"
+        "<tt:Time><tt:Hour>8</tt:Hour><tt:Minute>30</tt:Minute><tt:Second>0</tt:Second></tt:Time></tds:UTCDateTime>"
+        "</tds:SetSystemDateAndTime>"
+    )
+
+    assert (refus.statut, refus.faute) == (400, "ter:InvalidArgVal")
+    # Heure gardée : toujours ses 7 minutes d'avance.
+    assert abs(ecart_s(camera) - AVANCE_D_USINE_S) <= MARGE_S
+    assert passer_en_ntp(camera).faute is None
+    assert camera.appeler(LIRE_HORLOGE).texte(".//tt:DateTimeType") == "NTP"
+
+
 def test_passage_en_ntp_relu(camera):
     camera.appeler(
         "<tds:SetSystemDateAndTime><tds:DateTimeType>NTP</tds:DateTimeType>"
@@ -214,3 +232,148 @@ def test_date_incrustee_suit_l_heure_corrigee_et_le_fuseau(camera_et_serveur_ntp
     incrustee = datetime.strptime(simulee.date_incrustee(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
     assert abs((incrustee - attendue).total_seconds()) <= MARGE_S
+
+
+def pousser_l_heure(
+    camera, moment: datetime, fuseau: str = "CET-1CEST,M3.5.0,M10.5.0/3", heure_ete: bool = False
+):
+    """Mise à l'heure : `SetSystemDateAndTime` en mode manuel, à l'heure UTC `moment`, au `fuseau`."""
+    return camera.appeler(
+        "<tds:SetSystemDateAndTime><tds:DateTimeType>Manual</tds:DateTimeType>"
+        f"<tds:DaylightSavings>{str(heure_ete).lower()}</tds:DaylightSavings>"
+        f"<tds:TimeZone><tt:TZ>{fuseau}</tt:TZ></tds:TimeZone>"
+        f"<tds:UTCDateTime><tt:Date><tt:Year>{moment.year}</tt:Year><tt:Month>{moment.month}</tt:Month>"
+        f"<tt:Day>{moment.day}</tt:Day></tt:Date><tt:Time><tt:Hour>{moment.hour}</tt:Hour>"
+        f"<tt:Minute>{moment.minute}</tt:Minute><tt:Second>{moment.second}</tt:Second></tt:Time></tds:UTCDateTime>"
+        "</tds:SetSystemDateAndTime>"
+    )
+
+
+# --- Caméra qui ne garde que le décalage du fuseau (vraie caméra des tests humains) -------------------------------
+
+
+def date_incrustee(simulee) -> datetime:
+    return datetime.strptime(simulee.date_incrustee(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+
+
+def attendue_a(decalage_h: float) -> datetime:
+    """Heure réelle au décalage `decalage_h` : celle qu'incruste la caméra remise à l'heure."""
+    return datetime.fromtimestamp(time.time() + decalage_h * 3600, UTC)
+
+
+@pytest.mark.parametrize(
+    ("recu", "relu", "decalage_h"),
+    [
+        # Règles d'heure d'été perdues : UTC+1 été comme hiver.
+        ("CET-1CEST,M3.5.0,M10.5.0/3", "CET-1", 1),
+        ("CEST-2", "CEST-2", 2),
+        ("CET-1", "CET-1", 1),
+        ("EST5EDT,M3.2.0,M11.1.0", "EST5", -5),
+        # Fuseau nommé UTC lu à l'envers.
+        ("UTC-2", "UTC2", -2),
+        ("ARGOS-1", "ARGOS-1", 1),
+    ],
+)
+def test_decalage_seul_garde_le_decalage_sans_heure_d_ete(camera_decalage_seul, recu, relu, decalage_h):
+    camera, simulee = camera_decalage_seul
+
+    reponse = pousser_l_heure(camera, datetime.now(UTC), recu, heure_ete=True)
+
+    assert reponse.statut == 200
+    lue = camera.appeler(LIRE_HORLOGE)
+    assert lue.texte(".//tt:TimeZone/tt:TZ") == relu
+    assert lue.texte(".//tt:DaylightSavings") == "false"
+    assert abs((date_incrustee(simulee) - attendue_a(decalage_h)).total_seconds()) <= MARGE_S
+
+
+def test_fuseau_fige_garde_le_sien(camera_fuseau_fige):
+    reponse = pousser_l_heure(camera_fuseau_fige, datetime.now(UTC), "CEST-2")
+
+    assert reponse.statut == 200
+    assert camera_fuseau_fige.appeler(LIRE_HORLOGE).texte(".//tt:TimeZone/tt:TZ") == "AWST-8"
+
+
+# --- Caméra « NTP paresseux » ----------------------------------------------------------------------------------
+
+
+def attendre_requetes(serveur, nombre: int) -> None:
+    fin = time.monotonic() + DELAI_CALAGE_S
+    while serveur.requetes < nombre and time.monotonic() < fin:
+        time.sleep(0.05)
+
+
+def test_paresseuse_calee_s_aligne_sur_le_serveur_puis_derive_sans_le_reinterroger(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    # 2 s de dérive par seconde : alignée sur le serveur, à quelques secondes près.
+    assert abs(ecart_s(camera)) < 2 * ECART_CALE_S
+    time.sleep(3)
+    # 6 s de dérive en 3 s, sans nouvelle interrogation.
+    assert abs(ecart_s(camera) - 6) <= 2 * MARGE_S
+    assert serveur.requetes == 1
+
+
+def test_paresseuse_remise_a_l_heure_en_manuel_puis_gardee_en_mode_ntp(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+    time.sleep(2)
+    assert ecart_s(camera) >= ECART_CALE_S
+
+    # Mise à l'heure puis calage, comme le Site : heure poussée, même serveur, mode NTP.
+    assert pousser_l_heure(camera, datetime.now(UTC)).faute is None
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 2)
+
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+    horloge = camera.appeler(LIRE_HORLOGE)
+    assert horloge.texte(".//tt:DateTimeType") == "NTP"
+    assert horloge.texte(".//tt:TimeZone/tt:TZ") == "CET-1CEST,M3.5.0,M10.5.0/3"
+    assert camera.appeler("<tds:GetNTP/>").texte(".//tt:NTPManual/tt:IPv4Address") == "127.0.0.1"
+
+
+def test_paresseuse_heure_poussee_honoree_sans_interroger_le_serveur(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+    # Un serveur faux d'une heure : une interrogation se verrait.
+    serveur.avance = 3600
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    pousser_l_heure(camera, datetime.now(UTC))
+    # Retour en mode NTP sans nouveau SetNTP : pas d'interrogation, l'heure poussée est gardée.
+    passer_en_ntp(camera)
+    time.sleep(0.5)
+
+    assert serveur.requetes == 1
+    assert abs(ecart_s(camera)) < ECART_CALE_S
+
+
+def test_paresseuse_serveur_recu_en_mode_manuel_interroge_au_passage_en_ntp(camera_paresseuse_et_serveur_ntp):
+    camera, _, serveur = camera_paresseuse_et_serveur_ntp
+
+    regler_ntp(camera, "127.0.0.1")
+    time.sleep(0.3)
+    assert serveur.requetes == 0
+    passer_en_ntp(camera)
+    attendre_requetes(serveur, 1)
+
+    assert serveur.requetes == 1
+
+
+def test_camera_ordinaire_ne_derive_pas(camera_et_serveur_ntp):
+    camera, _, _ = camera_et_serveur_ntp
+    regler_ntp(camera, "127.0.0.1")
+    passer_en_ntp(camera)
+    attendre_ecart(camera, lambda e: abs(e) < ECART_CALE_S)
+
+    time.sleep(2)
+
+    assert abs(ecart_s(camera)) < ECART_CALE_S

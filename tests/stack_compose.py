@@ -34,13 +34,14 @@ CHEMINS_SIMULES = {
     2: "cam/realmonitor?channel=1&subtype=0",
     3: "flux",
     4: "Streaming/Channels/101",
+    5: "Streaming/Channels/101",
 }
 # MAC et IP fixes des Caméras simulées (compose.simulation.yaml), MAC au format affiché par ArgOS.
 MACS_SIMULEES = {n: f"02:a6:05:00:00:0{n}" for n in CHEMINS_SIMULES}
 IPS_SIMULEES = {n: f"172.30.0.1{n}" for n in CHEMINS_SIMULES}
 RESEAU_SIMULATION = "cameras-simulees"
 # Interfaces ONVIF des Caméras simulées (simulation/onvif/README.md).
-SIMULATEURS_ONVIF = ("camera-simulee-2-onvif", "camera-simulee-4-onvif")
+SIMULATEURS_ONVIF = ("camera-simulee-2-onvif", "camera-simulee-4-onvif", "camera-simulee-5-onvif")
 # Lancé dans `api` : envoie une enveloppe SOAP à une adresse ONVIF ; faute SOAP → code de sortie non nul.
 _ENVOYER_SOAP = """
 import sys, urllib.request
@@ -288,11 +289,19 @@ def camera_simulee_2_sans_media_2() -> None:
     compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_SERVICES_2": "image"})
 
 
-def camera_simulee_2_sans_reponse_ntp() -> None:
+def camera_simulee_2_sans_reponse_ntp(heure_manuelle_refusee: bool = False) -> None:
     """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », qui joint ses serveurs NTP sur un port où rien
-    ne répond : calée, elle garde son avance. `remettre_onvif_en_usine` lui rend le port 123.
+    ne répond : calée, elle garde son avance tant qu'on ne la met pas à l'heure. `heure_manuelle_refusee` : elle refuse
+    aussi la Mise à l'heure. `remettre_onvif_en_usine` lui rend le port 123 et l'heure manuelle.
     """
-    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_PORT_NTP_2": "9"})
+    env = {"ONVIF_PORT_NTP_2": "9", "ONVIF_HEURE_MANUELLE_REFUSEE_2": "1" if heure_manuelle_refusee else ""}
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env=env)
+
+
+def camera_simulee_2_au_fuseau_fige() -> None:
+    """Recrée l'interface ONVIF de camera-simulee-2, « sortie d'usine », qui garde son fuseau (`AWST-8`) quel que soit
+    celui reçu. `remettre_onvif_en_usine` lui rend ensuite le fuseau reçu."""
+    compose("up", "-d", "--force-recreate", "--wait", "camera-simulee-2-onvif", env={"ONVIF_FUSEAU_FIGE_2": "1"})
 
 
 def camera_simulee_2_muette_apres_encodage(secondes: int) -> None:

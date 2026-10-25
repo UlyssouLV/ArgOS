@@ -30,13 +30,23 @@ Les valeurs envoyées sont retenues en mémoire et relues ; la vidéo simulée, 
 
 `ONVIF_SILENCE_APRES_ENCODAGE_S` (vide par défaut : jamais) rend la caméra muette ce nombre de secondes après chaque changement d'Encodage accepté (médias 1 et 2) : elle ferme chaque connexion sans répondre, sur tous ses services, comme une caméra qui relance son encodeur. C'est le cas « la caméra n'a pas répondu après l'envoi ». Pour la Caméra simulée 2, compose le lit dans `ONVIF_SILENCE_APRES_ENCODAGE_S_2`.
 
-`ONVIF_PORT_NTP` (`123` par défaut) est le port où la caméra joint ses serveurs NTP. Pour la Caméra simulée 2, compose le lit dans `ONVIF_PORT_NTP_2` : un port où rien ne répond donne une caméra calée sur le Site dont l'horloge garde son avance, le cas « écart » de la vérification des Caméras.
+`ONVIF_PORT_NTP` (`123` par défaut) est le port où la caméra joint ses serveurs NTP. Pour la Caméra simulée 2, compose le lit dans `ONVIF_PORT_NTP_2` : un port où rien ne répond donne une caméra calée sur le Site dont l'horloge garde son avance tant que le Site ne la met pas à l'heure.
+
+`ONVIF_HEURE_MANUELLE_REFUSEE` (vide par défaut) fait refuser à la caméra `SetSystemDateAndTime` en mode manuel (faute `ter:InvalidArgVal`, heure gardée) ; le mode NTP reste accepté. Pour la Caméra simulée 2, compose le lit dans `ONVIF_HEURE_MANUELLE_REFUSEE_2` : avec `ONVIF_PORT_NTP_2` détourné, c'est une caméra que la Mise à l'heure ne peut pas corriger, le cas « écart » de la vérification des Caméras.
+
+`ONVIF_NTP_PARESSEUX` (vide par défaut : vrai client NTP continu) fait de la caméra une caméra « NTP paresseux », dont le NTP est bien réglé mais qui ne se synchronise pas toute seule : sa valeur est la dérive de son horloge, en secondes par heure (voir [Horloge et serveur de temps](#horloge-et-serveur-de-temps)). Pour la Caméra simulée 5, compose le lit dans `ONVIF_NTP_PARESSEUX_5` (`60` par défaut : une minute par heure) ; les tests l'accélèrent.
+
+`ONVIF_FUSEAU_DECALAGE_SEUL` (vide par défaut) fait de la caméra une imitation de la vraie caméra des tests humains de la 0.9.1 ([`Cam 01`](../../docs/cameras/compatibilite.md#cam-01)) : du fuseau reçu, elle ne garde que le nom et le décalage (`CET-1CEST,M3.5.0,M10.5.0/3` → `CET-1`), n'applique jamais l'heure d'été (`DaylightSavings` relu faux) et lit à l'envers un fuseau nommé `UTC` (`UTC-2` → `UTC2`, UTC−2) ; elle incruste l'heure locale qui en découle. La Caméra simulée 5 l'a toujours : sa date incrustée n'est juste que si le Site lui envoie le décalage du moment.
+
+`ONVIF_FUSEAU_FIGE` (vide par défaut) fait garder à la caméra son fuseau (`AWST-8` d'usine) quel que soit celui reçu. Pour la Caméra simulée 2, compose le lit dans `ONVIF_FUSEAU_FIGE_2` : à l'heure en UTC mais au mauvais décalage, c'est le cas « écart » d'une date incrustée fausse.
 
 `ONVIF_TYPES_CREABLES` (`Plain,DateAndTime` par défaut) restreint les types d'Incrustation que `GetOSDOptions` annonce et que `CreateOSD` accepte : c'est le cas d'une caméra qui ne sait pas réafficher une Incrustation cachée. Pour la Caméra simulée 4, compose le lit dans `ONVIF_TYPES_CREABLES_4`.
 
 ## Horloge et serveur de temps
 
 `SetNTP` retient un serveur manuel (`IPv4`, `IPv6` ou `DNS`, le premier reçu) ; `FromDHCP` à `true` est refusé (faute `ter:InvalidArgVal`) : il n'y a pas de DHCP sur le réseau des Caméras simulées. En mode NTP (`SetSystemDateAndTime`), la caméra **interroge vraiment** ce serveur (client SNTP, UDP 123, réponse attendue 2 s) dès qu'elle reçoit le serveur ou le mode, puis toutes les 64 s, et cale son horloge sur l'heure reçue : `GetSystemDateAndTime` relit l'heure corrigée, `GetNTP` le serveur, et le fuseau envoyé est gardé. Serveur injoignable ou nom inconnu : l'horloge reste telle quelle, le service ONVIF continue de répondre. Chaque interrogation est journalisée (`NTP : calée sur 172.30.0.10 (corrigée de -420.012 s)`, `NTP : … injoignable`). En mode manuel, le serveur reçu n'est pas interrogé.
+
+**NTP paresseux** (`ONVIF_NTP_PARESSEUX`) : la caméra n'interroge le serveur reçu qu'une fois après son démarrage et une fois après chaque `SetNTP`, au premier moment où elle est en mode NTP (tout de suite si elle l'est déjà, sinon au passage en mode NTP) ; jamais toutes les 64 s, et un retour en mode NTP sans nouveau `SetNTP` ne l'interroge pas. Son horloge dérive ensuite, en continu, de la vitesse réglée. Elle honore l'heure poussée par `SetSystemDateAndTime` en mode manuel (UTC) : la dérive repart de cette heure-là. `GetSystemDateAndTime` et `GetNTP` rendent mode, serveur et fuseau comme les autres. C'est le cas d'une caméra calée sur le Site qui dérive quand même, que la Mise à l'heure corrige ([ADR 0015](../../docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)).
 
 Dans la stack de dev, les Caméras simulées joignent le Serveur de temps du Site (`temps`) à son IP fixe sur leur réseau, `172.30.0.10` (`compose.simulation.yaml`).
 
@@ -74,8 +84,9 @@ Une vraie caméra ne connaît pas ArgOS : la simulation non plus. Rien n'est imp
 | `camera-simulee-2` | `camera-simulee-2-onvif` | `https://172.30.0.12/onvif/device_service`, `http://172.30.0.12:8899/onvif/device_service` | `admin` / `argos-simulee` (comme le Flux) |
 | `camera-simulee-3` | aucun                    | —                                                                                              | —                                         |
 | `camera-simulee-4` | `camera-simulee-4-onvif` | `http://172.30.0.14/onvif/device_service` (HTTP seulement)                                     | aucun                                     |
+| `camera-simulee-5` | `camera-simulee-5-onvif` | `http://172.30.0.15/onvif/device_service` (HTTP seulement)                                     | aucun                                     |
 
-La 2 a le service image et le média 2, et deux profils aux chemins de son URL RTSP (`/cam/realmonitor?channel=1&subtype=0` et `subtype=1`). La 4 n'a que le média 1, sans service image, un seul profil (`/Streaming/Channels/101`), et son Flux est en H.265 : c'est le cas « Image non réglable » et « Encodage non réglable ».
+La 2 a le service image et le média 2, et deux profils aux chemins de son URL RTSP (`/cam/realmonitor?channel=1&subtype=0` et `subtype=1`). La 4 n'a que le média 1, sans service image, un seul profil (`/Streaming/Channels/101`), et son Flux est en H.265 : c'est le cas « Image non réglable » et « Encodage non réglable ». La 5 est comme la 4 (HTTP seulement, sans identifiants, média 1 seul), en H.264, et « NTP paresseux » : calée sur `temps`, elle dérive d'une minute par heure jusqu'à la prochaine Mise à l'heure.
 
 Les Caméras simulées 1 et 3 ne répondent pas en ONVIF : c'est le cas « caméra sans ONVIF ». La 2 répond en HTTPS sur `443` et garde HTTP sur `8899`, le port des caméras XiongMai, comme beaucoup de vraies caméras ; son certificat auto-signé est créé au premier démarrage dans le volume `camera-simulee-2-onvif-certificat`, et reste le même ensuite (`docker volume rm` en fait créer un nouveau). La 4 ne propose pas HTTPS.
 
@@ -89,7 +100,7 @@ uv sync
 .venv/bin/python -m pytest
 ```
 
-Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP, calage sur un petit serveur NTP de test (port libre à la place de 123) ou serveur injoignable, date incrustée. `tests/flux/` vérifie le calage sur `temps` dans la stack. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé ; silence après un changement d'Encodage ; fichier de la date incrustée) lancent `camera_onvif.py` comme le conteneur.
+Les tests lancent le service dans le processus et l'interrogent en SOAP par HTTP ou HTTPS : réponses aux opérations, état modifié puis relu (WDR non appliqué), refus sans bons identifiants, état « usine » au démarrage, même caméra en HTTPS et en HTTP, calage sur un petit serveur NTP de test (port libre à la place de 123) ou serveur injoignable, caméra « NTP paresseux » (dérive sans nouvelle interrogation, heure poussée gardée), date incrustée. `tests/flux/` vérifie le calage sur `temps` dans la stack. Ceux du lancement par variables d'environnement (HTTPS seul, HTTP seul, les deux ; certificat gardé d'un démarrage à l'autre ; services et profils, média 2 coupé ; silence après un changement d'Encodage ; fichier de la date incrustée) lancent `camera_onvif.py` comme le conteneur.
 
 ## Plus tard
 

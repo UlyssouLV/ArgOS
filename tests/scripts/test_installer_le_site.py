@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, path_sans, timedatectl_simule
 
 SCRIPT = REPO_ROOT / "scripts" / "installer-le-site.sh"
 DELAI_S = 10
@@ -35,6 +35,7 @@ class Ubuntu:
     """Hôte d'installation simulé : préfixe, compte, systemd et Docker via le PATH."""
 
     def __init__(self, dossier: Path) -> None:
+        self.dossier = dossier
         self.prefixe = dossier / "prefixe"
         self.prefixe.mkdir()
         self.racine = self.prefixe / "opt" / "argos"
@@ -45,6 +46,9 @@ class Ubuntu:
         self.journal_usermod = dossier / "usermod.txt"
         self.journal_systemctl = dossier / "systemctl.txt"
         self.journal_docker = dossier / "docker.txt"
+        self.journal_timedatectl = dossier / "timedatectl.txt"
+        self.path = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
+        self.synchro_ntp("yes")
         self._commande("docker", f'echo "$*" >> "{self.journal_docker}"')
         self._commande("chown", "exit 0")
         self._commande(
@@ -55,9 +59,17 @@ class Ubuntu:
         self._commande("usermod", f'echo "$*" >> "{self.journal_usermod}"')
         self._commande("systemctl", f'echo "$*" >> "{self.journal_systemctl}"')
 
+    def synchro_ntp(self, etat: str) -> None:
+        """Synchro NTP de l'OS : `yes` ou `no` (`timedatectl show -p NTP`)."""
+        timedatectl_simule(self.bin, self.journal_timedatectl, etat)
+
+    def sans_timedatectl(self) -> None:
+        (self.bin / "timedatectl").unlink()
+        self.path = path_sans("timedatectl", self.bin, self.dossier)
+
     def installer(self) -> Resultat:
         env = os.environ | {
-            "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+            "PATH": self.path,
             "ARGOS_PREFIX": str(self.prefixe),
             "ARGOS_IDENTIFIANT": "administrateur",
             "ARGOS_MOT_DE_PASSE": "secret",
@@ -155,3 +167,32 @@ def test_compose_up_sans_build_ni_simulation_et_conteneurs_unless_stopped(ubuntu
     compose = (resultat.racine / "compose.yaml").read_text()
     assert "restart: unless-stopped" in compose
     assert not (resultat.racine / "compose.simulation.yaml").exists()
+
+
+def test_synchro_ntp_de_l_os_coupee_est_reactivee_et_annoncee(ubuntu):
+    ubuntu.synchro_ntp("no")
+
+    resultat = ubuntu.installer()
+
+    assert resultat.code == 0, resultat.sortie
+    assert "set-ntp true" in ubuntu._lignes(ubuntu.journal_timedatectl)
+    assert "Synchro NTP de l'hôte réactivée" in resultat.sortie
+
+
+def test_synchro_ntp_deja_active_aucun_reglage(ubuntu):
+    resultat = ubuntu.installer()
+
+    assert resultat.code == 0, resultat.sortie
+    appels = ubuntu._lignes(ubuntu.journal_timedatectl)
+    assert "show -p NTP" in appels
+    assert not any("set-ntp" in appel for appel in appels)
+
+
+def test_sans_timedatectl_l_install_le_dit_et_continue(ubuntu):
+    ubuntu.sans_timedatectl()
+
+    resultat = ubuntu.installer()
+
+    assert resultat.code == 0, resultat.sortie
+    assert "timedatectl introuvable" in resultat.sortie
+    assert any("enable --now" in ligne for ligne in resultat.systemctl)

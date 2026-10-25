@@ -52,7 +52,7 @@ Version **0.7.0** : les images du Site (`api`, `web`, `pont`, `certificats`) por
 
 Version **0.7.1** : chaque pull request vers `main` lance automatiquement la suite de tests complète (équivalent `/t -a`, stack Docker comprise) via GitHub Actions. Le check affiché est **`ArgOS tests`** : à exiger dans la protection de branche de `main` pour qu’une PR rouge ne puisse pas être fusionnée (voir [checks requis sur main](agents/docs/checks-requis-sur-main.md)).
 
-Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` après CI verte sur `main`, canal [Production](docs/glossaire.md#production-canal) par retag manuel vers `X.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
+Version **0.7.2** : les images sont publiées sur `ghcr.io` (canal [Staging](docs/glossaire.md#staging) `:staging` en early access avant `/th`, canal [Production](docs/glossaire.md#production-canal) par retag manuel vers `X.Y.Z` sans rebuild). Un Site Ubuntu s’installe et se met à jour par `docker compose pull` ; `docker save` / `docker load` reste un secours hors ligne (voir [ADR 0010](docs/adr/0010-canaux-staging-et-production-par-retag.md)).
 
 Version **0.8.0** : l’Administrateur active l’**enregistrement continu** d’une Caméra depuis l’Administration (OFF à l’ajout) ; MediaMTX écrit des segments fMP4 (~1 minute) dans le volume Docker `enregistrements`, sans réencodage, avec une conservation d’**une heure**. Un indicateur montre l’état, le chemin du dossier et l’âge du dernier segment ; pas de relecture depuis l’UI (voir [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md), [ADR 0011](docs/adr/0011-enregistrement-continu-par-mediamtx.md)).
 
@@ -61,6 +61,8 @@ Version **0.8.1** : l’onglet **Enregistrement** montre l’espace du volume (t
 Version **0.8.2** : la **[Relecture](docs/glossaire.md#relecture)** se fait dans l’UI. Sur l’onglet **Enregistrement**, un clic sur une Caméra du résumé ouvre sa **timeline** sur la Conservation (plages enregistrées en couleur, trous visibles) ; un clic sur la timeline lit le Segment fermé qui couvre l’instant, depuis son début (ou le plus proche), avec lecture / pause, enchaînement au Segment suivant et vitesses ×1 à ×16. La vidéo vient du pont sans réencodage, derrière la session comme le Live (voir [ADR 0013](docs/adr/0013-relecture-des-enregistrements.md)).
 
 Version **0.9.0** : le Site sert l’heure aux Caméras. Un service `temps` (chrony) sert l’heure en **NTP** (UDP 123) sur le réseau des caméras, sans que les caméras aient accès à internet. L’**[Heure du Site](docs/glossaire.md#heure-du-site)** (source, `pool.ntp.org` par défaut ou l’horloge de la machine du Site, et fuseau) se règle une fois dans **Administration → Heure du Site** ; ArgOS **cale** chaque Caméra ONVIF dessus à l’ajout, à chaque changement puis toutes les heures, et un tableau donne l’état de chaque Caméra (calée, écart, recalée, sans ONVIF, échec). La section Horloge et le bouton « Mettre à l’heure du Site » de la 0.6.0 disparaissent des Réglages de la Caméra. La relecture est désormais **vidéo seule**, ce qui la rend lisible sous Safari pour une Caméra H.265 qui annonce de l’audio (voir [Paramétrer une Caméra](docs/cameras/parametrer-une-camera.md#lheure-de-la-caméra)).
+
+Version **0.9.1** : à chaque vérification (ajout d’une Caméra, changement de l’Heure du Site, toutes les heures, « Vérifier maintenant » et à l’instant de chaque changement d’heure du fuseau), ArgOS **[met à l’heure](docs/glossaire.md#mise-a-l-heure)** chaque Caméra ONVIF active sur l’heure que sert le Site (service `temps`), puis la recale : plus besoin de redémarrer une caméra dont le NTP est bien réglé mais qui dérive. Le tableau de la page Heure du Site montre la **dérive** avant et l’**écart** après, mesurés contre cette même heure (états à l’heure, écart, sans ONVIF, échec). Le fuseau est envoyé au **décalage du moment** (ex. `CEST-2` l’été), pris dans la base des fuseaux de l’hôte : une caméra qui ne sait pas appliquer l’heure d’été incruste quand même l’heure locale du Site. L’install et la mise à jour Ubuntu réactivent la synchro NTP de l’OS si elle est coupée (voir [Caméras qualifiées](docs/cameras/compatibilite.md), [ADR 0015](docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)).
 
 ## Hébergement local
 
@@ -130,6 +132,8 @@ sudo ./scripts/installer-le-site.sh
 
 Le script pose `/opt/argos` (compose de prod, `.env`, scripts de Détection et de mise à jour — pas le clone, pas `compose.simulation.yaml`), tire les images (`docker compose pull`), crée le compte système `argos` (groupe `docker`), et pose l’unité **`/etc/systemd/system/argos.service`** (`systemctl enable --now`) : Compose démarre sans `--build`, les conteneurs ont `restart: unless-stopped`, systemd relance un `compose up` qui échoue (`Restart=on-failure`).
 
+L’install et chaque mise à jour réactivent la synchronisation NTP de l’OS si elle est coupée (`timedatectl set-ntp true`), pour que le repli de `temps` sur l’horloge de la machine donne une heure juste ; aucun privilège n’est donné à un conteneur (voir [ADR 0015](docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)). Les décalages horaires envoyés aux Caméras viennent de la base des fuseaux de l’OS (paquet `tzdata`, tenu à jour par les correctifs de sécurité d’Ubuntu), montée en lecture seule dans `api` : un pays qui change ses règles d’heure est suivi sans nouvelle version d’ArgOS ; sans elle, la base embarquée dans l’image sert. La page Heure du Site dit laquelle est utilisée.
+
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
 Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
@@ -159,7 +163,7 @@ Transférer l’archive, puis sur Ubuntu : `docker load -i argos-images-0.9.0.ta
 
 ## Essayer staging
 
-Canal [Staging](docs/glossaire.md#staging) (`:staging`) : dernier digest vert de `main`. Utile pour valider sur une machine perso **avant** de promouvoir vers la production (workflow Actions **Promouvoir images vers Release**, manuel, une fois staging à jour).
+Canal [Staging](docs/glossaire.md#staging) (`:staging`) : early access de la version en cours (après review + quality gate, avant promo prod). Utile pour les tests humains et pour valider sur une machine perso **avant** de promouvoir vers la production (workflow Actions **Promouvoir images vers Release**, manuel, une fois staging à jour).
 
 **macOS et Windows** : Docker Desktop + clone de ce dépôt. Pas d’installation produit type Ubuntu (`/opt/argos`, systemd) — Windows n’est documenté que pour cet essai.
 

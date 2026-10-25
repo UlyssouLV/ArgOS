@@ -1,4 +1,4 @@
-"""Contrat du workflow qui publie les images :staging sur ghcr après une CI verte sur main."""
+"""Contrat du workflow qui publie les images :staging (early access /ps) sur ghcr."""
 
 from conftest import REPO_ROOT
 
@@ -6,17 +6,16 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "publish-staging.yml"
 SCRIPT = REPO_ROOT / "scripts" / "publier-images-staging.sh"
 
 
-def test_le_workflow_publie_staging_multi_arch_apres_tests_verts_sur_main():
+def test_le_workflow_publie_staging_multi_arch_sur_dispatch():
     yaml = WORKFLOW.read_text()
     script = SCRIPT.read_text()
 
     assert "name: Publier images staging" in yaml
-    assert "push:" in yaml
-    assert "- main" in yaml
+    assert "workflow_dispatch:" in yaml
+    assert "push:" not in yaml
     assert "pull_request" not in yaml
     assert "release:" not in yaml
-    assert "scripts/lancer-les-tests.sh" in yaml
-    assert "needs:" in yaml
+    assert "scripts/lancer-les-tests.sh" not in yaml
     assert "packages: write" in yaml
     assert "secrets.GITHUB_TOKEN" in yaml
     assert "docker/setup-qemu-action@" in yaml
