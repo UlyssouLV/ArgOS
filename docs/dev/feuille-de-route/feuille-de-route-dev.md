@@ -1,6 +1,6 @@
 # Feuille de route de dev
 
-Vers une **1.0.0** rudimentaire : connexion à un **Site**, onglets **Administration** (CRUD caméras, infos, états, réglages) et **Live** (une caméra en grand, bouton suivant), serveur installable, enregistrement. Pas d’IA dans ce périmètre.
+Jusqu’à la **0.9.x**, le Site couvre déjà connexion, Administration, Live, enregistrement / relecture et calage horaire des Caméras. La **1.0.0** vise une **refonte graphique totale** de l’interface (identité visuelle figée au grilling) et une Conservation en jours. Pas d’IA dans ce périmètre.
 
 Contraintes transverses :
 
@@ -29,17 +29,25 @@ Contraintes transverses :
 - **0.7.2** — Livraison continue : images ghcr multi-arch (`:staging` après CI verte sur `main`, promotion digests aux Releases `vX.Y.Z`), install / MAJ Ubuntu par pull + artefact de Release, doc VLAN et staging machines perso ([PR #113](https://github.com/UlyssouLV/ArgOS/pull/113), [spec](../../specs/v0.7.2-livraison-continue.md), [ADR 0010](../../adr/0010-canaux-staging-et-production-par-retag.md)).
 - **0.8.0** — Enregistrement continu : segments fMP4 (~1 min, rétention 1 h) via MediaMTX, volume Docker nommé, interrupteur et indicateur dans l’Administration ([PR #120](https://github.com/UlyssouLV/ArgOS/pull/120), [spec](../../specs/v0.8.0-enregistrement-continu.md), [ADR 0011](../../adr/0011-enregistrement-continu-par-mediamtx.md)).
 - **0.8.1** — Suivi du stockage et du débit d’écriture : page Enregistrement (espace volume, débits, tenue), Conservation Site 1–24 h et Seuil de place disque (signal seul) ([PR #126](https://github.com/UlyssouLV/ArgOS/pull/126), [spec](../../specs/v0.8.1-suivi-du-stockage-et-du-debit-decriture.md), [ADR 0012](../../adr/0012-suivi-stockage-et-conservation-reglable.md)).
-- **0.8.2** — Relecture des enregistrements : sur la page Enregistrement, une Caméra du résumé ouvre sa timeline sur la Conservation (plages colorées, trous visibles, Segment en écriture exclu) ; un clic lit le Segment fermé depuis son début, play / pause, enchaînement, vitesses ×1…×16 ; vidéo du serveur playback MediaMTX relayée par nginx derrière la session, sans réencodage (H.265 lisible là où le Live l’est). Une Caméra à la fois, pas de seek à la seconde (1.0.0) ni de téléchargement (Plus tard) ([PR #132](https://github.com/UlyssouLV/ArgOS/pull/132), [spec](../../specs/v0.8.2-relecture-des-enregistrements.md), [ADR 0013](../../adr/0013-relecture-des-enregistrements.md)).
+- **0.8.2** — Relecture des enregistrements : sur la page Enregistrement, une Caméra du résumé ouvre sa timeline sur la Conservation (plages colorées, trous visibles, Segment en écriture exclu) ; un clic lit le Segment fermé depuis son début, play / pause, enchaînement, vitesses ×1…×16 ; vidéo du serveur playback MediaMTX relayée par nginx derrière la session, sans réencodage (H.265 lisible là où le Live l’est). Une Caméra à la fois, pas de seek à la seconde ni de téléchargement (Plus tard) ([PR #132](https://github.com/UlyssouLV/ArgOS/pull/132), [spec](../../specs/v0.8.2-relecture-des-enregistrements.md), [ADR 0013](../../adr/0013-relecture-des-enregistrements.md)).
 - **0.9.0** — Le Site, serveur de temps des Caméras : service `temps` (chrony) qui sert le NTP sur le réseau des caméras (macvlan, ou UDP 123 publié sur l’hôte), Heure du Site (source `pool.ntp.org` ou horloge du serveur, fuseau) réglée une fois dans l’Administration, chaque Caméra ONVIF calée dessus (`SetNTP`, mode NTP, fuseau du Site) à l’ajout, au changement et toutes les heures, avec un état par Caméra ; section Horloge et « Mettre à l’heure du Site » de la 0.6.0 retirées des Réglages. Relecture vidéo seule et réponses par plages (`206`) : Safari lit les Segments H.265 d’une Caméra qui annonce de l’audio ([#141](https://github.com/UlyssouLV/ArgOS/issues/141)) ([PR #140](https://github.com/UlyssouLV/ArgOS/pull/140), [spec](../../specs/v0.9.0-le-site-serveur-de-temps-des-cameras.md), [ADR 0014](../../adr/0014-serveur-de-temps-du-site.md)).
 - **0.9.1** — Mise à l’heure à chaque vérification : à l’ajout, au changement de l’Heure du Site, toutes les heures, sur « Vérifier maintenant » et à l’instant de chaque changement d’heure, le Site pousse l’heure du Serveur de temps du Site dans chaque Caméra ONVIF active puis la recale ; dérive (avant) et écart (après) mesurés contre le Serveur de temps du Site, états à l’heure / écart / sans ONVIF / échec ; fuseau envoyé au décalage du moment (sans règles d’heure d’été, `DaylightSavings=false`) depuis la base des fuseaux de l’hôte (embarquée en secours), décalage relu vérifié ; install / MAJ Ubuntu réactivent la synchro NTP de l’OS ; Caméra simulée « NTP paresseux » ; caméras qualifiées documentées ([PR #149](https://github.com/UlyssouLV/ArgOS/pull/149), [spec](../../specs/v0.9.1-mise-a-l-heure-a-chaque-verification.md), [ADR 0015](../../adr/0015-mise-a-l-heure-a-chaque-verification.md), [doc](../../features/heure/serveur-de-temps-et-calage.md)).
 
-## Prochaine : 1.0.0 — Fil rouge Site → Live RTSP
+## Prochaine : 1.0.0 — Refonte graphique totale de l’interface et Conservation en jours
 
-**Objectif.** À redéfinir : la vidéo arrive déjà en 0.3.0. Relier bout en bout login, caméras du Site et Live sur les flux RTSP (simulés) pour qu’un utilisateur voie réellement la vidéo et puisse enchaîner les caméras — seulement si ce fil rouge a encore un job distinct une fois la 0.9.1 livrée.
+**Objectif.** Remplacer l’UI actuelle (login, Administration, Live, Enregistrement / relecture, Heure du Site, Réglages caméra…) par une interface **entièrement redessinée**, avec une identité visuelle unique et cohérente. Au **grilling** de la version, les propositions de style sont **faites et validées** avant toute implémentation : nombre de pages et de fenêtres / panneaux, polices, tailles, emplacements des éléments, hiérarchie visuelle, navigation, états vides / erreur / chargement — assez précis pour que la spec et les tickets ne réinventent pas le look au fil de l’eau. Les parcours existants restent utilisables (mêmes capacités produit) sous ce nouveau habillage. Seule fonction métier ajoutée : la **Conservation** passe de 1–24 h à **1 h – 30 jours** (saisie en jours + heures), et la Relecture montre un jour à la fois.
 
-**Hors périmètre :** IA, PTZ, VPN, chiffrement des identifiants (Plus tard).
+**Hors périmètre :** autres fonctions métier (seek à la seconde, téléchargement d’enregistrements, PTZ, IA, VPN, chiffrement des identifiants, postes kiosque…) ; interface mobile ; thème clair ; refonte hors UI (API hors Conservation, Compose, install) ; style du site de documentation.
 
 ## Plus tard (pas encore numéroté)
+
+### Seek à la seconde dans la relecture
+
+Depuis la 0.8.2, un clic lit le Segment depuis son début ; pouvoir se positionner à la seconde près sur la timeline (promis un temps pour la 1.0.0, reporté hors refonte graphique).
+
+### Interface mobile
+
+La 1.0.0 vise le poste fixe et la tablette (≥ 768 px). Sur téléphone : navigation et Live adaptés au petit écran (rail en barre basse ou menu, Live plein écran, tableaux en cartes).
 
 ### Réencodage H.265 → H.264 à la demande
 
