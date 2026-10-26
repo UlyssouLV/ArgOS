@@ -12,6 +12,8 @@ PLATEFORMES="linux/amd64,linux/arm64"
 BRANCHE="${GITHUB_REF_NAME:-$(git branch --show-current)}"
 VERSION="$(sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' <<<"$BRANCHE")"
 VERSION="${VERSION:-staging}"
+# Commit construit : la promotion refuse un :staging qui ne vient pas du commit de la Release.
+REVISION="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 
 publier() {
     local etiquette="$1" contexte="$2"
@@ -19,6 +21,7 @@ publier() {
         --platform "$PLATEFORMES" \
         --provenance=false \
         --label "org.opencontainers.image.source=https://github.com/UlyssouLV/ArgOS" \
+        --label "org.opencontainers.image.revision=$REVISION" \
         --tag "$etiquette" \
         --build-arg "ARGOS_VERSION=$VERSION" \
         --push \

@@ -363,7 +363,7 @@ TDD du ticket (plugin `/implement`). La **fin** : **`/t`**, **`/c -p`**, **`/cci
 
 **Corps :** « Prépare le staging » après une `/code-review` acceptée.
 
-Quality gate (`/qg -w`, `/cqg` si besoin), publie `:staging` depuis la branche de version, puis handoff **`/th`**. Skill `preparer-staging`.
+Quality gate (`/qg -w`, `/cqg` si besoin), publie `:staging` depuis la branche de version, puis handoff **`/th`** (ou Finalise si `/th` est déjà fait : `:staging` est publié quand même). Skill `preparer-staging`.
 
 **Exemple :**
 

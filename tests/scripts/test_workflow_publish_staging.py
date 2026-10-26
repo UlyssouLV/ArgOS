@@ -37,3 +37,6 @@ def test_le_workflow_publie_staging_multi_arch_sur_dispatch():
     # Le digest :staging est promu tel quel : l'UI y porte déjà la version X.Y.Z de la branche.
     assert '--build-arg "ARGOS_VERSION=$VERSION"' in script
     assert "GITHUB_REF_NAME" in script
+    # Commit construit, relu par la promotion avant de copier :staging vers la Release.
+    assert '--label "org.opencontainers.image.revision=$REVISION"' in script
+    assert "GITHUB_SHA" in script
