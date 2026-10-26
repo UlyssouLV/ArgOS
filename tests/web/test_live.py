@@ -142,6 +142,11 @@ def camera_affichee(page: Page):
     return page.get_by_role("heading", level=2)
 
 
+def barre_camera(page: Page):
+    """Barre fine au-dessus de la vidéo : nom, état, codec et position de la Caméra courante."""
+    return page.get_by_role("region", name="Caméra courante")
+
+
 def attendre_que_la_video_joue(page: Page) -> None:
     page.wait_for_function(
         "() => document.querySelector('video')?.currentTime > 0", timeout=DELAI_VIDEO_MS
@@ -156,24 +161,81 @@ def connexions_ouvertes(page: Page) -> int:
     return page.evaluate("() => window.__connexions.filter((pc) => pc.signalingState !== 'closed').length")
 
 
-def test_live_ouvre_la_premiere_camera_active_par_nom_et_la_video_joue(seules_actives, creer, live: Page):
+def test_live_ouvre_la_premiere_camera_active_par_nom_et_la_video_joue(seules_actives, creer, api, live: Page):
     premiere = creer(url_simulee(1), "Portail")
     creer(url_simulee(2))
+    attendre_codec(api, premiere, "H264")
     live.reload()
 
     expect(camera_affichee(live)).to_have_text(premiere)
-    expect(live.locator(".live-en-tete")).to_contain_text("Portail")
+    barre = barre_camera(live)
+    expect(barre).to_contain_text("Portail")
+    expect(barre).to_contain_text("H.264")
+    expect(barre).to_contain_text("1 / 2")
+    expect(barre).to_contain_text("En ligne", timeout=DELAI_VIDEO_MS)
     attendre_que_la_video_joue(live)
 
 
-def test_suivant_et_fleche_droite_font_le_tour_des_cameras_actives(seules_actives, creer, live: Page):
+def test_camera_injoignable_affichee_hors_ligne_dans_la_barre(seules_actives, creer, live: Page):
+    creer(url_injoignable())
+    live.reload()
+
+    expect(barre_camera(live)).to_contain_text("Hors ligne", timeout=DELAI_VIDEO_MS)
+    expect(barre_camera(live)).to_contain_text("1 / 1")
+
+
+def test_precedente_et_fleche_gauche_font_le_tour_a_l_envers(seules_actives, creer, live: Page):
+    premiere = creer(url_simulee(1))
+    seconde = creer(url_simulee(2))
+    troisieme = creer(url_simulee(3))
+    live.reload()
+    expect(camera_affichee(live)).to_have_text(premiere)
+
+    live.get_by_role("button", name="Précédente").click()
+
+    expect(camera_affichee(live)).to_have_text(troisieme)
+    expect(barre_camera(live)).to_contain_text("3 / 3")
+
+    live.keyboard.press("ArrowLeft")
+
+    expect(camera_affichee(live)).to_have_text(seconde)
+    expect(barre_camera(live)).to_contain_text("2 / 3")
+    attendre_que_la_video_joue(live)
+    assert connexions_ouvertes(live) == 1
+
+
+def test_fleches_sans_effet_quand_le_focus_est_dans_un_champ(seules_actives, creer, live: Page):
+    premiere = creer(url_simulee(1))
+    creer(url_simulee(2))
+    live.reload()
+    expect(camera_affichee(live)).to_have_text(premiere)
+    # Le Live n'a pas de champ à lui : un champ posé dans la page tient lieu de champ d'une boîte de dialogue.
+    live.evaluate(
+        """() => {
+          const champ = document.createElement("input");
+          champ.setAttribute("aria-label", "Champ de test");
+          champ.value = "texte";
+          document.querySelector("main").prepend(champ);
+        }"""
+    )
+    live.get_by_label("Champ de test").focus()
+
+    live.keyboard.press("ArrowRight")
+    live.keyboard.press("ArrowLeft")
+    live.keyboard.press("ArrowLeft")
+
+    expect(camera_affichee(live)).to_have_text(premiere)
+    expect(barre_camera(live)).to_contain_text("1 / 2")
+
+
+def test_suivante_et_fleche_droite_font_le_tour_des_cameras_actives(seules_actives, creer, live: Page):
     premiere = creer(url_simulee(1))
     seconde = creer(url_simulee(2))
     live.reload()
     expect(camera_affichee(live)).to_have_text(premiere)
     attendre_que_la_video_joue(live)
 
-    live.get_by_role("button", name="Suivant").click()
+    live.get_by_role("button", name="Suivante").click()
 
     expect(camera_affichee(live)).to_have_text(seconde)
     attendre_que_la_video_joue(live)
@@ -243,7 +305,7 @@ def test_live_camera_h265_que_le_navigateur_echoue_a_decoder_affiche_le_message_
     expect(live.get_by_text("Flux indisponible")).to_be_hidden()
 
 
-def test_live_camera_h265_injoignable_retente_en_hls_puis_suivant_ferme_le_lecteur_hls(
+def test_live_camera_h265_injoignable_retente_en_hls_puis_suivante_ferme_le_lecteur_hls(
     seules_actives, creer, en_h265, requetes_flux, live: Page
 ):
     injoignable = creer(url_injoignable())
@@ -259,7 +321,7 @@ def test_live_camera_h265_injoignable_retente_en_hls_puis_suivant_ferme_le_lecte
     assert len(hls(requetes_flux)) >= 2
     assert whep(requetes_flux) == []
 
-    live.get_by_role("button", name="Suivant").click()
+    live.get_by_role("button", name="Suivante").click()
 
     expect(camera_affichee(live)).to_have_text(h264)
     attendre_que_la_video_joue(live)
@@ -282,7 +344,7 @@ def test_live_d_une_camera_h264_a_une_camera_h265_ferme_la_connexion_webrtc(
     attendre_que_la_video_joue(live)
     assert len(whep(requetes_flux)) >= 1
 
-    live.get_by_role("button", name="Suivant").click()
+    live.get_by_role("button", name="Suivante").click()
 
     expect(camera_affichee(live)).to_have_text(h265)
     expect(live.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible()

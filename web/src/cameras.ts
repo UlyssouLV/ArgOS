@@ -60,6 +60,13 @@ export function texteCodec(codec: string | null): string {
   return codec === null ? "inconnu" : (CODECS[codec] ?? codec);
 }
 
+const ETATS: Record<Etat, string> = { online: "En ligne", offline: "Hors ligne", unknown: "Inconnu" };
+
+/** État à afficher à côté de sa pastille : « En ligne », « Hors ligne », « Inconnu ». */
+export function texteEtat(etat: Etat): string {
+  return ETATS[etat];
+}
+
 const RAISONS_ETAT: Record<RaisonEtat, string> = {
   autre_appareil: "autre appareil à cette adresse",
 };

@@ -393,22 +393,6 @@
   color: #b3261e;
 }
 
-.live-en-tete {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.live-en-tete h2 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.live-en-tete button {
-  margin-left: auto;
-}
-
 .lecteur {
   position: relative;
   aspect-ratio: 16 / 9;
