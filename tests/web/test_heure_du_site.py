@@ -41,7 +41,7 @@ def heure_d_origine(api):
 
 @pytest.fixture
 def heure_du_site(administration: Page) -> Page:
-    administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
+    administration.get_by_role("navigation", name="Navigation").get_by_role("link", name="Heure du Site").click()
     expect(administration).to_have_url(re.compile(r"/administration/heure-du-site$"))
     expect(administration.get_by_role("heading", name="Heure du Site")).to_be_visible()
     return administration
@@ -127,7 +127,7 @@ def test_tableau_des_cameras_et_verifier_maintenant(administration: Page, api, n
     for nom, numero in ((a_l_heure, 2), (sans_onvif, 1)):
         reponse = api.post("/api/cameras", json={"nom": nom, "url_rtsp": url_camera_simulee(numero, unique("ui"))})
         assert reponse.status_code == 201, reponse.text
-    administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
+    administration.get_by_role("navigation", name="Navigation").get_by_role("link", name="Heure du Site").click()
     tableau = administration.get_by_role("table", name="Caméras")
 
     expect(tableau.get_by_role("columnheader")).to_have_text(

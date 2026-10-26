@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 
+import { AncienStyle } from "@/components/AncienStyle";
+import { EnTeteDePage } from "@/components/EnTeteDePage";
 import { listerCameras, messageEchec, type Camera } from "../cameras";
 import { LecteurFlux } from "../LecteurFlux";
 
@@ -53,32 +55,36 @@ export function Live() {
   }, [suivante]);
 
   return (
-    <section className="live">
-      <h1>Live</h1>
-      {erreur && (
-        <p className="erreur" role="alert">
-          {erreur}
-        </p>
-      )}
-      {actives?.length === 0 && (
-        <p>
-          Aucune Caméra active. En ajouter ou en réactiver dans <Link to="/administration">Administration</Link>.
-        </p>
-      )}
-      {courante && (
-        <>
-          <div className="live-en-tete">
-            <h2>{courante.nom}</h2>
-            <span className="emplacement">{courante.emplacement ?? "—"}</span>
-            <span className={`etat etat-${courante.etat}`}>{courante.etat}</span>
-            <button type="button" onClick={suivante}>
-              Suivant
-            </button>
-          </div>
-          {/* Une clé par Flux : changer de Caméra démonte le lecteur, qui ferme sa connexion (WebRTC ou HLS). */}
-          <LecteurFlux key={courante.chemin_flux} cheminFlux={courante.chemin_flux} codec={courante.codec} />
-        </>
-      )}
-    </section>
+    <>
+      <EnTeteDePage titre="Live" />
+      <AncienStyle>
+        <section className="live">
+          {erreur && (
+            <p className="erreur" role="alert">
+              {erreur}
+            </p>
+          )}
+          {actives?.length === 0 && (
+            <p>
+              Aucune Caméra active. En ajouter ou en réactiver dans <Link to="/administration/cameras">Administration</Link>.
+            </p>
+          )}
+          {courante && (
+            <>
+              <div className="live-en-tete">
+                <h2>{courante.nom}</h2>
+                <span className="emplacement">{courante.emplacement ?? "—"}</span>
+                <span className={`etat etat-${courante.etat}`}>{courante.etat}</span>
+                <button type="button" onClick={suivante}>
+                  Suivant
+                </button>
+              </div>
+              {/* Une clé par Flux : changer de Caméra démonte le lecteur, qui ferme sa connexion (WebRTC ou HLS). */}
+              <LecteurFlux key={courante.chemin_flux} cheminFlux={courante.chemin_flux} codec={courante.codec} />
+            </>
+          )}
+        </section>
+      </AncienStyle>
+    </>
   );
 }

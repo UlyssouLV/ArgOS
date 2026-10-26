@@ -53,7 +53,8 @@ def test_le_repli_compose_sans_env_est_la_version_de_production_courante():
     version = _argos_version_exemple()
     compose = (REPO_ROOT / "compose.yaml").read_text()
     assert compose.count(f"${{ARGOS_VERSION:-{version}}}") == 5
-    assert compose.count("${ARGOS_VERSION:-") == 5
+    # Étiquettes d'image seulement : l'argument de build de web a son propre repli (dev).
+    assert compose.count(":${ARGOS_VERSION:-") == 5
 
 
 def test_les_images_du_site_portent_le_registre_et_argos_version(tmp_path):
@@ -62,6 +63,14 @@ def test_les_images_du_site_portent_le_registre_et_argos_version(tmp_path):
     for service, nom in IMAGES_DU_SITE.items():
         assert config["services"][service]["image"] == f"ghcr.io/ulyssoulv/{nom}:{VERSION}"
         assert "build" in config["services"][service]
+
+
+def test_web_recoit_argos_version_au_build_et_dev_sans_elle(tmp_path):
+    avec = config_prod(tmp_path, "compose.yaml")["services"]["web"]["build"]["args"]
+    sans = config_prod(tmp_path, "compose.yaml", env="")["services"]["web"]["build"]["args"]
+
+    assert avec["ARGOS_VERSION"] == VERSION
+    assert sans["ARGOS_VERSION"] == "dev"
 
 
 def test_temps_publie_seulement_l_udp_123_sans_regler_l_horloge_de_l_hote(tmp_path):

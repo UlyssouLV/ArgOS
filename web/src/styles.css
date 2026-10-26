@@ -1,14 +1,34 @@
-:root {
-  font-family: system-ui, sans-serif;
+/* Ancienne feuille, pour les pages pas encore redessinées en 1.0.0 (enveloppe AncienStyle).
+   Importée dans le calque « ancien » d'index.css ; disparaît avec la dernière page migrée. */
+.ancien-style {
+  padding: 1.5rem;
   color: #1d2328;
   background: #f4f5f7;
+  min-height: 100%;
 }
 
-body {
-  margin: 0;
+.ancien-style h2 {
+  margin: 1.25rem 0 0.6rem;
+  font-size: 1.3rem;
+  font-weight: 600;
 }
 
-button {
+.ancien-style h3,
+.ancien-style h4 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+}
+
+.ancien-style p {
+  margin: 0.5rem 0;
+}
+
+.ancien-style a {
+  color: #0b57d0;
+  text-decoration: underline;
+}
+
+.ancien-style button {
   font: inherit;
   padding: 0.4rem 0.9rem;
   border: 1px solid #1d2328;
@@ -17,46 +37,18 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
+.ancien-style button:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-input {
+.ancien-style input,
+.ancien-style select {
   font: inherit;
   padding: 0.4rem;
   border: 1px solid #9aa3ab;
   border-radius: 4px;
-}
-
-.chargement {
-  padding: 2rem;
-}
-
-.connexion {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-}
-
-.connexion form {
-  display: grid;
-  gap: 1rem;
-  width: min(22rem, 90vw);
-  padding: 2rem;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
-}
-
-.connexion h1 {
-  margin: 0;
-  text-align: center;
-}
-
-.connexion label {
-  display: grid;
-  gap: 0.3rem;
 }
 
 .erreur {
@@ -64,63 +56,9 @@ input {
   color: #b3261e;
 }
 
-.en-tete {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.6rem 1.5rem;
-  background: #1d2328;
-  color: #fff;
-}
-
-.marque {
-  font-weight: bold;
-}
-
-.onglets {
-  display: flex;
-  gap: 1rem;
-  flex: 1;
-}
-
-.onglets a {
-  color: #c9d1d9;
-  text-decoration: none;
-  padding: 0.3rem 0;
-  border-bottom: 2px solid transparent;
-}
-
-.onglets a.active {
-  color: #fff;
-  border-bottom-color: #fff;
-}
-
-.onglets .pastille-seuil {
-  display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-left: 0.35rem;
-  border-radius: 50%;
-  background: #c45c26;
-  vertical-align: middle;
-}
-
-.contenu {
-  padding: 1.5rem;
-}
-
 .administration h2 {
   margin: 1.5rem 0 0.75rem;
   font-size: 1.1rem;
-}
-
-.pages-administration {
-  margin: 0 0 1rem;
-}
-
-.heure-du-site .fil {
-  margin: 0 0 0.5rem;
-  color: #555;
 }
 
 .heure-du-site .etat-heure {
@@ -450,7 +388,7 @@ input {
   font-size: 0.85em;
 }
 
-button.danger {
+.ancien-style button.danger {
   border-color: #b3261e;
   color: #b3261e;
 }
@@ -766,4 +704,14 @@ button.danger {
 .commandes-relecture .vitesses [aria-pressed="true"] {
   font-weight: bold;
   outline: 2px solid #1f5fa8;
+}
+
+.relecture-page nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.relecture-page .camera-relecture.active {
+  font-weight: bold;
 }

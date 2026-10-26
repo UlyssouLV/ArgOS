@@ -30,16 +30,16 @@ def enregistrement(page: Page, administrateur) -> Page:
     return page
 
 
-def test_onglet_enregistrement_a_cote_d_administration_et_live(page: Page, administrateur):
+def test_entree_enregistrement_du_rail_a_cote_de_live_et_des_cameras(page: Page, administrateur):
     page.goto("/connexion")
     se_connecter(page, **administrateur)
 
-    bandeau = page.get_by_role("banner")
-    expect(bandeau.get_by_role("link", name="Administration")).to_be_visible()
-    expect(bandeau.get_by_role("link", name="Enregistrement")).to_be_visible()
-    expect(bandeau.get_by_role("link", name="Live")).to_be_visible()
+    rail = page.get_by_role("navigation", name="Navigation")
+    expect(rail.get_by_role("link", name="Live")).to_be_visible()
+    expect(rail.get_by_role("link", name="Enregistrement")).to_be_visible()
+    expect(rail.get_by_role("link", name="Caméras")).to_be_visible()
 
-    bandeau.get_by_role("link", name="Enregistrement").click()
+    rail.get_by_role("link", name="Enregistrement").click()
     expect(page).to_have_url(re.compile(r"/enregistrement$"))
     expect(page.get_by_role("heading", name="Enregistrement")).to_be_visible()
 

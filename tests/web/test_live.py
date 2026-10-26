@@ -7,6 +7,7 @@ La base n'est jamais effacée. Pour maîtriser l'ordre et le tour des Caméras a
 actives qui ne sont pas au test sont désactivées le temps du test, puis réactivées.
 """
 
+import re
 import time
 
 import pytest
@@ -190,7 +191,8 @@ def test_aucune_camera_active_propose_d_aller_dans_administration(seules_actives
 
     live.get_by_role("main").get_by_role("link", name="Administration").click()
 
-    expect(live.get_by_role("heading", name="Administration")).to_be_visible()
+    expect(live).to_have_url(re.compile(r"/administration/cameras$"))
+    expect(live.get_by_role("heading", name="Caméras", level=1)).to_be_visible()
 
 
 def test_camera_active_injoignable_affiche_flux_indisponible(seules_actives, creer, live: Page):

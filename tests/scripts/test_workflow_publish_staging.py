@@ -34,3 +34,6 @@ def test_le_workflow_publie_staging_multi_arch_sur_dispatch():
     assert "publier ghcr.io/ulyssoulv/argos-certificats:staging certificats" in script
     assert "publier ghcr.io/ulyssoulv/argos-temps:staging temps" in script
     assert "argos-temps" in yaml
+    # Le digest :staging est promu tel quel : l'UI y porte déjà la version X.Y.Z de la branche.
+    assert '--build-arg "ARGOS_VERSION=$VERSION"' in script
+    assert "GITHUB_REF_NAME" in script

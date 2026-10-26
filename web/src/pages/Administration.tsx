@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router";
 
+import { AncienStyle } from "@/components/AncienStyle";
+import { EnTeteDePage } from "@/components/EnTeteDePage";
 import {
   listerCameras,
   messageEchec,
@@ -70,101 +71,101 @@ export function Administration() {
   }
 
   return (
-    <section className="administration">
-      <h1>Administration</h1>
-      <nav className="pages-administration" aria-label="Réglages du Site">
-        <Link to="/administration/heure-du-site">Heure du Site</Link>
-      </nav>
-      {erreur && (
-        <p className="erreur" role="alert">
-          {erreur}
-        </p>
-      )}
-      <h2>Caméras</h2>
-      {cameras?.length === 0 && <p>Aucune Caméra : en ajouter une depuis « Détecter des Caméras » ci-dessous.</p>}
-      {cameras && cameras.length > 0 && (
-        <table className="cameras">
-          <thead>
-            <tr>
-              <th>Nom</th>
-              <th>Emplacement</th>
-              <th>Hôte:port</th>
-              <th>MAC</th>
-              <th>URL RTSP</th>
-              <th>Active</th>
-              <th>Enregistrement</th>
-              <th>État</th>
-              <th>Codec</th>
-              <th>Dernière vérification</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cameras.map((camera) =>
-              enEdition === camera.id ? (
-                <tr key={camera.id}>
-                  <td colSpan={11}>
-                    <FormulaireCamera
-                      titre={`Modifier ${camera.nom}`}
-                      initiale={camera}
-                      libelle="Enregistrer"
-                      onValider={(saisie) => enregistrer(camera.id, saisie)}
-                      onAnnuler={() => setEnEdition(null)}
-                    />
-                  </td>
+    <>
+      <EnTeteDePage titre="Caméras" surtitre="Administration" />
+      <AncienStyle>
+        <section className="administration">
+          {erreur && (
+            <p className="erreur" role="alert">
+              {erreur}
+            </p>
+          )}
+          {cameras?.length === 0 && <p>Aucune Caméra : en ajouter une depuis « Détecter des Caméras » ci-dessous.</p>}
+          {cameras && cameras.length > 0 && (
+            <table className="cameras">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Emplacement</th>
+                  <th>Hôte:port</th>
+                  <th>MAC</th>
+                  <th>URL RTSP</th>
+                  <th>Active</th>
+                  <th>Enregistrement</th>
+                  <th>État</th>
+                  <th>Codec</th>
+                  <th>Dernière vérification</th>
+                  <th>Actions</th>
                 </tr>
-              ) : (
-                <Fragment key={camera.id}>
-                  <tr>
-                    <td>{camera.nom}</td>
-                    <td>{camera.emplacement ?? "—"}</td>
-                    <td>
-                      {camera.hote}:{camera.port}
-                    </td>
-                    <td className="mac">{texteMac(camera.mac)}</td>
-                    <td className="url">{camera.url_rtsp}</td>
-                    <td>{camera.active ? "active" : "désactivée"}</td>
-                    <td>
-                      <IndicateurEnregistrement
-                        camera={camera}
-                        onChanger={(enregistrement) => agir(() => modifierCamera(camera.id, { enregistrement }))}
-                      />
-                    </td>
-                    <td>
-                      <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
-                      <Raison raison={camera.raison_etat} />
-                    </td>
-                    <td>{texteCodec(camera.codec)}</td>
-                    <td>{dateVerification(camera)}</td>
-                    <td>
-                      <div className="actions">
-                        <ActionsCamera
-                          camera={camera}
-                          confirmation={aSupprimer === camera.id}
-                          onModifier={() => setEnEdition(camera.id)}
-                          onReglages={() => setEnReglages(camera.id)}
-                          onActiver={(active) => agir(() => modifierCamera(camera.id, { active }))}
-                          onDemanderSuppression={(demande) => setASupprimer(demande ? camera.id : null)}
-                          onSupprimer={() => agir(() => supprimerCamera(camera.id))}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                  {enReglages === camera.id && camera.active && (
-                    <tr>
+              </thead>
+              <tbody>
+                {cameras.map((camera) =>
+                  enEdition === camera.id ? (
+                    <tr key={camera.id}>
                       <td colSpan={11}>
-                        <ReglagesCamera camera={camera} onFermer={() => setEnReglages(null)} />
+                        <FormulaireCamera
+                          titre={`Modifier ${camera.nom}`}
+                          initiale={camera}
+                          libelle="Enregistrer"
+                          onValider={(saisie) => enregistrer(camera.id, saisie)}
+                          onAnnuler={() => setEnEdition(null)}
+                        />
                       </td>
                     </tr>
-                  )}
-                </Fragment>
-              ),
-            )}
-          </tbody>
-        </table>
-      )}
-      <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
-    </section>
+                  ) : (
+                    <Fragment key={camera.id}>
+                      <tr>
+                        <td>{camera.nom}</td>
+                        <td>{camera.emplacement ?? "—"}</td>
+                        <td>
+                          {camera.hote}:{camera.port}
+                        </td>
+                        <td className="mac">{texteMac(camera.mac)}</td>
+                        <td className="url">{camera.url_rtsp}</td>
+                        <td>{camera.active ? "active" : "désactivée"}</td>
+                        <td>
+                          <IndicateurEnregistrement
+                            camera={camera}
+                            onChanger={(enregistrement) => agir(() => modifierCamera(camera.id, { enregistrement }))}
+                          />
+                        </td>
+                        <td>
+                          <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
+                          <Raison raison={camera.raison_etat} />
+                        </td>
+                        <td>{texteCodec(camera.codec)}</td>
+                        <td>{dateVerification(camera)}</td>
+                        <td>
+                          <div className="actions">
+                            <ActionsCamera
+                              camera={camera}
+                              confirmation={aSupprimer === camera.id}
+                              onModifier={() => setEnEdition(camera.id)}
+                              onReglages={() => setEnReglages(camera.id)}
+                              onActiver={(active) => agir(() => modifierCamera(camera.id, { active }))}
+                              onDemanderSuppression={(demande) => setASupprimer(demande ? camera.id : null)}
+                              onSupprimer={() => agir(() => supprimerCamera(camera.id))}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                      {enReglages === camera.id && camera.active && (
+                        <tr>
+                          <td colSpan={11}>
+                            <ReglagesCamera camera={camera} onFermer={() => setEnReglages(null)} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ),
+                )}
+              </tbody>
+            </table>
+          )}
+          <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
+        </section>
+      </AncienStyle>
+    </>
   );
 }
 

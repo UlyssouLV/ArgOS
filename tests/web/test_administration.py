@@ -59,9 +59,9 @@ def noms(api):
 
 @pytest.fixture
 def administration(page: Page, administrateur) -> Page:
-    page.goto("/administration")
+    page.goto("/administration/cameras")
     se_connecter(page, **administrateur)
-    expect(page.get_by_role("heading", name="Administration")).to_be_visible()
+    expect(page.get_by_role("heading", name="Caméras", level=1)).to_be_visible()
     return page
 
 
@@ -81,7 +81,7 @@ def modifier(page: Page, nom: str) -> Locator:
 
 
 def test_pas_de_formulaire_d_ajout_par_url(administration: Page):
-    expect(administration.get_by_role("heading", name="Caméras", exact=True)).to_be_visible()
+    expect(administration.get_by_role("heading", name="Caméras", level=1)).to_be_visible()
 
     expect(administration.get_by_role("form", name="Nouvelle Caméra")).to_have_count(0)
     expect(administration.get_by_label("URL RTSP")).to_have_count(0)

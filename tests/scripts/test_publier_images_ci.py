@@ -20,6 +20,7 @@ def test_le_script_pousse_site_et_simulation_sous_argos_version():
     assert "argos-camera-simulee" in texte
     assert "argos-onvif-simule" in texte
     assert "linux/amd64,linux/arm64" not in texte
+    assert '--build-arg "ARGOS_VERSION=$TAG"' in texte
 
 
 def test_la_simulation_porte_image_et_build_comme_le_site():
