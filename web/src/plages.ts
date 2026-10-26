@@ -1,0 +1,52 @@
+// Plages enregistrées et fenêtre glissante de la Relecture continue (docs/adr/0018-relecture-continue-fenetre-glissante.md).
+// Logique pure, sans import d'exécution : `tests/web/test_plages.py` l'exécute directement sous Node.
+
+/** Segment fermé ou Plage enregistrée : bornes RFC 3339. */
+export type Intervalle = { debut: string; fin: string };
+
+/**
+ * Écart (ms) jusqu'auquel deux Segments qui se suivent restent contigus : la fin d'un Segment est la dernière écriture
+ * de son fichier, le début du suivant la date de son nom. Même tolérance que l'assemblage de MediaMTX.
+ */
+export const TOLERANCE_CONTIGUITE_MS = 1_000;
+/** Durée cible de la fenêtre glissante (ADR 0018). */
+export const DUREE_FENETRE_S = 180;
+
+/** Plages enregistrées des Segments, du plus ancien : des Segments contigus en forment une seule, un trou les sépare. */
+export function plagesEnregistrees(segments: Intervalle[]): Intervalle[] {
+  const tries = [...segments].sort((a, b) => Date.parse(a.debut) - Date.parse(b.debut));
+  const plages: Intervalle[] = [];
+  for (const segment of tries) {
+    const derniere = plages.at(-1);
+    if (derniere && Date.parse(segment.debut) - Date.parse(derniere.fin) <= TOLERANCE_CONTIGUITE_MS) {
+      if (Date.parse(segment.fin) > Date.parse(derniere.fin)) derniere.fin = segment.fin;
+    } else {
+      plages.push({ debut: segment.debut, fin: segment.fin });
+    }
+  }
+  return plages;
+}
+
+/** Plage qui couvre `instant` (ms), bornes comprises ; `null` dans un trou. */
+export function plageCourante(plages: Intervalle[], instant: number): Intervalle | null {
+  return plages.find((plage) => Date.parse(plage.debut) <= instant && instant <= Date.parse(plage.fin)) ?? null;
+}
+
+/** Première Plage qui commence après `instant` (ms), dans le sens de lecture avant ; `null` s'il n'y en a plus. */
+export function plageSuivante(plages: Intervalle[], instant: number): Intervalle | null {
+  return plages.find((plage) => Date.parse(plage.debut) > instant) ?? null;
+}
+
+/**
+ * Fenêtre demandée au pont depuis `instant` (ms) dans `plage` : `start` RFC 3339 et `duration` en secondes, environ
+ * `DUREE_FENETRE_S`, coupée à la fin de la Plage pour ne pas englober un trou ; `null` si `instant` est hors de la Plage
+ * ou à sa fin.
+ */
+export function fenetre(plage: Intervalle, instant: number): { start: string; duration: number } | null {
+  const fin = Date.parse(plage.fin);
+  if (instant < Date.parse(plage.debut) || instant >= fin) return null;
+  return {
+    start: new Date(instant).toISOString(),
+    duration: Math.min(DUREE_FENETRE_S, (fin - instant) / 1000),
+  };
+}
