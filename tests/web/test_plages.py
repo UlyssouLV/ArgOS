@@ -113,3 +113,10 @@ def test_apres_la_fin_d_une_plage_ou_dans_un_trou_vient_le_debut_de_la_suivante(
 
 def test_apres_la_derniere_plage_du_jour_plus_de_plage():
     assert _appeler("plageSuivante", PLAGES_DU_JOUR, _ms("10:25:00")) is None
+
+
+def test_la_fenetre_d_un_instant_fractionnaire_finit_a_la_fin_de_la_plage():
+    # Un clic tombe entre deux millisecondes : `start` et `duration` restent cohérents, la fenêtre s'arrête net.
+    plage = _intervalle("10:00:00", "10:05:00")
+
+    assert _appeler("fenetre", plage, _ms("10:04:00") + 0.7) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}

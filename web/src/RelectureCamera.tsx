@@ -12,9 +12,10 @@ import { cn } from "@/lib/utils";
 import { sessionValide } from "./api";
 import { messageEchec, texteEtat, type Camera, type Etat } from "./cameras";
 import { hevcDecodable } from "./hls";
+import { plageCourante, plagesEnregistrees, type Fenetre } from "./plages";
 import {
   VITESSES,
-  dureeS,
+  fenetreVisee,
   graduationsDuJour,
   instantSurLeJour,
   jourSelectionnable,
@@ -23,6 +24,7 @@ import {
   placeSurLeJour,
   segmentSuivant,
   segmentVise,
+  suiteDeLecture,
   urlRelecture,
   type SegmentsFermes,
   type Vitesse,
@@ -66,9 +68,9 @@ function dateDuSite(iso: string, fuseau: string): string {
 
 /**
  * Relecture d'une Caméra, un jour du Site à la fois (docs/adr/0013-relecture-des-enregistrements.md, ADR 0017) :
- * en-tête (Caméra, jour), viewer du Segment visé, puis Timeline d'enregistrement de 00h à 24h. Un clic part du
- * début du Segment qui couvre l'instant, ou du plus proche ; à la fin d'un Segment, le viewer enchaîne sur le
- * suivant, à la même vitesse.
+ * en-tête (Caméra, jour), viewer, puis Timeline d'enregistrement de 00h à 24h. Un clic sur une Plage enregistrée lit
+ * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture ; à la fin d'une fenêtre, le viewer reprend
+ * après elle, à la même vitesse.
  */
 export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelecture) {
   const naviguer = useNavigate();
@@ -76,15 +78,16 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   const champJour = useRef<HTMLInputElement>(null);
   const [lue, setLue] = useState<SegmentsFermes | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  // Segments repérés par leur début : un rafraîchissement décale leurs index.
-  const [courant, setCourant] = useState<string | null>(null);
-  const [acheve, setAcheve] = useState<string | null>(null);
+  // Figée au clic : un rafraîchissement qui prolonge la Plage ne recharge pas la vidéo.
+  const [lecture, setLecture] = useState<Fenetre | null>(null);
+  // Instant (ms) où la fenêtre lue s'est achevée, en attente de sa suite.
+  const [acheve, setAcheve] = useState<number | null>(null);
   const [etat, setEtat] = useState<EtatViewer>("lisible");
   const [vitesse, setVitesse] = useState<Vitesse>(1);
   const [enPause, setEnPause] = useState(true);
   const [position, setPosition] = useState(0);
 
-  // Changer de jour recharge la Timeline et laisse le Segment en cours : il n'est plus sur ce jour.
+  // Changer de jour recharge la Timeline et laisse la fenêtre en cours : elle n'est plus sur ce jour.
   useEffect(() => {
     let annule = false;
     const lire = () =>
@@ -96,7 +99,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
         })
         .catch((e: unknown) => !annule && setErreur(messageEchec(e)));
     setLue(null);
-    setCourant(null);
+    setLecture(null);
     setAcheve(null);
     void lire();
     const minuterie = setInterval(() => void lire(), RAFRAICHISSEMENT_MS);
@@ -106,7 +109,12 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     };
   }, [camera.id, jour]);
 
-  const segment = lue?.segments.find((s) => s.debut === courant) ?? null;
+  const instantLu = lecture === null ? null : Date.parse(lecture.start) + position * 1000;
+  const plageLue =
+    lue === null || lecture === null ? null : plageCourante(plagesEnregistrees(lue.segments), Date.parse(lecture.start));
+  // Segment sous la tête de lecture, repéré par son début : un rafraîchissement décale les index.
+  const vise = lue === null || instantLu === null ? null : segmentVise(lue.segments, instantLu);
+  const courant = lue === null || vise === null ? null : lue.segments[vise].debut;
   // Décidé avant de donner une source à la vidéo : sinon son échec masquerait le message (comme au Live).
   const h265Illisible = useMemo(
     () => camera.codec === "H265" && !hevcDecodable(document.createElement("video")),
@@ -116,15 +124,15 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   useEffect(() => {
     setPosition(0);
     setEtat("lisible");
-  }, [courant]);
+  }, [lecture]);
 
-  // Fin du dernier Segment connu : on enchaîne dès qu'un rafraîchissement apporte le Segment fermé ensuite.
+  // Fin de la fenêtre au bout des Segments connus : on reprend dès qu'un rafraîchissement apporte la suite.
   useEffect(() => {
     if (lue === null || acheve === null) return;
-    const suivant = segmentSuivant(lue.segments, acheve);
-    if (suivant === null) return;
+    const suite = suiteDeLecture(lue.segments, acheve);
+    if (suite === null) return;
     setAcheve(null);
-    setCourant(suivant.debut);
+    setLecture(suite);
   }, [lue, acheve]);
 
   useEffect(() => {
@@ -133,26 +141,28 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     video.current.playbackRate = vitesse;
   }, [vitesse]);
 
-  function debutVise(event: MouseEvent<HTMLButtonElement>, jourLu: SegmentsFermes): string | null {
+  function instantVise(event: MouseEvent<HTMLButtonElement>, jourLu: SegmentsFermes): number {
     const { segments } = jourLu;
-    // Au clavier (Entrée, Espace), pas de position : on passe au Segment suivant, ou au premier.
+    // Au clavier (Entrée, Espace), pas de position : on passe au début du Segment suivant, ou du premier.
     if (event.detail === 0) {
       const suivant = courant === null ? null : segmentSuivant(segments, courant);
-      return (suivant ?? segments[0]).debut;
+      return Date.parse((suivant ?? segments[0]).debut);
     }
     const boite = event.currentTarget.getBoundingClientRect();
-    const fraction = (event.clientX - boite.left) / boite.width;
-    const vise = segmentVise(segments, instantSurLeJour(jourLu, fraction));
-    return vise === null ? null : segments[vise].debut;
+    return instantSurLeJour(jourLu, (event.clientX - boite.left) / boite.width);
   }
 
   function viser(event: MouseEvent<HTMLButtonElement>) {
     if (lue === null) return;
-    const debut = debutVise(event, lue);
-    if (debut === null) return;
-    if (debut === courant && video.current !== null) video.current.currentTime = 0;
+    const visee = fenetreVisee(lue.segments, instantVise(event, lue));
+    if (visee === null) return;
+    // Même fenêtre, même `src` : la vidéo ne se recharge pas, on la rembobine.
+    if (visee.start === lecture?.start && visee.duration === lecture.duration && video.current !== null) {
+      video.current.currentTime = 0;
+      void video.current.play().catch(() => {});
+    }
     setAcheve(null);
-    setCourant(debut);
+    setLecture(visee);
   }
 
   function surErreur() {
@@ -252,11 +262,11 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
           </Alert>
         )}
         <div className="relative aspect-video max-h-[60vh] w-full overflow-hidden rounded-lg border bg-video">
-          {segment !== null && (
+          {lecture !== null && (
             <video
               ref={video}
               className="size-full object-contain"
-              src={h265Illisible ? undefined : urlRelecture(cheminFlux(camera.id), segment)}
+              src={h265Illisible ? undefined : urlRelecture(cheminFlux(camera.id), lecture)}
               autoPlay
               muted
               playsInline
@@ -268,42 +278,45 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
               onPlay={() => setEnPause(false)}
               onPause={() => setEnPause(true)}
               onTimeUpdate={(e) => setPosition(e.currentTarget.currentTime)}
-              onEnded={() => setAcheve(courant)}
+              // Arrondi : `duration` en secondes perdrait la milliseconde de fin de Plage.
+              onEnded={() => setAcheve(Date.parse(lecture.start) + Math.round(lecture.duration * 1000))}
               onError={surErreur}
             />
           )}
-          {segment !== null && h265Illisible && <MessageVideo>Ce navigateur ne lit pas le H.265</MessageVideo>}
-          {segment !== null && !h265Illisible && etat === "indisponible" && (
+          {lecture !== null && h265Illisible && <MessageVideo>Ce navigateur ne lit pas le H.265</MessageVideo>}
+          {lecture !== null && !h265Illisible && etat === "indisponible" && (
             <MessageVideo>Enregistrement indisponible</MessageVideo>
           )}
-          {segment === null && lue?.segments.length === 0 && (
+          {lecture === null && lue?.segments.length === 0 && (
             <MessageVideo>
               <CalendarX className="size-6" aria-hidden="true" />
               Aucun enregistrement ce jour
             </MessageVideo>
           )}
-          {segment === null && lue !== null && lue.segments.length > 0 && (
+          {lecture === null && lue !== null && lue.segments.length > 0 && (
             <MessageVideo>
               <MousePointerClick className="size-6" aria-hidden="true" />
               Cliquez sur la timeline pour relire un Segment.
             </MessageVideo>
           )}
         </div>
-        {segment !== null && lue !== null && !h265Illisible && (
+        {instantLu !== null && lue !== null && !h265Illisible && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button variant="outline" size="sm" onClick={basculer}>
               {enPause ? <Play /> : <Pause />}
               {enPause ? "Lecture" : "Pause"}
             </Button>
             <span className="font-mono text-sm" aria-label="Instant lu">
-              {heureDuSite(Date.parse(segment.debut) + position * 1000, lue.fuseau)}
+              {heureDuSite(instantLu, lue.fuseau)}
             </span>
-            <progress
-              aria-label="Progression dans le Segment"
-              className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-foreground [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-foreground"
-              max={dureeS(segment)}
-              value={position}
-            />
+            {plageLue !== null && (
+              <progress
+                aria-label="Progression dans la Plage"
+                className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-foreground [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-foreground"
+                max={(Date.parse(plageLue.fin) - Date.parse(plageLue.debut)) / 1000}
+                value={(instantLu - Date.parse(plageLue.debut)) / 1000}
+              />
+            )}
             <div
               role="group"
               aria-label="Vitesse de lecture"

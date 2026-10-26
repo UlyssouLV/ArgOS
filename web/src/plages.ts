@@ -9,6 +9,9 @@ export type Intervalle = { debut: string; fin: string };
  * de son fichier, le début du suivant la date de son nom. Même tolérance que l'assemblage de MediaMTX.
  */
 export const TOLERANCE_CONTIGUITE_MS = 1_000;
+/** Fenêtre demandée au pont : `start` RFC 3339, `duration` en secondes. */
+export type Fenetre = { start: string; duration: number };
+
 /** Durée cible de la fenêtre glissante (ADR 0018). */
 export const DUREE_FENETRE_S = 180;
 
@@ -42,11 +45,13 @@ export function plageSuivante(plages: Intervalle[], instant: number): Intervalle
  * `DUREE_FENETRE_S`, coupée à la fin de la Plage pour ne pas englober un trou ; `null` si `instant` est hors de la Plage
  * ou à sa fin.
  */
-export function fenetre(plage: Intervalle, instant: number): { start: string; duration: number } | null {
+export function fenetre(plage: Intervalle, instant: number): Fenetre | null {
   const fin = Date.parse(plage.fin);
-  if (instant < Date.parse(plage.debut) || instant >= fin) return null;
+  // À la milliseconde, comme `start` : un clic tombe entre deux, et la fenêtre doit finir pile à la fin de la Plage.
+  const depart = Math.trunc(instant);
+  if (depart < Date.parse(plage.debut) || depart >= fin) return null;
   return {
-    start: new Date(instant).toISOString(),
-    duration: Math.min(DUREE_FENETRE_S, (fin - instant) / 1000),
+    start: new Date(depart).toISOString(),
+    duration: Math.min(DUREE_FENETRE_S, (fin - depart) / 1000),
   };
 }

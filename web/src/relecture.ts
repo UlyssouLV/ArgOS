@@ -3,6 +3,7 @@
 // derrière la session (ADR 0006).
 
 import { appeler } from "./api";
+import { fenetre, plageCourante, plageSuivante, plagesEnregistrees, type Fenetre } from "./plages";
 
 /** Seule route du serveur playback relayée par nginx. */
 const CHEMIN_RELECTURE = "/flux/relecture/get";
@@ -70,25 +71,18 @@ export function retenirCameraRelue(idCamera: number): void {
   }
 }
 
-export function dureeS(segment: SegmentFerme): number {
-  return (Date.parse(segment.fin) - Date.parse(segment.debut)) / 1000;
-}
-
-/** MP4 du Segment entier, assemblé par le pont sans réencodage. */
-export function urlRelecture(cheminFlux: string, segment: SegmentFerme): string {
+/** MP4 de la fenêtre, assemblé par le pont sans réencodage, au-delà d'un Segment s'il le faut. */
+export function urlRelecture(cheminFlux: string, { start, duration }: Fenetre): string {
   const parametres = new URLSearchParams({
     path: cheminFlux,
-    start: segment.debut,
-    duration: Math.max(dureeS(segment), DUREE_MIN_S).toFixed(3),
+    start,
+    duration: Math.max(duration, DUREE_MIN_S).toFixed(3),
     format: "mp4",
   });
   return `${CHEMIN_RELECTURE}?${parametres}`;
 }
 
-/**
- * Index du Segment qui couvre `instant` (ms), sinon du plus proche ; `null` sans Segment.
- * La lecture part toujours du début de ce Segment : le seek précis est reporté (ADR 0013, ADR 0017).
- */
+/** Index du Segment qui couvre `instant` (ms), sinon du plus proche ; `null` sans Segment. */
 export function segmentVise(segments: SegmentFerme[], instant: number): number | null {
   let vise: number | null = null;
   let ecartVise = Infinity;
@@ -100,6 +94,34 @@ export function segmentVise(segments: SegmentFerme[], instant: number): number |
     }
   });
   return vise;
+}
+
+/**
+ * Fenêtre d'un clic à `instant` (ms) : depuis cette seconde dans une Plage enregistrée (ADR 0018) ; dans un trou, depuis
+ * le début du Segment le plus proche. `null` sans Segment.
+ */
+export function fenetreVisee(segments: SegmentFerme[], instant: number): Fenetre | null {
+  const plages = plagesEnregistrees(segments);
+  const plage = plageCourante(plages, instant);
+  if (plage !== null) return fenetre(plage, instant);
+  const vise = segmentVise(segments, instant);
+  if (vise === null) return null;
+  const debut = Date.parse(segments[vise].debut);
+  const autour = plageCourante(plages, debut);
+  return autour === null ? null : fenetre(autour, debut);
+}
+
+/**
+ * Suite d'une fenêtre lue jusqu'à `instant` (ms) : la Plage continue si un Segment fermé depuis la prolonge, sinon
+ * reprend au début de la Plage suivante ; `null` tant qu'aucune n'est connue.
+ */
+export function suiteDeLecture(segments: SegmentFerme[], instant: number): Fenetre | null {
+  const plages = plagesEnregistrees(segments);
+  const plage = plageCourante(plages, instant);
+  const suite = plage === null ? null : fenetre(plage, instant);
+  if (suite !== null) return suite;
+  const suivante = plageSuivante(plages, instant);
+  return suivante === null ? null : fenetre(suivante, Date.parse(suivante.debut));
 }
 
 /** Premier Segment qui commence après celui de début `debut` ; `null` s'il n'est pas encore fermé. */

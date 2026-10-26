@@ -29,6 +29,8 @@ DELAI_VIDEO_MS = 30_000
 DELAI_RAFRAICHISSEMENT_MS = 15_000
 SANS_SEGMENT = "Aucun enregistrement ce jour"
 VITESSES = (1, 2, 4, 8, 16)
+# Une heure sur la largeur de la Timeline : quelques secondes par pixel.
+PRECISION_CLIC_S = 10
 
 
 @pytest.fixture
@@ -46,6 +48,11 @@ def relectures(enregistrement: Page) -> list[str]:
     demandees: list[str] = []
     enregistrement.on("request", lambda r: demandees.append(r.url) if CHEMIN_RELECTURE in r.url else None)
     return demandees
+
+
+def _maintenant() -> datetime:
+    """À la seconde : le navigateur ne garde que les millisecondes des instants qu'il redemande."""
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def _iso(instant: datetime) -> str:
@@ -254,9 +261,9 @@ def test_camera_sans_segment_affiche_un_message(enregistrement: Page, api, noms)
     expect(relecture.locator("video")).to_have_count(0)
 
 
-def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistrement: Page, api, noms, relectures):
+def test_clic_sur_une_plage_part_de_la_seconde_visee(enregistrement: Page, api, noms, relectures):
     camera = _camera(api, noms, url_injoignable())
-    maintenant = datetime.now(UTC)
+    maintenant = _maintenant()
     fenetre = (maintenant - timedelta(hours=1), maintenant)
     ancien = (maintenant - timedelta(minutes=50), maintenant - timedelta(minutes=45))
     recent = (maintenant - timedelta(minutes=20), maintenant - timedelta(minutes=10))
@@ -264,12 +271,17 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
     relecture = _selectionner(enregistrement, camera["nom"])
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
-    # Dans le Segment ancien (à 47 min d'ici) : son début, pas l'instant cliqué.
+    # Dans le Segment ancien, à 47 min d'ici : l'instant cliqué, pas le début du Segment.
     _cliquer_a(timeline, 13 / 60)
     expect(_plage_lue(relecture)).to_have_count(1)
     _attendre(enregistrement, lambda: len(relectures) >= 1)
-    assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ancien[0]
-    assert parse_qs(urlparse(relectures[-1]).query)["path"] == [camera["chemin_flux"]]
+    start = datetime.fromisoformat(_debut_demande(relectures[-1]))
+    assert abs((start - (maintenant - timedelta(minutes=47))).total_seconds()) < PRECISION_CLIC_S
+    parametres = parse_qs(urlparse(relectures[-1]).query)
+    assert parametres["path"] == [camera["chemin_flux"]]
+    # Fenêtre coupée à la fin de la Plage : 2 min, sous les 3 min de la fenêtre glissante.
+    assert float(parametres["duration"][0]) == pytest.approx((ancien[1] - start).total_seconds(), abs=0.01)
+    expect(relecture.get_by_label("Instant lu")).to_have_text(start.strftime("%H:%M:%S"))
 
     # Dans le trou, plus près du Segment récent (à 30 min d'ici : 10 min de son début, 15 min de la fin de l'ancien).
     _cliquer_a(timeline, 30 / 60)
@@ -279,7 +291,7 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
 
 def test_au_clavier_la_timeline_passe_au_segment_suivant(enregistrement: Page, api, noms, relectures):
     camera = _camera(api, noms, url_injoignable())
-    maintenant = datetime.now(UTC)
+    maintenant = _maintenant()
     fenetre = (maintenant - timedelta(hours=1), maintenant)
     ancien = (maintenant - timedelta(minutes=50), maintenant - timedelta(minutes=45))
     recent = (maintenant - timedelta(minutes=20), maintenant - timedelta(minutes=10))
@@ -298,7 +310,7 @@ def test_au_clavier_la_timeline_passe_au_segment_suivant(enregistrement: Page, a
 
 def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ensuite(enregistrement: Page, api, noms, relectures):
     camera = _camera(api, noms, url_injoignable())
-    maintenant = datetime.now(UTC)
+    maintenant = _maintenant()
     fenetre = (maintenant - timedelta(hours=1), maintenant)
     ancien = (maintenant - timedelta(minutes=3), maintenant - timedelta(minutes=2))
     ferme_ensuite = (maintenant - timedelta(minutes=2), maintenant - timedelta(minutes=1))
@@ -380,7 +392,19 @@ def _resserrer_la_fenetre(page: Page, id_camera: int) -> None:
     page.route(f"**/api/cameras/{id_camera}/segments*", resserrer)
 
 
-def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: Page, api, noms, relectures):
+def _cliquer_au_milieu(timeline: Locator, plage: Locator) -> None:
+    boite, place = timeline.bounding_box(), plage.bounding_box()
+    assert boite
+    assert place
+    _cliquer_a(timeline, (place["x"] - boite["x"] + place["width"] / 2) / boite["width"])
+
+
+def _milieu(segment: dict) -> datetime:
+    debut, fin = datetime.fromisoformat(segment["debut"]), datetime.fromisoformat(segment["fin"])
+    return debut + (fin - debut) / 2
+
+
+def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistrement: Page, api, noms, relectures):
     camera = _camera(api, noms, url_simulee(1))
     assert api.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
     raccourcir_les_segments(camera["chemin_flux"], DELAI_PONT_S)
@@ -388,18 +412,23 @@ def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: P
     _resserrer_la_fenetre(enregistrement, camera["id"])
     relecture = _selectionner(enregistrement, camera["nom"])
     video = relecture.locator("video")
-
-    # Au milieu du premier Segment : la vidéo part de son début et joue.
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
-    boite, premiere = timeline.bounding_box(), _plages(relecture).first.bounding_box()
-    assert boite
-    assert premiere
-    _cliquer_a(timeline, (premiere["x"] - boite["x"] + premiere["width"] / 2) / boite["width"])
+
+    # Au milieu du premier Segment : la vidéo part de cette seconde, pas du début du Segment, et joue.
+    _cliquer_au_milieu(timeline, _plages(relecture).first)
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
-    assert datetime.fromisoformat(_debut_demande(relectures[0])) == datetime.fromisoformat(segments[0]["debut"])
-    expect(relecture.get_by_role("progressbar", name="Progression dans le Segment")).to_be_visible()
+    start = datetime.fromisoformat(_debut_demande(relectures[0]))
+    assert abs((start - _milieu(segments[0])).total_seconds()) < 0.5
+    expect(relecture.get_by_role("progressbar", name="Progression dans la Plage")).to_be_visible()
     expect(relecture.get_by_label("Instant lu")).to_have_text(re.compile(r"^\d{2}:\d{2}:\d{2}$"))
+
+    # En lecture, un clic ailleurs repart de cette seconde, et la lecture continue.
+    _cliquer_au_milieu(timeline, _plages(relecture).nth(2))
+    _attendre(enregistrement, lambda: len(relectures) >= 2)
+    assert abs((datetime.fromisoformat(_debut_demande(relectures[-1])) - _milieu(segments[2])).total_seconds()) < 0.5
+    expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
+    _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
 
     relecture.get_by_role("button", name="Pause").click()
     expect(video).to_have_js_property("paused", True)
@@ -411,7 +440,8 @@ def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: P
         expect(video).to_have_js_property("playbackRate", vitesse)
         expect(relecture.get_by_role("button", name=f"×{vitesse}", exact=True)).to_have_attribute("aria-pressed", "true")
 
-    # À ×16, un Segment de 2 s s'achève vite : le viewer enchaîne sur le suivant, à la même vitesse.
-    _attendre(enregistrement, lambda: len(relectures) >= 2, DELAI_VIDEO_MS / 1000)
-    assert datetime.fromisoformat(_debut_demande(relectures[1])) == datetime.fromisoformat(segments[1]["debut"])
+    # À ×16, la fenêtre s'achève vite : le viewer reprend après elle, dès que la Timeline la prolonge, à la même vitesse.
+    demandees = len(relectures)
+    _attendre(enregistrement, lambda: len(relectures) > demandees, (DELAI_VIDEO_MS + DELAI_RAFRAICHISSEMENT_MS) / 1000)
+    assert datetime.fromisoformat(_debut_demande(relectures[-1])) > datetime.fromisoformat(segments[2]["debut"])
     expect(video).to_have_js_property("playbackRate", 16)
