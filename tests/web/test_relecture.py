@@ -1,10 +1,12 @@
-"""Relecture sur la page Enregistrement : sélection d'une Caméra, Timeline d'enregistrement, viewer (ADR 0013).
+"""Relecture (`/relecture/<id>`) : Caméra, jour du Site, Timeline d'enregistrement d'un jour, viewer (ADR 0013, 0017).
 
-La timeline et le clic se testent sur des Segments simulés (route de l'API), pour maîtriser plages et trous.
+La timeline et le clic se testent sur des Segments simulés (route de l'API), pour maîtriser plages et trous : le
+« jour » simulé y est la dernière heure, sauf pour la durée réelle d'un jour de changement d'heure.
 La lecture se teste de bout en bout : Caméra simulée qui enregistre, Segments raccourcis à 2 s par l'API de
 contrôle du pont, relus par `/flux/relecture/get`.
 """
 
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
@@ -14,7 +16,7 @@ from playwright.sync_api import Locator, Page, Route, expect
 
 from stack_compose import raccourcir_les_segments
 from test_administration import api, noms, url_injoignable, url_simulee  # noqa: F401 (fixtures)
-from test_connexion import se_connecter
+from test_connexion import rail, se_connecter
 from test_live import NAVIGATEUR_SANS_H265, SANS_HEVC
 
 CHEMIN_RELECTURE = "/flux/relecture/get"
@@ -25,12 +27,13 @@ DELAI_SEGMENTS_FERMES_S = 60
 DELAI_VIDEO_MS = 30_000
 # Un rafraîchissement de la Timeline d'enregistrement (10 s), avec de la marge.
 DELAI_RAFRAICHISSEMENT_MS = 15_000
-SANS_SEGMENT = "Aucun enregistrement sur cette période"
+SANS_SEGMENT = "Aucun enregistrement ce jour"
 VITESSES = (1, 2, 4, 8, 16)
 
 
 @pytest.fixture
 def enregistrement(page: Page, administrateur) -> Page:
+    """Page connectée ; `_selectionner` y ouvre la Relecture d'une Caméra."""
     page.goto("/enregistrement")
     se_connecter(page, **administrateur)
     expect(page.get_by_role("heading", name="Enregistrement")).to_be_visible()
@@ -49,13 +52,31 @@ def _iso(instant: datetime) -> str:
     return instant.isoformat().replace("+00:00", "Z")
 
 
-def _simuler_segments(page: Page, id_camera: int, fenetre: tuple[datetime, datetime], plages: list[tuple[datetime, datetime]]) -> None:
-    corps = {
-        "debut": _iso(fenetre[0]),
-        "fin": _iso(fenetre[1]),
+def _corps(
+    fenetre: tuple[datetime, datetime],
+    plages: list[tuple[datetime, datetime]],
+    jour: str = "2026-10-26",
+    jours: tuple[str, str] = ("2026-10-25", "2026-10-26"),
+    conservation: tuple[datetime, datetime] | None = None,
+) -> dict:
+    """Réponse de `/segments` : `fenetre` tient lieu de jour (`debut_jour` → `fin_jour`)."""
+    conservation = conservation or fenetre
+    return {
+        "debut": _iso(conservation[0]),
+        "fin": _iso(conservation[1]),
+        "fuseau": "UTC",
+        "premier_jour": jours[0],
+        "dernier_jour": jours[1],
+        "jour": jour,
+        "debut_jour": _iso(fenetre[0]),
+        "fin_jour": _iso(fenetre[1]),
         "segments": [{"debut": _iso(d), "fin": _iso(f)} for d, f in plages],
     }
-    page.route(f"**/api/cameras/{id_camera}/segments", lambda route: route.fulfill(json=corps))
+
+
+def _simuler_segments(page: Page, id_camera: int, fenetre: tuple[datetime, datetime], plages: list[tuple[datetime, datetime]]) -> None:
+    corps = _corps(fenetre, plages)
+    page.route(f"**/api/cameras/{id_camera}/segments*", lambda route: route.fulfill(json=corps))
 
 
 def _camera(api, noms, url: str) -> dict:
@@ -64,12 +85,17 @@ def _camera(api, noms, url: str) -> dict:
     return reponse.json()
 
 
-def _selectionner(page: Page, nom: str) -> Locator:
-    page.reload()
-    page.get_by_role("table", name="Débits par Caméra").get_by_role("row").filter(has_text=nom).click()
+def _relecture(page: Page, nom: str) -> Locator:
     relecture = page.get_by_role("region", name=f"Relecture — {nom}")
     expect(relecture).to_be_visible()
     return relecture
+
+
+def _selectionner(page: Page, nom: str) -> Locator:
+    """Depuis le résumé d'Enregistrement, comme l'Administrateur : la ligne de la Caméra ouvre sa Relecture."""
+    page.goto("/enregistrement")
+    page.get_by_role("table", name="Débits par Caméra").get_by_role("row").filter(has_text=nom).click()
+    return _relecture(page, nom)
 
 
 def _cliquer_a(timeline: Locator, fraction: float) -> None:
@@ -82,8 +108,100 @@ def _debut_demande(url: str) -> str:
     return parse_qs(urlparse(url).query)["start"][0]
 
 
-def test_avant_selection_la_page_invite_a_choisir_une_camera(enregistrement: Page):
-    expect(enregistrement.get_by_text("Cliquez sur une Caméra du résumé pour relire ses enregistrements.")).to_be_visible()
+def test_une_camera_du_resume_d_enregistrement_ouvre_sa_relecture(enregistrement: Page, api, noms):
+    camera = _camera(api, noms, url_injoignable())
+
+    _selectionner(enregistrement, camera["nom"])
+
+    expect(enregistrement).to_have_url(re.compile(rf"/relecture/{camera['id']}$"))
+    expect(enregistrement.get_by_role("heading", name="Relecture")).to_be_visible()
+    expect(rail(enregistrement).get_by_role("link", name="Relecture")).to_have_attribute("aria-current", "page")
+    expect(enregistrement.get_by_role("combobox", name="Caméra")).to_have_value(str(camera["id"]))
+
+
+def test_relecture_rouvre_la_derniere_camera_relue(enregistrement: Page, api, noms):
+    premiere, derniere = _camera(api, noms, url_injoignable()), _camera(api, noms, url_injoignable())
+    enregistrement.goto(f"/relecture/{premiere['id']}")
+    _relecture(enregistrement, premiere["nom"])
+    enregistrement.get_by_role("combobox", name="Caméra").select_option(str(derniere["id"]))
+    expect(enregistrement).to_have_url(re.compile(rf"/relecture/{derniere['id']}$"))
+    _relecture(enregistrement, derniere["nom"])
+
+    enregistrement.goto("/live")
+    rail(enregistrement).get_by_role("link", name="Relecture").click()
+
+    expect(enregistrement).to_have_url(re.compile(rf"/relecture/{derniere['id']}$"))
+    _relecture(enregistrement, derniere["nom"])
+
+
+def test_changer_de_camera_ou_de_jour_recharge_la_timeline(enregistrement: Page, api, noms):
+    camera, autre = _camera(api, noms, url_injoignable()), _camera(api, noms, url_injoignable())
+    maintenant = datetime.now(UTC)
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    plage = (maintenant - timedelta(minutes=30), maintenant - timedelta(minutes=29))
+    demandes: list[tuple[int, str | None]] = []
+
+    def segments(route: Route) -> None:
+        url = urlparse(route.request.url)
+        id_camera = int(url.path.split("/")[-2])
+        jour = parse_qs(url.query).get("jour", [None])[0]
+        demandes.append((id_camera, jour))
+        # Trois jours dans la Conservation ; une plage le 25 pour `camera`, aucune ailleurs.
+        plages = [plage] if (id_camera, jour) == (camera["id"], "2026-10-25") else []
+        route.fulfill(json=_corps(fenetre, plages, jour=jour or "2026-10-26", jours=("2026-10-24", "2026-10-26")))
+
+    enregistrement.route("**/api/cameras/*/segments*", segments)
+    enregistrement.goto(f"/relecture/{camera['id']}")
+    relecture = _relecture(enregistrement, camera["nom"])
+    jour = enregistrement.get_by_role("group", name="Jour relu")
+
+    # Jour courant : rien à relire, et pas de jour après celui-ci.
+    expect(relecture.get_by_text(SANS_SEGMENT)).to_be_visible()
+    expect(jour.get_by_label("Jour", exact=True)).to_have_value("2026-10-26")
+    expect(jour.get_by_role("button", name="Jour suivant")).to_be_disabled()
+
+    jour.get_by_role("button", name="Jour précédent").click()
+    expect(relecture.locator(".plage-enregistree")).to_have_count(1)
+    expect(jour.get_by_label("Jour", exact=True)).to_have_value("2026-10-25")
+    assert demandes[-1] == (camera["id"], "2026-10-25")
+
+    # Premier jour de la Conservation : on ne recule pas plus loin, ni par le champ.
+    jour.get_by_role("button", name="Jour précédent").click()
+    expect(jour.get_by_label("Jour", exact=True)).to_have_value("2026-10-24")
+    expect(jour.get_by_role("button", name="Jour précédent")).to_be_disabled()
+    expect(jour.get_by_label("Jour", exact=True)).to_have_attribute("min", "2026-10-24")
+    expect(jour.get_by_label("Jour", exact=True)).to_have_attribute("max", "2026-10-26")
+    jour.get_by_label("Jour", exact=True).fill("2026-10-23")
+    expect(jour.get_by_label("Jour", exact=True)).to_have_value("2026-10-24")
+    assert (camera["id"], "2026-10-23") not in demandes
+
+    # Le jour choisi suit l'Administrateur d'une Caméra à l'autre.
+    jour.get_by_label("Jour", exact=True).fill("2026-10-25")
+    expect(relecture.locator(".plage-enregistree")).to_have_count(1)
+    enregistrement.get_by_role("combobox", name="Caméra").select_option(str(autre["id"]))
+    autre_relecture = _relecture(enregistrement, autre["nom"])
+    expect(autre_relecture.get_by_text(SANS_SEGMENT)).to_be_visible()
+    assert demandes[-1] == (autre["id"], "2026-10-25")
+
+
+@pytest.mark.parametrize("duree_h", [23, 25])
+def test_la_timeline_d_un_jour_de_changement_d_heure_suit_sa_duree_reelle(enregistrement: Page, api, noms, duree_h):
+    camera = _camera(api, noms, url_injoignable())
+    debut_jour = datetime(2026, 10, 24, 22, tzinfo=UTC)
+    fenetre = (debut_jour, debut_jour + timedelta(hours=duree_h))
+    # Une plage d'une heure, la 22e heure du jour.
+    plage = (debut_jour + timedelta(hours=21), debut_jour + timedelta(hours=22))
+    _simuler_segments(enregistrement, camera["id"], fenetre, [plage])
+    enregistrement.goto(f"/relecture/{camera['id']}")
+
+    timeline = _relecture(enregistrement, camera["nom"]).get_by_role("button", name="Timeline d’enregistrement")
+
+    expect(timeline.locator(".plage-enregistree")).to_have_count(1)
+    boite, place = timeline.bounding_box(), timeline.locator(".plage-enregistree").bounding_box()
+    assert boite
+    assert place
+    assert place["x"] - boite["x"] == pytest.approx(boite["width"] * 21 / duree_h, abs=2)
+    assert place["width"] == pytest.approx(boite["width"] / duree_h, abs=2)
 
 
 def test_selectionner_une_camera_montre_sa_timeline_avec_plages_et_trous(enregistrement: Page, api, noms):
@@ -115,7 +233,6 @@ def test_selectionner_une_camera_montre_sa_timeline_avec_plages_et_trous(enregis
     assert premiere["width"] == pytest.approx(boite["width"] * 5 / 60, abs=2)
     assert seconde["x"] - (premiere["x"] + premiere["width"]) == pytest.approx(boite["width"] * 25 / 60, abs=2)
     expect(relecture.get_by_text(SANS_SEGMENT)).to_have_count(0)
-    expect(enregistrement.get_by_role("table", name="Débits par Caméra").get_by_role("row", selected=True)).to_contain_text(camera["nom"])
 
 
 def test_camera_sans_segment_affiche_un_message(enregistrement: Page, api, noms):
@@ -182,13 +299,9 @@ def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ens
         nonlocal lectures
         lectures += 1
         plages = [ancien] if lectures == 1 else [ancien, ferme_ensuite]
-        route.fulfill(json={
-            "debut": _iso(fenetre[0]),
-            "fin": _iso(fenetre[1]),
-            "segments": [{"debut": _iso(d), "fin": _iso(f)} for d, f in plages],
-        })
+        route.fulfill(json=_corps(fenetre, plages))
 
-    enregistrement.route(f"**/api/cameras/{camera['id']}/segments", segments)
+    enregistrement.route(f"**/api/cameras/{camera['id']}/segments*", segments)
     relecture = _selectionner(enregistrement, camera["nom"])
     _cliquer_a(relecture.get_by_role("button", name="Timeline d’enregistrement"), 57.5 / 60)
     _attendre(enregistrement, lambda: len(relectures) >= 1)
@@ -246,16 +359,16 @@ def _segments_fermes(api, id_camera: int, combien: int) -> list[dict]:
 
 
 def _resserrer_la_fenetre(page: Page, id_camera: int) -> None:
-    """Fenêtre réduite aux Segments réels : des Segments de 2 s tiennent moins d'un pixel sur une heure."""
+    """Jour réduit aux Segments réels : des Segments de 2 s tiennent moins d'un pixel sur une journée."""
 
     def resserrer(route: Route) -> None:
         reponse = route.fetch()
         corps = reponse.json()
         if corps["segments"]:
-            corps["debut"], corps["fin"] = corps["segments"][0]["debut"], corps["segments"][-1]["fin"]
+            corps["debut_jour"], corps["fin_jour"] = corps["segments"][0]["debut"], corps["segments"][-1]["fin"]
         route.fulfill(response=reponse, json=corps)
 
-    page.route(f"**/api/cameras/{id_camera}/segments", resserrer)
+    page.route(f"**/api/cameras/{id_camera}/segments*", resserrer)
 
 
 def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: Page, api, noms, relectures):
@@ -277,6 +390,7 @@ def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: P
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
     assert datetime.fromisoformat(_debut_demande(relectures[0])) == datetime.fromisoformat(segments[0]["debut"])
     expect(relecture.get_by_role("progressbar", name="Progression dans le Segment")).to_be_visible()
+    expect(relecture.get_by_label("Instant lu")).to_have_text(re.compile(r"^\d{2}:\d{2}:\d{2}$"))
 
     relecture.get_by_role("button", name="Pause").click()
     expect(video).to_have_js_property("paused", True)

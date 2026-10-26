@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router";
 
 import { AncienStyle } from "@/components/AncienStyle";
 import { EnTeteDePage } from "@/components/EnTeteDePage";
 import { messageEchec } from "../cameras";
-import { RelectureCamera } from "../RelectureCamera";
 import {
   CONSERVATION_MAX,
   CONSERVATION_MIN,
@@ -19,7 +19,6 @@ import {
   lireEspaceEnregistrements,
   lireReglagesSite,
   modifierReglagesSite,
-  type DebitCamera,
   type DebitsEcriture,
   type EspaceEnregistrements,
 } from "../reglagesSite";
@@ -33,7 +32,7 @@ export function Enregistrement() {
   const [debits, setDebits] = useState<DebitsEcriture | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
-  const [selectionnee, setSelectionnee] = useState<DebitCamera | null>(null);
+  const naviguer = useNavigate();
 
   const rafraichir = useCallback(async () => {
     try {
@@ -174,13 +173,13 @@ export function Enregistrement() {
                     <tr
                       key={camera.id}
                       className="selectionnable"
-                      aria-selected={camera.id === selectionnee?.id}
+                      title={`Relire ${camera.nom}`}
                       tabIndex={0}
-                      onClick={() => setSelectionnee(camera)}
+                      onClick={() => void naviguer(`/relecture/${camera.id}`)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelectionnee(camera);
+                          void naviguer(`/relecture/${camera.id}`);
                         }
                       }}
                     >
@@ -243,12 +242,8 @@ export function Enregistrement() {
               Enregistrer le seuil
             </button>
           </form>
-          {selectionnee ? (
-            <RelectureCamera key={selectionnee.id} idCamera={selectionnee.id} nom={selectionnee.nom} />
-          ) : (
-            debits && (
-              <p className="aide invite-relecture">Cliquez sur une Caméra du résumé pour relire ses enregistrements.</p>
-            )
+          {debits && debits.cameras.length > 0 && (
+            <p className="aide invite-relecture">Cliquez sur une Caméra du résumé pour relire ses enregistrements.</p>
           )}
         </section>
       </AncienStyle>
