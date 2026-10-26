@@ -4,15 +4,13 @@ Les Caméras simulées ont des MAC fixes (compose.simulation.yaml). Une MAC inco
 produit pas dans la stack : la réponse de l'API est retouchée pour la retirer.
 """
 
-import re
-
 import pytest
 from playwright.sync_api import Locator, Page, Route, expect
 
 from stack_compose import MACS_SIMULEES, adresses_ip
 from test_administration import administration, api, creer, ligne, noms, url_injoignable  # noqa: F401 (fixtures)
 from test_ajout_camera import DELAI_APERCU_MS, ajouter_par_ip, sans_essai  # noqa: F401 (fixtures)
-from test_detection import DELAI_DETECTION_MS
+from test_detection import candidats, ouvrir_detection, tableau
 
 INCONNUE = "—"
 
@@ -60,23 +58,18 @@ def test_colonne_mac_des_candidats(administration: Page, api, noms, tableau_cand
         assert api.post("/api/essai", json={"ip": ip_de(1), "port": 554}, timeout=30).json()["issue"] == "flux_trouve"
         assert api.post("/api/essai/camera", json={"nom": noms()}).status_code == 201
     sans_mac(administration, "/api/detection", ip_de(3))
-    section = administration.get_by_role("region", name="Détecter des Caméras")
 
-    section.get_by_role("button", name="Détecter des Caméras").click()
+    boite = ouvrir_detection(administration)
 
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
+    nouveaux = candidats(boite)
     if tableau_candidats == "Déjà configurées":
-        section.get_by_text(re.compile(r"Déjà configurées \(\d+\)")).click()
-        tableau = section.get_by_role("table", name="Déjà configurées")
-        expect(cellule(tableau, tableau.get_by_role("row").filter(has_text=ip_de(1)), "MAC")).to_have_text(
-            MACS_SIMULEES[1]
-        )
+        deja = tableau(boite, "Déjà configurées")
+        expect(cellule(deja, deja.get_by_role("row").filter(has_text=ip_de(1)), "MAC")).to_have_text(MACS_SIMULEES[1])
     else:
-        expect(cellule(candidats, candidats.get_by_role("row").filter(has_text=ip_de(2)), "MAC")).to_have_text(
+        expect(cellule(nouveaux, nouveaux.get_by_role("row").filter(has_text=ip_de(2)), "MAC")).to_have_text(
             MACS_SIMULEES[2]
         )
-        expect(cellule(candidats, candidats.get_by_role("row").filter(has_text=ip_de(3)), "MAC")).to_have_text(
+        expect(cellule(nouveaux, nouveaux.get_by_role("row").filter(has_text=ip_de(3)), "MAC")).to_have_text(
             INCONNUE
         )
 

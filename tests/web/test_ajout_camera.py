@@ -7,8 +7,8 @@ import pytest
 from playwright.sync_api import Locator, Page, Route, expect
 
 from stack_compose import EXPIRATION_APERCU_S, adresses_ip, url_camera_simulee
-from test_administration import administration, api, noms, unique  # noqa: F401 (fixtures)
-from test_detection import DELAI_DETECTION_MS
+from test_administration import administration, api, ligne, noms, toast, unique  # noqa: F401 (fixtures)
+from test_detection import candidats, onglet, ouvrir_detection, tableau
 from test_live import HEVC_PRETENDU, NAVIGATEUR_SANS_H265, SANS_HEVC, hls, requetes_flux, whep  # noqa: F401 (fixtures)
 
 # Essai, puis démarrage à la demande du relais de l'Aperçu, avec de la marge.
@@ -35,17 +35,26 @@ def attendre_la_lecture(page: Page, apercu: Locator) -> None:
     page.wait_for_function("(video) => video.currentTime > 0", arg=apercu.element_handle(), timeout=DELAI_APERCU_MS)
 
 
+def ouvrir_ajout(page: Page, ip: str) -> Locator:
+    """Boîte « Détecter des Caméras », puis « Ajouter » sur la ligne du Candidat : son panneau d'ajout."""
+    boite = ouvrir_detection(page)
+    candidats(boite).get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
+    return boite.get_by_role("form", name=f"Ajouter {ip}:554")
+
+
+def ajoutee(page: Page, nom: str) -> Locator:
+    """La Caméra ajoutée referme la boîte, s'annonce en toast et apparaît dans le tableau : sa ligne."""
+    expect(page.get_by_role("dialog", name="Détecter des Caméras")).to_have_count(0)
+    expect(toast(page, f"Caméra {nom} ajoutée.")).to_be_visible()
+    camera = ligne(page, nom)
+    expect(camera).to_be_visible()
+    return camera
+
+
 def test_ajout_depuis_un_candidat_au_flux_ouvert(administration: Page, noms, sans_essai):
     (ip,) = adresses_ip("camera-simulee-1")
     nom = noms("Ajout")
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
     apercu = panneau.locator("video")
     attendre_la_lecture(administration, apercu)
     expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)
@@ -54,40 +63,31 @@ def test_ajout_depuis_un_candidat_au_flux_ouvert(administration: Page, noms, san
     panneau.get_by_label("Emplacement").fill("Portail")
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_contain_text("Portail")
-    expect(panneau).to_have_count(0)
-    expect(candidats.get_by_role("row").filter(has_text=ip)).to_have_count(0)
-    deja = section.get_by_role("group").filter(has_text=re.compile(r"Déjà configurées \(\d+\)"))
-    deja.get_by_text(re.compile(r"Déjà configurées \(\d+\)")).click()
-    expect(deja.get_by_role("row").filter(has_text=nom)).to_contain_text(ip)
+    expect(ajoutee(administration, nom)).to_contain_text("Portail")
+    # Rouverte, la boîte garde la Détection : le Candidat est passé dans « Déjà configurées ».
+    boite = ouvrir_detection(administration)
+    expect(candidats(boite).get_by_role("row").filter(has_text=ip)).to_have_count(0)
+    expect(tableau(boite, "Déjà configurées").get_by_role("row").filter(has_text=nom)).to_contain_text(ip)
 
 
 def test_annuler_ferme_le_panneau_sans_rien_creer(administration: Page, api, sans_essai):
     (ip,) = adresses_ip("camera-simulee-1")
     avant = len(api.get("/api/cameras").json())
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
     expect(panneau.locator("video")).to_be_visible(timeout=DELAI_APERCU_MS)
 
     panneau.get_by_role("button", name="Annuler").click()
 
     expect(panneau).to_have_count(0)
-    expect(candidats.get_by_role("row").filter(has_text=ip)).to_be_visible()
+    boite = administration.get_by_role("dialog", name="Détecter des Caméras")
+    expect(onglet(boite, "Candidats")).to_have_attribute("aria-selected", "true")
+    expect(candidats(boite).get_by_role("row").filter(has_text=ip)).to_be_visible()
     assert len(api.get("/api/cameras").json()) == avant
 
 
 def test_l_apercu_reste_tant_que_le_panneau_est_ouvert_et_annuler_le_retire(administration: Page, api, sans_essai):
     (ip,) = adresses_ip("camera-simulee-1")
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
     apercu = panneau.locator("video")
     attendre_la_lecture(administration, apercu)
 
@@ -113,12 +113,7 @@ def test_l_apercu_reste_tant_que_le_panneau_est_ouvert_et_annuler_le_retire(admi
 def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page, noms, sans_essai):
     (ip,) = adresses_ip("camera-simulee-2")
     nom = noms("Ajout")
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
 
     expect(panneau.get_by_text("Cette caméra demande un mot de passe")).to_be_visible(timeout=DELAI_APERCU_MS)
     expect(panneau.get_by_label("Identifiant")).to_have_value("admin")
@@ -138,10 +133,7 @@ def test_ajout_d_une_camera_a_mot_de_passe_apres_un_mauvais(administration: Page
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    ligne = administration.get_by_role("row").filter(has_text=nom).first
-    expect(ligne).to_be_visible()
-    expect(ligne).not_to_contain_text(MOT_DE_PASSE_SIMULEE_2)
-    expect(panneau).to_have_count(0)
+    expect(ajoutee(administration, nom)).not_to_contain_text(MOT_DE_PASSE_SIMULEE_2)
 
 
 def test_mot_de_passe_court_signale_sans_bloquer(administration: Page, noms, sans_essai):
@@ -156,12 +148,7 @@ def test_mot_de_passe_court_signale_sans_bloquer(administration: Page, noms, san
             demande["mot_de_passe"] = MOT_DE_PASSE_SIMULEE_2
         route.continue_(post_data=json.dumps(demande))
 
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
     expect(panneau.get_by_text("Cette caméra demande un mot de passe")).to_be_visible(timeout=DELAI_APERCU_MS)
     expect(panneau.get_by_text(AVERTISSEMENT_COURT)).to_have_count(0)
 
@@ -187,19 +174,13 @@ def test_mot_de_passe_court_signale_sans_bloquer(administration: Page, noms, san
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
-    expect(panneau).to_have_count(0)
+    ajoutee(administration, nom)
 
 
 def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_essai):
     (ip,) = adresses_ip("camera-simulee-3")
     nom = noms("Ajout")
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
 
     expect(panneau.get_by_text("Flux introuvable")).to_be_visible(timeout=DELAI_APERCU_MS)
     panneau.get_by_label("Chemin RTSP").fill("/flux")
@@ -211,8 +192,7 @@ def test_ajout_d_une_camera_au_chemin_exotique(administration: Page, noms, sans_
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
-    expect(panneau).to_have_count(0)
+    ajoutee(administration, nom)
 
 
 def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: Page, noms, sans_essai):
@@ -225,12 +205,7 @@ def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: 
         route.fulfill(response=reponse, json={**reponse.json(), "codec": "MJPEG"})
 
     administration.route("**/api/essai", lambda route: en_mjpeg(route) if route.request.method == "POST" else route.continue_())
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
 
     expect(
         panneau.get_by_text(
@@ -241,8 +216,7 @@ def test_un_codec_non_lisible_est_nomme_et_l_ajout_reste_permis(administration: 
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
-    expect(panneau).to_have_count(0)
+    ajoutee(administration, nom)
 
 
 def test_apercu_d_un_candidat_h265_se_lit_en_hls_et_l_ajout_garde_son_codec(
@@ -253,12 +227,7 @@ def test_apercu_d_un_candidat_h265_se_lit_en_hls_et_l_ajout_garde_son_codec(
     # Chromium décode le HEVC selon la machine : on le lui retire, le message navigateur prouve le choix de HLS.
     administration.add_init_script(SANS_HEVC)
     administration.reload()
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    candidats = section.get_by_role("table", name="Candidats")
-    expect(candidats).to_be_visible(timeout=DELAI_DETECTION_MS)
-    candidats.get_by_role("row").filter(has_text=ip).get_by_role("button", name="Ajouter").click()
-    panneau = section.get_by_role("form", name=f"Ajouter {ip}:554")
+    panneau = ouvrir_ajout(administration, ip)
 
     expect(panneau.get_by_text(NAVIGATEUR_SANS_H265)).to_be_visible(timeout=DELAI_APERCU_MS)
     expect(panneau.get_by_text("que le navigateur ne sait pas lire")).to_have_count(0)
@@ -268,15 +237,13 @@ def test_apercu_d_un_candidat_h265_se_lit_en_hls_et_l_ajout_garde_son_codec(
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_be_visible()
-    expect(panneau).to_have_count(0)
+    ajoutee(administration, nom)
     assert next(c["codec"] for c in api.get("/api/cameras").json() if c["nom"] == nom) == "H265"
 
 
 def ajouter_par_ip(administration: Page, ip: str) -> Locator:
-    """Saisit l'IP (port 554 par défaut) dans « Ajouter par adresse IP » et renvoie ce formulaire."""
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    formulaire = section.get_by_role("form", name="Ajouter par adresse IP")
+    """Saisit l'IP (port 554 par défaut) dans « Ajouter par adresse IP » de la boîte et renvoie ce formulaire."""
+    formulaire = ouvrir_detection(administration).get_by_role("form", name="Ajouter par adresse IP")
     expect(formulaire.get_by_label("Port")).to_have_value("554")
     formulaire.get_by_label("Adresse IP").fill(ip)
     formulaire.get_by_role("button", name="Ajouter").click()
@@ -295,8 +262,7 @@ def test_ajout_par_adresse_ip_sans_detection(administration: Page, noms, sans_es
     panneau.get_by_label("Nom").fill(nom)
     panneau.get_by_role("button", name="Ajouter la Caméra").click()
 
-    expect(administration.get_by_role("row").filter(has_text=nom).first).to_contain_text(ip)
-    expect(panneau).to_have_count(0)
+    expect(ajoutee(administration, nom)).to_contain_text(ip)
 
 
 def test_ajout_par_adresse_ip_deja_configuree(administration: Page, api, noms, sans_essai):

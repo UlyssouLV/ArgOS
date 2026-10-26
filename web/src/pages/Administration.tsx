@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { CameraOff, Settings2 } from "lucide-react";
+import { CameraOff, Radar, Settings2 } from "lucide-react";
 
-import { AncienStyle } from "@/components/AncienStyle";
 import { EnTeteDePage } from "@/components/EnTeteDePage";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -40,6 +39,7 @@ export function Administration() {
   const [cameras, setCameras] = useState<Camera[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enReglages, setEnReglages] = useState<number | null>(null);
+  const [enDetection, setEnDetection] = useState(false);
 
   const rafraichir = useCallback(async () => {
     try {
@@ -72,7 +72,16 @@ export function Administration() {
 
   return (
     <>
-      <EnTeteDePage titre="Caméras" surtitre="Administration" />
+      <EnTeteDePage
+        titre="Caméras"
+        surtitre="Administration"
+        actions={
+          <Button onClick={() => setEnDetection(true)}>
+            <Radar />
+            Détecter des Caméras
+          </Button>
+        }
+      />
       <div className="flex flex-col gap-6 p-6">
         {erreur && (
           <Alert variant="destructive">
@@ -80,7 +89,7 @@ export function Administration() {
           </Alert>
         )}
         {cameras === null && !erreur && <Squelettes />}
-        {cameras?.length === 0 && <AucuneCamera />}
+        {cameras?.length === 0 && <AucuneCamera onDetecter={() => setEnDetection(true)} />}
         {cameras && cameras.length > 0 && (
           <div className="rounded-lg border bg-card">
             <Table aria-label="Caméras">
@@ -106,12 +115,12 @@ export function Administration() {
             </Table>
           </div>
         )}
-        <AncienStyle>
-          <section className="administration">
-            <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
-          </section>
-        </AncienStyle>
       </div>
+      <DetecterCameras
+        ouverte={enDetection}
+        onFermer={() => setEnDetection(false)}
+        onCameraAjoutee={() => void rafraichir()}
+      />
       {reglee && <ReglagesCamera camera={reglee} onFermer={() => setEnReglages(null)} onModifiee={rafraichir} />}
     </>
   );
@@ -128,7 +137,7 @@ function Squelettes() {
 }
 
 /** État vide : icône, phrase et l'action utile, la Détection. */
-function AucuneCamera() {
+function AucuneCamera({ onDetecter }: Readonly<{ onDetecter: () => void }>) {
   return (
     <section
       aria-label="Aucune Caméra"
@@ -137,10 +146,7 @@ function AucuneCamera() {
       <CameraOff className="size-8 text-muted-foreground" aria-hidden="true" />
       <p className="text-base font-semibold">Aucune Caméra</p>
       <p className="text-muted-foreground">Détectez les caméras du réseau pour en ajouter une.</p>
-      <Button
-        variant="outline"
-        onClick={() => document.getElementById("titre-detection")?.scrollIntoView({ behavior: "smooth" })}
-      >
+      <Button variant="outline" onClick={onDetecter}>
         Détecter des Caméras
       </Button>
     </section>

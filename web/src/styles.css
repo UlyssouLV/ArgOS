@@ -260,16 +260,14 @@
   font-size: 0.9em;
 }
 
-.formulaire-camera,
-.ajout-par-ip {
+.formulaire-camera {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 0.75rem;
 }
 
-.formulaire-camera label,
-.ajout-par-ip label {
+.formulaire-camera label {
   display: grid;
   gap: 0.3rem;
 }
@@ -278,16 +276,12 @@
   width: 24rem;
 }
 
-.formulaire-camera .boutons,
-.ajout-par-ip .boutons {
+.formulaire-camera .boutons {
   display: flex;
   gap: 0.5rem;
 }
 
-.formulaire-camera .erreur,
-.ajout-par-ip h3,
-.ajout-par-ip output,
-.ajout-par-ip .erreur {
+.formulaire-camera .erreur {
   flex-basis: 100%;
 }
 
@@ -331,40 +325,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-}
-
-.detection button {
-  margin-bottom: 0.75rem;
-}
-
-.filtre-mac {
-  display: grid;
-  gap: 0.3rem;
-  margin-bottom: 0.75rem;
-}
-
-.filtre-mac input {
-  width: 14rem;
-  font-family: ui-monospace, monospace;
-}
-
-.candidats {
-  width: auto;
-  min-width: 16rem;
-}
-
-.deja-configurees {
-  margin-top: 0.75rem;
-}
-
-.deja-configurees summary {
-  cursor: pointer;
-}
-
-/* Adresse suivie (ou conflit) sous le nom de la Caméra d'un Candidat déjà configuré. */
-.suivi {
-  display: block;
-  font-size: 0.85em;
 }
 
 .etat {
@@ -418,35 +378,6 @@
   background: #1d2328;
   color: #fff;
   font-size: 1.2rem;
-}
-
-.ajout-par-ip {
-  margin: 1rem 0 0.75rem;
-}
-
-.ajout-par-ip h3 {
-  margin: 0;
-}
-
-.ajout-par-ip input[name="port"] {
-  width: 6rem;
-}
-
-.ajout-candidat {
-  display: grid;
-  gap: 0.5rem;
-  /* Largeur fixe, bornée par l'écran : la vidéo, en absolu, ne donne plus la sienne au tableau des
-     Candidats, qui s'ajuste à son contenu. */
-  width: min(40rem, 100vw - 5rem);
-}
-
-.ajout-candidat .lecteur {
-  max-height: 22rem;
-}
-
-.ajout-candidat .avertissement {
-  margin: 0;
-  color: #8a5a00;
 }
 
 .reglages {
