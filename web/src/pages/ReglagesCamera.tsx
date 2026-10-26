@@ -294,7 +294,7 @@ function PanneauReglages({ camera, onFermer, onModifiee }: Props) {
               key={camera.chemin_flux}
               cheminFlux={camera.chemin_flux}
               codec={camera.codec}
-              className="overflow-hidden rounded-md bg-black [&_.flux-indisponible]:bg-black/80 [&_.flux-indisponible]:text-muted-foreground"
+              className="overflow-hidden rounded-md"
             />
           )}
           <Section titre="Général" defaultOpen>

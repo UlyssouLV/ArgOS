@@ -236,7 +236,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
             <AlertDescription>{erreur}</AlertDescription>
           </Alert>
         )}
-        <div className="relative aspect-video max-h-[60vh] w-full overflow-hidden rounded-lg border bg-black">
+        <div className="relative aspect-video max-h-[60vh] w-full overflow-hidden rounded-lg border bg-video">
           {segment !== null && (
             <video
               ref={video}
@@ -322,7 +322,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
 
 function MessageVideo({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <p className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-muted-foreground">
+    <p className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-video/80 p-4 text-center text-muted-foreground">
       {children}
     </p>
   );

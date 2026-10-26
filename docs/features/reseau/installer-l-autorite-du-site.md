@@ -99,6 +99,8 @@ Chrome accepte les Autorités installées par l’utilisateur. Firefox pour Andr
 
 Ouvrir **`https://<IP du Site>`** : le cadenas s’affiche, sans avertissement. Une ancienne adresse (`http://<IP du Site>:8080`) redirige vers elle.
 
+![Page de connexion du Site, servie en HTTPS](../../img/features/reseau/connexion-https.png)
+
 Si le navigateur avertit encore :
 
 - **l’adresse n’est pas nommée** par le certificat (IP oubliée ou changée dans `MTX_WEBRTCADDITIONALHOSTS`, nom d’hôte au lieu de l’IP) : corriger `.env`, puis relancer la stack (`lancer-argos.command`, ou `docker compose up -d`) ; le certificat serveur est régénéré et servi au lancement, rien à refaire sur les postes ;

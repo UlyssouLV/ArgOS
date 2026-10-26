@@ -137,13 +137,13 @@ export function Live() {
               </div>
             </section>
             {/* Vidéo 16:9 au plus grand dans la zone, sur fond noir. */}
-            <div className="relative min-h-64 flex-1 bg-black">
+            <div className="relative min-h-64 flex-1 bg-video">
               {/* Une clé par Flux : changer de Caméra démonte le lecteur, qui ferme sa connexion (WebRTC ou HLS). */}
               <LecteurFlux
                 key={courante.chemin_flux}
                 cheminFlux={courante.chemin_flux}
                 codec={courante.codec}
-                className="absolute inset-0 aspect-auto max-h-none bg-black [&_.flux-indisponible]:bg-black/80 [&_.flux-indisponible]:text-base [&_.flux-indisponible]:text-muted-foreground [&_video]:object-contain"
+                className="absolute inset-0 aspect-auto [&>p]:text-base"
               />
             </div>
           </>

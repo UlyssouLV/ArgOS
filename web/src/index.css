@@ -1,11 +1,9 @@
 /* Identité de la 1.0.0 (spec #152, docs/adr/0016-tailwind-et-shadcn-ui-pour-l-ui-du-site.md) :
    thème sombre seul, tokens sur :root exposés à Tailwind par @theme inline. */
-@layer theme, base, ancien, components, utilities;
+@layer theme, base, components, utilities;
 
 @import "tailwindcss";
 @import "tw-animate-css";
-/* Pages pas encore redessinées : leur ancienne feuille, sous .ancien-style, cède aux utilitaires. */
-@import "./styles.css" layer(ancien);
 
 @font-face {
   font-family: "Inter";
@@ -40,6 +38,7 @@
   --accent: #1e2025;
   --accent-foreground: #f2f2f3;
   --destructive: #f0603c;
+  --destructive-foreground: #ffffff;
   --success: #3fb968;
   --unknown: #7d808a;
   --brand: #c8102e;
@@ -47,6 +46,9 @@
   --input: #2a2d34;
   --ring: #c8102e;
   --radius: 10px;
+  /* Fond des vidéos (bandes noires) et voile sous les boîtes de dialogue. */
+  --video: #000000;
+  --overlay: #000000;
 }
 
 @theme inline {
@@ -70,9 +72,12 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-unknown: var(--unknown);
   --color-brand: var(--brand);
+  --color-video: var(--video);
+  --color-overlay: var(--overlay);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -90,6 +95,12 @@
 
   body {
     @apply bg-background font-sans text-sm text-foreground antialiased;
+  }
+
+  /* Focus visible au rouge de marque partout, contrôles natifs compris (radio, curseur, lien, ligne cliquable) ;
+     les composants qui posent leur anneau (outline-none + ring) gardent le leur. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
   }
 }
 

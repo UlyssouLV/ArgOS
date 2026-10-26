@@ -218,7 +218,7 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
           <LecteurFlux
             cheminFlux={apercu}
             codec={codec}
-            className="overflow-hidden rounded-md bg-black [&_.flux-indisponible]:bg-black/80 [&_.flux-indisponible]:text-muted-foreground"
+            className="overflow-hidden rounded-md"
           />
           {codecIllisible && <p className="text-destructive">{messageCodec(codec)}</p>}
           {essai?.appareil_deja_connu && (
