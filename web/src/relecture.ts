@@ -97,29 +97,15 @@ export function segmentVise(segments: SegmentFerme[], instant: number): number |
 }
 
 /**
- * Fenêtre d'un clic à `instant` (ms) : depuis cette seconde dans une Plage enregistrée (ADR 0018) ; dans un trou, depuis
- * le début du Segment le plus proche. `null` sans Segment.
+ * Fenêtre à lire depuis `instant` (ms), un clic ou la fin d'une fenêtre lue (ADR 0018) : depuis cette seconde dans la
+ * Plage qui le couvre, qu'un Segment fermé depuis peut prolonger ; sinon (trou, fin de Plage), dans le sens de lecture,
+ * au début de la Plage suivante du jour. `null` s'il n'y en a plus, ou pas encore.
  */
-export function fenetreVisee(segments: SegmentFerme[], instant: number): Fenetre | null {
+export function fenetreDepuis(segments: SegmentFerme[], instant: number): Fenetre | null {
   const plages = plagesEnregistrees(segments);
   const plage = plageCourante(plages, instant);
-  if (plage !== null) return fenetre(plage, instant);
-  const vise = segmentVise(segments, instant);
-  if (vise === null) return null;
-  const debut = Date.parse(segments[vise].debut);
-  const autour = plageCourante(plages, debut);
-  return autour === null ? null : fenetre(autour, debut);
-}
-
-/**
- * Suite d'une fenêtre lue jusqu'à `instant` (ms) : la Plage continue si un Segment fermé depuis la prolonge, sinon
- * reprend au début de la Plage suivante ; `null` tant qu'aucune n'est connue.
- */
-export function suiteDeLecture(segments: SegmentFerme[], instant: number): Fenetre | null {
-  const plages = plagesEnregistrees(segments);
-  const plage = plageCourante(plages, instant);
-  const suite = plage === null ? null : fenetre(plage, instant);
-  if (suite !== null) return suite;
+  const dedans = plage === null ? null : fenetre(plage, instant);
+  if (dedans !== null) return dedans;
   const suivante = plageSuivante(plages, instant);
   return suivante === null ? null : fenetre(suivante, Date.parse(suivante.debut));
 }

@@ -15,7 +15,7 @@ import { hevcDecodable } from "./hls";
 import { aRenouveler, plageCourante, plagesEnregistrees, type Fenetre } from "./plages";
 import {
   VITESSES,
-  fenetreVisee,
+  fenetreDepuis,
   graduationsDuJour,
   instantSurLeJour,
   jourSelectionnable,
@@ -24,7 +24,6 @@ import {
   placeSurLeJour,
   segmentSuivant,
   segmentVise,
-  suiteDeLecture,
   urlRelecture,
   type SegmentsFermes,
   type Vitesse,
@@ -74,7 +73,8 @@ function dateDuSite(iso: string, fuseau: string): string {
 /**
  * Relecture d'une Caméra, un jour du Site à la fois (docs/adr/0013-relecture-des-enregistrements.md, ADR 0017) :
  * en-tête (Caméra, jour), viewer, puis Timeline d'enregistrement de 00h à 24h. Un clic sur une Plage enregistrée lit
- * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture. Avant la fin d'une fenêtre, sa suite se
+ * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture ; un clic dans un trou, ou la fin d'une
+ * Plage, passe au début de la Plage suivante du jour, et après la dernière la lecture s'arrête. Avant la fin d'une fenêtre, sa suite se
  * précharge dans une seconde vidéo, cachée, qui prend le relais à la fin, à la même vitesse : pas d'interruption visible.
  */
 export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelecture) {
@@ -126,11 +126,11 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     [camera.codec],
   );
 
-  // Suite préchargée, cachée : même fenêtre que `suiteDeLecture` à la fin de la lecture, donc même vidéo au relais.
+  // Suite préchargée, cachée : même fenêtre que `fenetreDepuis` à la fin de la lecture, donc même vidéo au relais.
   const suivante =
     lue === null || lecture === null || h265Illisible || !aRenouveler(lecture, position, vitesse)
       ? null
-      : suiteDeLecture(lue.segments, finDe(lecture));
+      : fenetreDepuis(lue.segments, finDe(lecture));
 
   /** Fenêtre à lire, depuis son début ; position et état repartent avec elle, sans rendu intermédiaire. */
   function lireFenetre(fenetre: Fenetre | null) {
@@ -149,10 +149,10 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     void lecteur.play().catch(() => {});
   }, [lecture]);
 
-  // Fin de la fenêtre au bout des Segments connus : on reprend dès qu'un rafraîchissement apporte la suite.
+  // Fin de la fenêtre au bout des Segments connus : en pause, on reprend dès qu'un rafraîchissement apporte la suite.
   useEffect(() => {
     if (lue === null || acheve === null) return;
-    const suite = suiteDeLecture(lue.segments, acheve);
+    const suite = fenetreDepuis(lue.segments, acheve);
     if (suite === null) return;
     setAcheve(null);
     lireFenetre(suite);
@@ -177,7 +177,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
 
   function viser(event: MouseEvent<HTMLButtonElement>) {
     if (lue === null) return;
-    const visee = fenetreVisee(lue.segments, instantVise(event, lue));
+    const visee = fenetreDepuis(lue.segments, instantVise(event, lue));
     if (visee === null) return;
     // Même fenêtre, même `src` : la vidéo ne se recharge pas, on la rembobine.
     if (visee.start === lecture?.start && visee.duration === lecture.duration && video.current !== null) {
