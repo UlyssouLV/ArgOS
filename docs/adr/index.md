@@ -25,3 +25,4 @@ Ce n’est ni une spec produit, ni un tutoriel. C’est le journal des choix str
 | [0015](./0015-mise-a-l-heure-a-chaque-verification.md) | Mise à l’heure des Caméras à chaque vérification |
 | [0016](./0016-tailwind-et-shadcn-ui-pour-l-ui-du-site.md) | Tailwind et shadcn/ui pour l’UI du Site |
 | [0017](./0017-conservation-en-jours-et-relecture-a-la-journee.md) | Conservation en jours et Relecture à la journée |
+| [0018](./0018-relecture-continue-fenetre-glissante.md) | Relecture continue : fenêtre glissante et seek à la seconde |

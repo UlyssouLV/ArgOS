@@ -158,6 +158,12 @@ Fichier fMP4 produit par le Pont pour une plage courte du Flux d’une Caméra e
 
 À éviter : chunk, part, clip.
 
+## Plage enregistrée {#plage-enregistree}
+
+Suite de Segments d’enregistrement **contigus** (sans trou) d’une Caméra, relue d’un bloc en Relecture. Un trou (absence de Segment) sépare deux Plages.
+
+À éviter : clip, run, plage d’octets HTTP.
+
 ## Conservation {#conservation}
 
 Durée pendant laquelle le Site garde les Segments d’enregistrement avant de les effacer (fenêtre glissante côté Pont). Réglable pour tout le Site.
@@ -178,13 +184,13 @@ Vitesse à laquelle les Segments d’une Caméra (ou l’ensemble retenu) rempli
 
 ## Relecture {#relecture}
 
-Consultation dans l’UI de l’historique enregistré d’une Caméra : choisir un moment sur la période de Conservation et lire les Segments fermés, sans réencodage, derrière la session.
+Consultation dans l’UI de l’historique enregistré d’une Caméra : choisir un moment sur la période de Conservation et lire les Plages enregistrées (Segments fermés), sans interruption visible dans une Plage, à la seconde près, sans réencodage, derrière la session.
 
 À éviter : playback seul, VOD, archive player.
 
 ## Timeline d’enregistrement {#timeline-d-enregistrement}
 
-Bande temporelle d’un jour (00h → 24h, heure du Site) dans la fenêtre de Conservation d’une Caméra en Relecture : plages où des Segments existent mises en évidence ; un clic positionne la lecture au début du Segment concerné.
+Bande temporelle d’un jour (00h → 24h, heure du Site) dans la fenêtre de Conservation d’une Caméra en Relecture : Plages enregistrées mises en évidence, trous visibles ; un clic sur une Plage positionne la lecture à la **seconde** visée ; un clic dans un trou va au début de la Plage suivante (sens avant).
 
 À éviter : scrubber Live, curseur media générique.
 
