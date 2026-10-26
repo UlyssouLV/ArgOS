@@ -164,6 +164,12 @@ Suite de Segments d’enregistrement **contigus** (sans trou) d’une Caméra, r
 
 À éviter : clip, run, plage d’octets HTTP.
 
+## Fenêtre de lecture {#fenetre-de-lecture}
+
+Extrait d’une Plage enregistrée (environ 3 min) que la Relecture demande au Pont depuis l’instant lu, renouvelé avant sa fin et coupé à la fin de la Plage. L’ADR 0018 la nomme « fenêtre glissante ».
+
+À éviter : fenêtre glissante seule (le terme désigne aussi la Conservation), buffer, chunk.
+
 ## Conservation {#conservation}
 
 Durée pendant laquelle le Site garde les Segments d’enregistrement avant de les effacer (fenêtre glissante côté Pont). Réglable pour tout le Site.
@@ -190,7 +196,7 @@ Consultation dans l’UI de l’historique enregistré d’une Caméra : choisir
 
 ## Timeline d’enregistrement {#timeline-d-enregistrement}
 
-Bande temporelle d’un jour (00h → 24h, heure du Site) dans la fenêtre de Conservation d’une Caméra en Relecture : Plages enregistrées mises en évidence, trous visibles ; un clic sur une Plage positionne la lecture à la **seconde** visée ; un clic dans un trou va au début de la Plage suivante (sens avant).
+Bande temporelle d’un jour (00h → 24h, heure du Site) dans la fenêtre de Conservation d’une Caméra en Relecture : Plages enregistrées mises en évidence, trous visibles, tête de lecture à l’instant lu ; un clic sur une Plage positionne la lecture à la **seconde** visée ; un clic dans un trou va au début de la Plage suivante (sens avant).
 
 À éviter : scrubber Live, curseur media générique.
 

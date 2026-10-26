@@ -22,7 +22,9 @@ Cette décision remplace la granularité « début de Segment » et l’enchaîn
 ## Consequences
 
 - L’UI ne lie plus un `src` à un seul Segment pour la lecture courante ; les helpers regroupent les Plages et calculent `start` / `duration`.
-- Le renouvellement se fait avant la fin par **préchargement** : à ~30 s de temps réel de la fin (vitesse comprise), la fenêtre suivante se charge dans une seconde `<video>` cachée, qui prend le relais à la fin, sans nouveau `src` sur la vidéo à l’écran (#167).
+- Le renouvellement se fait avant la fin par **préchargement** : à ~30 s de temps réel de la fin (vitesse comprise), la fenêtre suivante se charge dans une seconde `<video>` cachée, qui prend le relais à la fin, sans nouveau `src` sur la vidéo à l’écran (#167). La suite est figée à sa demande : un rafraîchissement de la Timeline qui allonge la Plage ne la redemande pas avant le relais.
+- Un reste de Plage de moins d’une seconde n’est pas demandé au Pont : il est sauté plutôt que d’allonger la fenêtre au-delà de la Plage.
+- Après la dernière Plage du jour, la lecture ne reprend seule que si un Segment fermé depuis prolonge cette Plage ; une Plage apparue plus loin attend un clic.
 - La cible **~3 min** est produit ; un spike ou ticket peut l’ajuster si latence ou hiccup de renew.
 - Zoom Timeline, scrub et lecture inverse restent hors 1.1.0 (candidats feuille de route).
 - Export d’une plage reste **1.1.1**.

@@ -1,4 +1,4 @@
-"""Plages enregistrées, fenêtre glissante et Plage suivante de la Relecture continue (ADR 0018, #165).
+"""Plages enregistrées, fenêtre de lecture et Plage suivante de la Relecture continue (ADR 0018, #165).
 
 Tests unitaires de `web/src/plages.ts`, exécuté tel quel par Node (types effacés) ; le lecteur est testé dans
 test_relecture.py.
@@ -81,18 +81,19 @@ def test_sans_segment_aucune_plage():
 def test_la_fenetre_dure_environ_trois_minutes_depuis_l_instant():
     plage = _intervalle("10:00:00", "11:00:00")
 
-    assert _appeler("fenetre", plage, _ms("10:12:34")) == {"start": "2026-10-26T10:12:34.000Z", "duration": 180}
+    assert _appeler("fenetreDans", plage, _ms("10:12:34")) == {"start": "2026-10-26T10:12:34.000Z", "duration": 180}
 
 
 def test_la_fenetre_est_coupee_a_la_fin_de_la_plage():
     plage = _intervalle("10:00:00", "10:05:00")
 
-    assert _appeler("fenetre", plage, _ms("10:04:00")) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
+    assert _appeler("fenetreDans", plage, _ms("10:04:00")) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
 
 
-@pytest.mark.parametrize("heure", ["09:59:59", "10:05:00", "10:30:00"])
-def test_pas_de_fenetre_hors_de_la_plage_ou_a_sa_fin(heure):
-    assert _appeler("fenetre", _intervalle("10:00:00", "10:05:00"), _ms(heure)) is None
+@pytest.mark.parametrize("heure", ["09:59:59", "10:04:59.500", "10:05:00", "10:30:00"])
+def test_pas_de_fenetre_hors_de_la_plage_ou_a_moins_d_une_seconde_de_sa_fin(heure):
+    # Un reste de moins d'une seconde ne se lit pas : la fenêtre n'englobe jamais le trou qui suit pour l'allonger.
+    assert _appeler("fenetreDans", _intervalle("10:00:00", "10:05:00"), _ms(heure)) is None
 
 
 PLAGES_DU_JOUR = [_intervalle("10:00:00", "10:05:00"), _intervalle("10:20:00", "10:25:00")]
@@ -119,7 +120,7 @@ def test_la_fenetre_d_un_instant_fractionnaire_finit_a_la_fin_de_la_plage():
     # Un clic tombe entre deux millisecondes : `start` et `duration` restent cohérents, la fenêtre s'arrête net.
     plage = _intervalle("10:00:00", "10:05:00")
 
-    assert _appeler("fenetre", plage, _ms("10:04:00") + 0.7) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
+    assert _appeler("fenetreDans", plage, _ms("10:04:00") + 0.7) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
 
 
 FENETRE = {"start": _iso("10:00:00"), "duration": 180}
@@ -134,3 +135,44 @@ def test_la_fenetre_se_renouvelle_a_l_approche_de_sa_fin_en_temps_reel(position,
 @pytest.mark.parametrize(("position", "vitesse"), [(0, 1), (100, 1), (0, 4)])
 def test_la_fenetre_ne_se_renouvelle_pas_loin_de_sa_fin(position, vitesse):
     assert _appeler("aRenouveler", FENETRE, position, vitesse) is False
+
+
+SEGMENTS_DU_JOUR = [
+    _intervalle("10:00:00", "10:01:00"),
+    _intervalle("10:01:00", "10:02:00"),
+    _intervalle("10:20:00", "10:21:00"),
+]
+
+
+def test_la_fenetre_depuis_un_instant_d_une_plage_part_de_cet_instant():
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms("10:00:30")) == {"start": _iso("10:00:30.000"), "duration": 90}
+
+
+@pytest.mark.parametrize("heure", ["10:02:00", "10:10:00", "10:19:59"])
+def test_la_fenetre_depuis_un_trou_ou_la_fin_d_une_plage_part_du_debut_de_la_suivante(heure):
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms(heure)) == {"start": _iso("10:20:00.000"), "duration": 60}
+
+
+def test_apres_la_derniere_plage_plus_de_fenetre():
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms("10:21:00")) is None
+
+
+def test_la_fenetre_dans_la_plage_ne_saute_pas_de_trou():
+    # Fin d'une Plage, la suivante plus loin : rien tant qu'un Segment fermé ne la prolonge pas.
+    assert _appeler("fenetreDansLaPlage", SEGMENTS_DU_JOUR, _ms("10:02:00")) is None
+    prolongee = [*SEGMENTS_DU_JOUR, _intervalle("10:02:00", "10:03:00")]
+    assert _appeler("fenetreDansLaPlage", prolongee, _ms("10:02:00")) == {"start": _iso("10:02:00.000"), "duration": 60}
+
+
+def test_la_fin_d_une_fenetre_retombe_sur_la_milliseconde():
+    assert _appeler("finDeFenetre", {"start": _iso("10:00:00.000"), "duration": 59.9996}) == _ms("10:01:00")
+
+
+def test_deux_fenetres_identiques_demandent_la_meme_video():
+    assert _appeler("memeFenetre", FENETRE, dict(FENETRE)) is True
+    assert _appeler("memeFenetre", FENETRE, FENETRE | {"duration": 120}) is False
+    assert _appeler("memeFenetre", FENETRE, None) is False
+
+
+def test_la_duree_d_une_plage_en_secondes():
+    assert _appeler("dureeS", _intervalle("10:00:00", "10:02:30")) == 150

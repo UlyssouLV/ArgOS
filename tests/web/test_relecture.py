@@ -119,6 +119,10 @@ def _plage_lue(zone: Locator) -> Locator:
     return zone.get_by_role("img", name=re.compile(r"^Plage lue "))
 
 
+def _heure(instant: datetime) -> str:
+    return instant.strftime("%H:%M:%S")
+
+
 def _cliquer_a(timeline: Locator, fraction: float) -> None:
     boite = timeline.bounding_box()
     assert boite is not None
@@ -284,7 +288,7 @@ def test_clic_sur_une_plage_part_de_la_seconde_visee(enregistrement: Page, api, 
     assert abs((start - (maintenant - timedelta(minutes=47))).total_seconds()) < PRECISION_CLIC_S
     parametres = parse_qs(urlparse(relectures[-1]).query)
     assert parametres["path"] == [camera["chemin_flux"]]
-    # Fenêtre coupée à la fin de la Plage : 2 min, sous les 3 min de la fenêtre glissante.
+    # Fenêtre coupée à la fin de la Plage : 2 min, sous les 3 min de la fenêtre de lecture.
     assert float(parametres["duration"][0]) == pytest.approx((ancien[1] - start).total_seconds(), abs=0.01)
     expect(relecture.get_by_label("Instant lu")).to_have_text(start.strftime("%H:%M:%S"))
 
@@ -345,7 +349,62 @@ def test_en_lecture_la_fin_d_une_plage_saute_a_la_suivante_puis_s_arrete_apres_l
     expect(_plage_lue(relecture)).to_have_attribute("title", re.compile(rf"^{recent[0].strftime('%H:%M:%S')} "))
 
 
-def test_au_clavier_la_timeline_passe_au_segment_suivant(enregistrement: Page, api, noms, relectures):
+def test_apres_la_derniere_plage_une_plage_apparue_apres_un_trou_attend_un_clic(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = _maintenant()
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    ancien = (maintenant - timedelta(minutes=50), maintenant - timedelta(minutes=49))
+    apparu = (maintenant - timedelta(minutes=5), maintenant - timedelta(minutes=4))
+    lectures = 0
+
+    def segments(route: Route) -> None:
+        nonlocal lectures
+        lectures += 1
+        route.fulfill(json=_corps(fenetre, [ancien] if lectures == 1 else [ancien, apparu]))
+
+    enregistrement.route(f"**/api/cameras/{camera['id']}/segments*", segments)
+    relecture = _selectionner(enregistrement, camera["nom"])
+    relecture.get_by_role("button", name="Timeline d’enregistrement").press("Enter")
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+
+    # Fin de la dernière Plage : pause. Le rafraîchissement montre une Plage plus loin, sans relancer la lecture.
+    _video(relecture).dispatch_event("ended")
+    expect(_plages(relecture)).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
+    enregistrement.wait_for_timeout(1000)
+    assert len(relectures) == 1
+    expect(relecture.get_by_role("button", name="Lecture")).to_be_visible()
+
+
+def test_la_tete_de_lecture_suit_l_instant_lu_sur_la_timeline(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = _maintenant()
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    plage = (maintenant - timedelta(minutes=40), maintenant - timedelta(minutes=20))
+    _simuler_segments(enregistrement, camera["id"], fenetre, [plage])
+    relecture = _selectionner(enregistrement, camera["nom"])
+    timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
+    tete = timeline.get_by_role("img", name="Tête de lecture")
+    expect(tete).to_have_count(0)
+
+    timeline.press("Enter")
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+    boite = timeline.bounding_box()
+    assert boite
+
+    def place() -> float:
+        position = tete.bounding_box()
+        assert position
+        return (position["x"] + position["width"] / 2 - boite["x"]) / boite["width"]
+
+    expect(tete).to_have_count(1)
+    assert place() == pytest.approx(20 / 60, abs=0.01)
+    # Deux minutes lues (la position se simule : ces Segments n'existent pas) : la tête avance d'autant.
+    _video(relecture).evaluate("v => { v.currentTime = 120; v.dispatchEvent(new Event('timeupdate')); }")
+    expect(relecture.get_by_label("Instant lu")).to_have_text(_heure(plage[0] + timedelta(minutes=2)))
+    assert place() == pytest.approx(22 / 60, abs=0.01)
+
+
+def test_au_clavier_la_timeline_passe_a_la_plage_suivante(enregistrement: Page, api, noms, relectures):
     camera = _camera(api, noms, url_injoignable())
     maintenant = _maintenant()
     fenetre = (maintenant - timedelta(hours=1), maintenant)
@@ -355,7 +414,7 @@ def test_au_clavier_la_timeline_passe_au_segment_suivant(enregistrement: Page, a
     relecture = _selectionner(enregistrement, camera["nom"])
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
-    # Sans Segment courant, Entrée part du premier ; puis Espace passe au suivant.
+    # Sans Plage lue, Entrée part de la première ; puis Espace passe à la suivante.
     timeline.press("Enter")
     _attendre(enregistrement, lambda: len(relectures) >= 1)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ancien[0]
@@ -383,9 +442,13 @@ def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ens
     _cliquer_a(relecture.get_by_role("button", name="Timeline d’enregistrement"), 57.5 / 60)
     _attendre(enregistrement, lambda: len(relectures) >= 1)
 
-    # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis.
+    # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis, et la
+    # Plage lue s'allonge d'autant sur la Timeline.
     _video(relecture).dispatch_event("ended")
-    expect(_plages(relecture)).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
+    expect(_plage_lue(relecture)).to_have_attribute(
+        "title", f"{_heure(ancien[0])} → {_heure(ferme_ensuite[1])}", timeout=DELAI_RAFRAICHISSEMENT_MS
+    )
+    expect(_plages(relecture)).to_have_count(1)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ferme_ensuite[0]
     expect(_plage_lue(relecture)).to_have_count(1)
@@ -425,6 +488,44 @@ def test_la_suite_d_une_fenetre_se_precharge_et_prend_le_relais_sans_recharger(e
     expect(_video(relecture)).to_have_js_property("marque", True)
     expect(relecture.get_by_label("Instant lu")).to_have_text(suite.strftime("%H:%M:%S"))
     assert {datetime.fromisoformat(_debut_demande(url)) for url in relectures} == {debut, suite}
+
+
+def test_la_suite_prechargee_reste_la_meme_quand_la_plage_s_allonge(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = _maintenant()
+    fenetre = (maintenant - timedelta(hours=1), maintenant)
+    debut = maintenant - timedelta(minutes=10)
+    # Une Plage de 4 min : la suite de la première fenêtre en dure 1 ; un Segment fermé ensuite l'allonge d'une minute.
+    connus = [(debut + timedelta(minutes=i), debut + timedelta(minutes=i + 1)) for i in range(4)]
+    ferme_ensuite = (debut + timedelta(minutes=4), debut + timedelta(minutes=5))
+    lectures = 0
+
+    def segments(route: Route) -> None:
+        nonlocal lectures
+        lectures += 1
+        route.fulfill(json=_corps(fenetre, connus if lectures == 1 else [*connus, ferme_ensuite]))
+
+    enregistrement.route(f"**/api/cameras/{camera['id']}/segments*", segments)
+    relecture = _selectionner(enregistrement, camera["nom"])
+    relecture.get_by_role("button", name="Timeline d’enregistrement").press("Enter")
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+    video = _video(relecture)
+    video.evaluate("v => { v.currentTime = 160; v.dispatchEvent(new Event('timeupdate')); }")
+    _attendre(enregistrement, lambda: len(relectures) >= 2)
+    prechargee = relecture.locator("video").filter(visible=False)
+    expect(prechargee).to_have_count(1)
+    prechargee.evaluate("v => { v.marque = true; }")
+
+    # Le rafraîchissement allonge la Plage : la suite déjà demandée ne se redemande pas, et prend le relais telle quelle.
+    expect(_plage_lue(relecture)).to_have_attribute(
+        "title", re.compile(rf" → {_heure(ferme_ensuite[1])}$"), timeout=DELAI_RAFRAICHISSEMENT_MS
+    )
+    video.evaluate("v => v.dispatchEvent(new Event('timeupdate'))")
+    enregistrement.wait_for_timeout(500)
+    assert len(relectures) == 2
+    video.dispatch_event("ended")
+    expect(_video(relecture)).to_have_js_property("marque", True)
+    expect(relecture.get_by_label("Instant lu")).to_have_text(_heure(debut + timedelta(minutes=3)))
 
 
 def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
@@ -471,24 +572,20 @@ def _segments_fermes(api, id_camera: int, combien: int) -> list[dict]:
         time.sleep(1)
 
 
-def _resserrer_la_fenetre(page: Page, id_camera: int) -> None:
-    """Jour réduit aux Segments réels : des Segments de 2 s tiennent moins d'un pixel sur une journée."""
+def _resserrer_la_fenetre(page: Page, id_camera: int, jour: tuple[datetime, datetime]) -> None:
+    """Jour réduit à `jour`, les Segments réels : des Segments de 2 s tiennent moins d'un pixel sur une journée."""
 
     def resserrer(route: Route) -> None:
         reponse = route.fetch()
         corps = reponse.json()
-        if corps["segments"]:
-            corps["debut_jour"], corps["fin_jour"] = corps["segments"][0]["debut"], corps["segments"][-1]["fin"]
+        corps["debut_jour"], corps["fin_jour"] = _iso(jour[0]), _iso(jour[1])
         route.fulfill(response=reponse, json=corps)
 
     page.route(f"**/api/cameras/{id_camera}/segments*", resserrer)
 
 
-def _cliquer_au_milieu(timeline: Locator, plage: Locator) -> None:
-    boite, place = timeline.bounding_box(), plage.bounding_box()
-    assert boite
-    assert place
-    _cliquer_a(timeline, (place["x"] - boite["x"] + place["width"] / 2) / boite["width"])
+def _cliquer_a_l_instant(timeline: Locator, jour: tuple[datetime, datetime], instant: datetime) -> None:
+    _cliquer_a(timeline, (instant - jour[0]) / (jour[1] - jour[0]))
 
 
 def _milieu(segment: dict) -> datetime:
@@ -501,14 +598,15 @@ def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistremen
     assert api.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
     raccourcir_les_segments(camera["chemin_flux"], DELAI_PONT_S)
     # Le premier Segment, coupé au démarrage du Flux, peut finir loin du suivant (un trou) : la Plage relue part du second.
-    _, *segments = _segments_fermes(api, camera["id"], 4)
-    _resserrer_la_fenetre(enregistrement, camera["id"])
+    premier, *segments = _segments_fermes(api, camera["id"], 4)
+    jour = (datetime.fromisoformat(premier["debut"]), datetime.fromisoformat(segments[-1]["fin"]))
+    _resserrer_la_fenetre(enregistrement, camera["id"], jour)
     relecture = _selectionner(enregistrement, camera["nom"])
     video = _video(relecture)
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
     # Au milieu du Segment : la vidéo part de cette seconde, pas du début du Segment, et joue.
-    _cliquer_au_milieu(timeline, _plages(relecture).nth(1))
+    _cliquer_a_l_instant(timeline, jour, _milieu(segments[0]))
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
     start = datetime.fromisoformat(_debut_demande(relectures[0]))
@@ -522,7 +620,7 @@ def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistremen
     expect(relecture.get_by_label("Instant lu")).to_have_text(re.compile(r"^\d{2}:\d{2}:\d{2}$"))
 
     # En lecture, un clic ailleurs repart de cette seconde, et la lecture continue.
-    _cliquer_au_milieu(timeline, _plages(relecture).nth(3))
+    _cliquer_a_l_instant(timeline, jour, _milieu(segments[2]))
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert abs((datetime.fromisoformat(_debut_demande(relectures[-1])) - _milieu(segments[2])).total_seconds()) < 0.5
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
