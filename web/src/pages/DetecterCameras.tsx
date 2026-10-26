@@ -155,7 +155,15 @@ export function DetecterCameras({ ouverte, onFermer, onCameraAjoutee }: Props) {
           />
         )}
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" disabled={!etat?.configuree || enCours} onClick={() => void detecter()}>
+          {/* Pendant la Détection, aria-disabled plutôt que disabled : le bouton garde le focus clavier. */}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!etat?.configuree}
+            aria-disabled={enCours || undefined}
+            className="aria-disabled:opacity-50"
+            onClick={() => !enCours && void detecter()}
+          >
             <RefreshCw />
             {resultat ? "Relancer la Détection" : "Lancer la Détection"}
           </Button>

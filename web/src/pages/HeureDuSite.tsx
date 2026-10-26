@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Clock, RefreshCw } from "lucide-react";
 
 import { EnTeteDePage } from "@/components/EnTeteDePage";
+import { Valeur } from "@/components/Valeur";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { notifier } from "@/notifier";
 import { messageEchec } from "../cameras";
 import {
+  dateCourteDuSite,
   libelleEtatHorloge,
   lireFuseaux,
   lireHeureDuSite,
@@ -281,7 +283,7 @@ export function HeureDuSite() {
                 </TableHeader>
                 <TableBody>
                   {horloges.map((camera) => (
-                    <LigneHorloge key={camera.id} camera={camera} />
+                    <LigneHorloge key={camera.id} camera={camera} fuseau={heure?.fuseau} />
                   ))}
                 </TableBody>
               </Table>
@@ -293,14 +295,6 @@ export function HeureDuSite() {
   );
 }
 
-function Valeur({ terme, children }: Readonly<{ terme: string; children: ReactNode }>) {
-  return (
-    <div className="grid gap-1">
-      <dt className="text-13 text-muted-foreground">{terme}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
 
 function SquelettesHeure() {
   return (
@@ -337,7 +331,7 @@ function AucuneCameraActive() {
   );
 }
 
-function LigneHorloge({ camera }: Readonly<{ camera: HorlogeVerifiee }>) {
+function LigneHorloge({ camera, fuseau }: Readonly<{ camera: HorlogeVerifiee; fuseau: string | undefined }>) {
   return (
     <TableRow>
       <TableCell className="font-medium">{camera.nom}</TableCell>
@@ -356,9 +350,7 @@ function LigneHorloge({ camera }: Readonly<{ camera: HorlogeVerifiee }>) {
       <TableCell className="font-mono text-xs">{texteEcart(camera.derive_s)}</TableCell>
       <TableCell className="font-mono text-xs">{texteEcart(camera.ecart_s)}</TableCell>
       <TableCell className="font-mono text-xs">
-        {camera.verifiee_le === null
-          ? "—"
-          : new Date(camera.verifiee_le).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" })}
+        {camera.verifiee_le === null ? "—" : dateCourteDuSite(camera.verifiee_le, fuseau, "medium")}
       </TableCell>
     </TableRow>
   );

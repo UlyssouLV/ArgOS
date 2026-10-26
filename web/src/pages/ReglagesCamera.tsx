@@ -410,7 +410,7 @@ function Section({
         <h3>
           <CollapsibleTrigger
             id={id}
-            className="group flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold outline-none hover:bg-accent/60 focus-visible:ring-[3px] focus-visible:ring-ring"
+            className="group flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold anneau-focus hover:bg-accent/60"
           >
             {titre}
             <ChevronDown

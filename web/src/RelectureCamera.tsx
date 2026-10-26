@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { CalendarX, ChevronLeft, ChevronRight, CircleAlert, MousePointerClick, Pause, Play } from "lucide-react";
+import { Calendar, CalendarX, ChevronLeft, ChevronRight, CircleAlert, MousePointerClick, Pause, Play } from "lucide-react";
 
 import { EnTeteDePage } from "@/components/EnTeteDePage";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -73,6 +73,7 @@ function dateDuSite(iso: string, fuseau: string): string {
 export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelecture) {
   const naviguer = useNavigate();
   const video = useRef<HTMLVideoElement>(null);
+  const champJour = useRef<HTMLInputElement>(null);
   const [lue, setLue] = useState<SegmentsFermes | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   // Segments repérés par leur début : un rafraîchissement décale leurs index.
@@ -205,17 +206,31 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
               >
                 <ChevronLeft />
               </Button>
-              <Input
-                type="date"
-                aria-label="Jour"
-                className="w-40 font-mono [color-scheme:dark]"
-                value={jourLu ?? ""}
-                min={lue?.premier_jour}
-                max={lue?.dernier_jour}
-                disabled={lue === null}
-                required
-                onChange={(e) => choisirJour(e.target.value)}
-              />
+              {/* Icône calendrier de Chrome remplacée par un bouton : son contour de focus ne se règle pas en CSS. */}
+              <div className="relative">
+                <Input
+                  ref={champJour}
+                  type="date"
+                  aria-label="Jour"
+                  className="w-40 pr-9 font-mono [&::-webkit-calendar-picker-indicator]:hidden"
+                  value={jourLu ?? ""}
+                  min={lue?.premier_jour}
+                  max={lue?.dernier_jour}
+                  disabled={lue === null}
+                  required
+                  onChange={(e) => choisirJour(e.target.value)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Ouvrir le calendrier"
+                  className="absolute inset-y-0 right-0 h-full"
+                  disabled={lue === null}
+                  onClick={() => champJour.current?.showPicker()}
+                >
+                  <Calendar />
+                </Button>
+              </div>
               <Button
                 variant="outline"
                 size="icon"
@@ -300,7 +315,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
                   type="button"
                   aria-pressed={v === vitesse}
                   onClick={() => setVitesse(v)}
-                  className="h-7 rounded-sm px-2.5 font-mono text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring aria-pressed:bg-secondary aria-pressed:text-foreground"
+                  className="h-7 rounded-sm px-2.5 font-mono text-xs text-muted-foreground anneau-focus hover:text-foreground aria-pressed:bg-secondary aria-pressed:text-foreground"
                 >
                   ×{v}
                 </button>
@@ -342,22 +357,23 @@ function TimelineDuJour({
         aria-label="Timeline d’enregistrement"
         onClick={onClic}
         disabled={lue.segments.length === 0}
-        className="relative block h-10 w-full cursor-pointer overflow-hidden rounded-md bg-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-default"
+        className="relative block h-10 w-full cursor-pointer overflow-hidden rounded-md bg-muted anneau-focus disabled:cursor-default"
       >
         {graduations.map(({ place }) => (
           <span key={place} className="absolute inset-y-0 w-px bg-border" style={{ left: `${place}%` }} aria-hidden="true" />
         ))}
         {lue.segments.map((s) => {
           const { gauche, largeur } = placeSurLeJour(lue, s);
+          const plage = `${heureDuSite(Date.parse(s.debut), lue.fuseau)} → ${heureDuSite(Date.parse(s.fin), lue.fuseau)}`;
+          const enLecture = s.debut === courant;
           return (
             <span
               key={s.debut}
-              className={cn(
-                "plage-enregistree absolute inset-y-1 min-w-0.5 bg-success/80",
-                s.debut === courant && "plage-courante bg-foreground",
-              )}
+              role="img"
+              aria-label={`${enLecture ? "Plage lue" : "Plage enregistrée"} ${plage}`}
+              className={cn("absolute inset-y-1 min-w-0.5 bg-success/80", enLecture && "bg-foreground")}
               style={{ left: `${gauche}%`, width: `${largeur}%` }}
-              title={`${heureDuSite(Date.parse(s.debut), lue.fuseau)} → ${heureDuSite(Date.parse(s.fin), lue.fuseau)}`}
+              title={plage}
             />
           );
         })}

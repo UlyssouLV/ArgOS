@@ -17,8 +17,8 @@ def unique(prefixe: str) -> str:
     return f"{prefixe}-{uuid.uuid4().hex[:12]}"
 
 
-def fuseau_du_navigateur(page: Page) -> ZoneInfo:
-    return ZoneInfo(page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone"))
+def fuseau_du_site(api) -> ZoneInfo:
+    return ZoneInfo(api.get("/api/heure-du-site").json()["fuseau"])
 
 
 CONSERVATION_DEFAUT = 1
@@ -133,7 +133,7 @@ def test_resume_par_camera_nom_etat_debit_plus_ancien_segment(enregistrement: Pa
     expect(cellule(resume, ligne, "Débit")).to_contain_text(re.compile(r"o/s|Ko/s|Mo/s|inconnu"))
     plus_ancien = datetime(2026, 10, 19, 23, 59, 30, tzinfo=UTC)
     expect(cellule(resume, ligne, "Plus ancien Segment")).to_have_text(
-        re.compile(rf"{plus_ancien.astimezone(fuseau_du_navigateur(enregistrement)):%d/%m/%Y %H:%M}")
+        re.compile(rf"{plus_ancien.astimezone(fuseau_du_site(api)):%d/%m/%Y %H:%M}")
     )
 
 

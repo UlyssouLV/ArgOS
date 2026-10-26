@@ -69,6 +69,11 @@ export function texteHeure(dateUtc: Date | null, fuseau: string): string {
   return dateUtc.toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "full", timeStyle: "medium" });
 }
 
+/** Date courte d'un tableau, au fuseau du Site (`undefined` tant qu'il n'est pas lu : celui du navigateur). */
+export function dateCourteDuSite(iso: string, fuseau: string | undefined, timeStyle: "short" | "medium"): string {
+  return new Date(iso).toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "short", timeStyle });
+}
+
 /** Dernière vérification de l'Horloge d'une Caméra active ; `etat` `null` : jamais vérifiée. */
 export type EtatHorloge = "a_l_heure" | "ecart" | "sans_onvif" | "echec";
 

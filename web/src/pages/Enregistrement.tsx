@@ -3,6 +3,7 @@ import { HardDrive, TriangleAlert } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
 import { EnTeteDePage } from "@/components/EnTeteDePage";
+import { Valeur } from "@/components/Valeur";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import { notifier } from "@/notifier";
 import { messageEchec } from "../cameras";
+import { dateCourteDuSite, lireHeureDuSite } from "../heureSite";
 import {
   CONSERVATION_MAX,
   HEURES_PAR_JOUR,
@@ -61,6 +63,7 @@ export function Enregistrement() {
   const [erreurSeuil, setErreurSeuil] = useState<string | null>(null);
   const [espace, setEspace] = useState<EspaceEnregistrements | null>(null);
   const [debits, setDebits] = useState<DebitsEcriture | null>(null);
+  const [fuseau, setFuseau] = useState<string | undefined>();
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -79,6 +82,10 @@ export function Enregistrement() {
   }, []);
 
   useEffect(() => {
+    // Dates du tableau au fuseau du Site, comme la Relecture (ADR 0017) ; illisible, celui du navigateur.
+    lireHeureDuSite()
+      .then((heure) => setFuseau(heure.fuseau))
+      .catch(() => {});
     void (async () => {
       try {
         const [lus] = await Promise.all([lireReglagesSite(), relireEspaceEtDebits()]);
@@ -237,7 +244,7 @@ export function Enregistrement() {
                 </TableHeader>
                 <TableBody>
                   {debits.cameras.map((camera) => (
-                    <LigneCamera key={camera.id} camera={camera} />
+                    <LigneCamera key={camera.id} camera={camera} fuseau={fuseau} />
                   ))}
                 </TableBody>
               </Table>
@@ -406,14 +413,6 @@ function Tenue({ secondes, ok }: Readonly<{ secondes: number | null; ok: boolean
   );
 }
 
-function Valeur({ terme, children }: Readonly<{ terme: string; children: ReactNode }>) {
-  return (
-    <div className="grid gap-0.5">
-      <dt className="text-muted-foreground">{terme}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
 
 function Squelettes({ libelle, lignes }: Readonly<{ libelle: string; lignes: number }>) {
   return (
@@ -442,12 +441,13 @@ function AucuneCamera() {
   );
 }
 
-function LigneCamera({ camera }: Readonly<{ camera: DebitCamera }>) {
+function LigneCamera({ camera, fuseau }: Readonly<{ camera: DebitCamera; fuseau: string | undefined }>) {
   const naviguer = useNavigate();
   const relire = () => void naviguer(`/relecture/${camera.id}`);
   return (
     <TableRow
-      className="cursor-pointer"
+      // Contour rentré : le cadre arrondi du tableau rognerait ses côtés.
+      className="cursor-pointer focus-visible:-outline-offset-2"
       title={`Relire ${camera.nom}`}
       tabIndex={0}
       onClick={relire}
@@ -475,9 +475,7 @@ function LigneCamera({ camera }: Readonly<{ camera: DebitCamera }>) {
         )}
       </TableCell>
       <TableCell className="font-mono text-xs">
-        {camera.plus_ancien_segment === null
-          ? "aucun"
-          : new Date(camera.plus_ancien_segment).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+        {camera.plus_ancien_segment === null ? "aucun" : dateCourteDuSite(camera.plus_ancien_segment, fuseau, "short")}
       </TableCell>
     </TableRow>
   );

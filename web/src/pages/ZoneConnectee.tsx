@@ -27,7 +27,7 @@ function EntreeRail({
         <NavLink
           to={vers}
           className={cn(
-            "relative flex h-10 items-center gap-3 rounded-md px-3 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring max-lg:justify-center",
+            "relative flex h-10 items-center gap-3 rounded-md px-3 text-muted-foreground anneau-focus hover:bg-accent hover:text-foreground max-lg:justify-center",
             "aria-[current=page]:bg-accent aria-[current=page]:text-foreground aria-[current=page]:[&>svg]:text-brand",
             "aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:w-0.5 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-brand",
           )}

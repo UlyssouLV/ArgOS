@@ -123,19 +123,21 @@ export function placeSurLeJour(lue: SegmentsFermes, segment: SegmentFerme): { ga
 }
 
 const HEURE_MS = 3_600_000;
+/** Une graduation toutes les trois heures du Site. */
+const PAS_GRADUATION_H = 3;
 
 /**
- * Graduations de la timeline, toutes les `pas` heures de l'heure du Site, en pourcentage du jour. Elles suivent la
+ * Graduations de la timeline, toutes les trois heures de l'heure du Site, en pourcentage du jour. Elles suivent la
  * durée réelle du jour : un jour de 23 ou 25 h saute ou répète une heure (ADR 0017).
  */
-export function graduationsDuJour(lue: SegmentsFermes, pas = 3): { place: number; libelle: string }[] {
+export function graduationsDuJour(lue: SegmentsFermes): { place: number; libelle: string }[] {
   const debut = Date.parse(lue.debut_jour);
   const total = Date.parse(lue.fin_jour) - debut;
   const format = new Intl.DateTimeFormat("fr-FR", { timeZone: lue.fuseau, hour: "numeric", hourCycle: "h23" });
   const graduations: { place: number; libelle: string }[] = [];
   for (let instant = debut; instant < debut + total; instant += HEURE_MS) {
     const heure = Number(format.formatToParts(instant).find((partie) => partie.type === "hour")?.value);
-    if (heure % pas === 0) {
+    if (heure % PAS_GRADUATION_H === 0) {
       graduations.push({ place: ((instant - debut) / total) * 100, libelle: `${String(heure).padStart(2, "0")}h` });
     }
   }

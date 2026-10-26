@@ -114,13 +114,18 @@ export function messageEchec(erreur: unknown): string | null {
   return "L'API du Site ne répond pas. Réessayez dans un instant.";
 }
 
-async function lever(reponse: Response): Promise<never> {
-  if (reponse.status === 422) throw new Refus(URL_INVALIDE, 422);
+/** Refus porté par une réponse en échec : son `detail` s'il est lisible, sinon le statut HTTP. */
+export async function refusDe(reponse: Response): Promise<Refus> {
   const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
-  throw new Refus(
+  return new Refus(
     typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`,
     reponse.status,
   );
+}
+
+async function lever(reponse: Response): Promise<never> {
+  if (reponse.status === 422) throw new Refus(URL_INVALIDE, 422);
+  throw await refusDe(reponse);
 }
 
 async function envoyer(chemin: string, methode: string, corps?: object): Promise<Response> {

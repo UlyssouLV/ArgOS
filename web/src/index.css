@@ -104,6 +104,11 @@
   }
 }
 
+/* Anneau de focus des contrôles faits main (boutons de page, liens du rail), comme ceux de components/ui. */
+@utility anneau-focus {
+  @apply outline-none focus-visible:ring-3 focus-visible:ring-ring;
+}
+
 /* Panneau latéral droit ouvert (Réglages de la Caméra, max-w-xl) : les toasts se posent à sa gauche plutôt que
    sur son pied (Annuler / Appliquer). Hors couche et !important : sonner injecte ses propres règles. */
 body:has([data-slot="sheet-content"]) [data-sonner-toaster][data-x-position="right"] {

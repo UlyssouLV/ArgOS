@@ -127,3 +127,42 @@ def test_une_detection_deja_en_cours_est_attendue(administration: Page):
     candidats(boite)
     assert refus["restants"] == 0
     expect(boite.get_by_role("alert")).to_have_count(0)
+
+
+def _arrets_tab(page: Page, boite: Locator, touche: str, nombre: int) -> list[str]:
+    """Libellés des `nombre` arrêts suivants de `touche` (Tab, Shift+Tab) ; chacun doit tomber dans la boîte."""
+    arrets = []
+    for _ in range(nombre):
+        page.keyboard.press(touche)
+        assert boite.evaluate("b => b.contains(document.activeElement)"), f"focus sorti de la boîte après {arrets}"
+        arrets.append(
+            page.evaluate(
+                "() => { const e = document.activeElement;"
+                " return (e.labels?.[0]?.textContent ?? e.getAttribute('aria-label') ?? e.textContent).trim(); }"
+            )
+        )
+    return arrets
+
+
+def test_la_boite_se_parcourt_au_clavier(administration: Page):
+    bouton = administration.get_by_role("button", name="Détecter des Caméras").first
+    bouton.focus()
+    administration.keyboard.press("Enter")
+    boite = administration.get_by_role("dialog", name="Détecter des Caméras")
+    candidats(boite)
+
+    arrets = _arrets_tab(administration, boite, "Tab", 30)
+
+    assert "Filtrer par MAC" in arrets
+    assert any(re.fullmatch(r"Candidats \(\d+\)", a) for a in arrets)
+    assert "Ajouter" in arrets
+    assert "Relancer la Détection" in arrets
+    assert "Adresse IP" in arrets
+
+    # Relancer garde le focus dans la boîte, dans les deux sens.
+    boite.get_by_role("button", name="Relancer la Détection").focus()
+    administration.keyboard.press("Enter")
+    expect(boite.get_by_text("Détection en cours…")).to_be_visible()
+    assert boite.evaluate("b => b.contains(document.activeElement)")
+    _arrets_tab(administration, boite, "Shift+Tab", 6)
+    candidats(boite)

@@ -1,5 +1,5 @@
 import { appeler } from "./api";
-import { Refus, type Camera } from "./cameras";
+import { Refus, refusDe, type Camera } from "./cameras";
 
 /** Réglage de la Détection : `raison` dit pourquoi elle est indisponible (`null` : configurée). */
 export type EtatDetection = {
@@ -67,11 +67,7 @@ export function filtrerParMac(candidats: Candidat[], saisie: string): Candidat[]
 
 async function lire<T>(reponse: Response): Promise<T> {
   if (reponse.ok) return reponse.json();
-  const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
-  throw new Refus(
-    typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`,
-    reponse.status,
-  );
+  throw await refusDe(reponse);
 }
 
 export async function lireEtatDetection(): Promise<EtatDetection> {

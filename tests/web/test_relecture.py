@@ -98,6 +98,15 @@ def _selectionner(page: Page, nom: str) -> Locator:
     return _relecture(page, nom)
 
 
+def _plages(zone: Locator) -> Locator:
+    """Plages de la Timeline, celle en lecture comprise."""
+    return zone.get_by_role("img", name=re.compile(r"^Plage (enregistrée|lue) "))
+
+
+def _plage_lue(zone: Locator) -> Locator:
+    return zone.get_by_role("img", name=re.compile(r"^Plage lue "))
+
+
 def _cliquer_a(timeline: Locator, fraction: float) -> None:
     boite = timeline.bounding_box()
     assert boite is not None
@@ -161,7 +170,7 @@ def test_changer_de_camera_ou_de_jour_recharge_la_timeline(enregistrement: Page,
     expect(jour.get_by_role("button", name="Jour suivant")).to_be_disabled()
 
     jour.get_by_role("button", name="Jour précédent").click()
-    expect(relecture.locator(".plage-enregistree")).to_have_count(1)
+    expect(_plages(relecture)).to_have_count(1)
     expect(jour.get_by_label("Jour", exact=True)).to_have_value("2026-10-25")
     assert demandes[-1] == (camera["id"], "2026-10-25")
 
@@ -177,7 +186,7 @@ def test_changer_de_camera_ou_de_jour_recharge_la_timeline(enregistrement: Page,
 
     # Le jour choisi suit l'Administrateur d'une Caméra à l'autre.
     jour.get_by_label("Jour", exact=True).fill("2026-10-25")
-    expect(relecture.locator(".plage-enregistree")).to_have_count(1)
+    expect(_plages(relecture)).to_have_count(1)
     enregistrement.get_by_role("combobox", name="Caméra").select_option(str(autre["id"]))
     autre_relecture = _relecture(enregistrement, autre["nom"])
     expect(autre_relecture.get_by_text(SANS_SEGMENT)).to_be_visible()
@@ -196,8 +205,8 @@ def test_la_timeline_d_un_jour_de_changement_d_heure_suit_sa_duree_reelle(enregi
 
     timeline = _relecture(enregistrement, camera["nom"]).get_by_role("button", name="Timeline d’enregistrement")
 
-    expect(timeline.locator(".plage-enregistree")).to_have_count(1)
-    boite, place = timeline.bounding_box(), timeline.locator(".plage-enregistree").bounding_box()
+    expect(_plages(timeline)).to_have_count(1)
+    boite, place = timeline.bounding_box(), _plages(timeline).bounding_box()
     assert boite
     assert place
     assert place["x"] - boite["x"] == pytest.approx(boite["width"] * 21 / duree_h, abs=2)
@@ -221,7 +230,7 @@ def test_selectionner_une_camera_montre_sa_timeline_avec_plages_et_trous(enregis
     relecture = _selectionner(enregistrement, camera["nom"])
 
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
-    plages = timeline.locator(".plage-enregistree")
+    plages = _plages(timeline)
     expect(plages).to_have_count(2)
     boite = timeline.bounding_box()
     premiere, seconde = plages.nth(0).bounding_box(), plages.nth(1).bounding_box()
@@ -241,7 +250,7 @@ def test_camera_sans_segment_affiche_un_message(enregistrement: Page, api, noms)
     relecture = _selectionner(enregistrement, camera["nom"])
 
     expect(relecture.get_by_text(SANS_SEGMENT)).to_be_visible()
-    expect(relecture.locator(".plage-enregistree")).to_have_count(0)
+    expect(_plages(relecture)).to_have_count(0)
     expect(relecture.locator("video")).to_have_count(0)
 
 
@@ -257,7 +266,7 @@ def test_clic_sur_la_timeline_positionne_le_viewer_au_debut_du_segment(enregistr
 
     # Dans le Segment ancien (à 47 min d'ici) : son début, pas l'instant cliqué.
     _cliquer_a(timeline, 13 / 60)
-    expect(relecture.locator(".plage-courante")).to_have_count(1)
+    expect(_plage_lue(relecture)).to_have_count(1)
     _attendre(enregistrement, lambda: len(relectures) >= 1)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ancien[0]
     assert parse_qs(urlparse(relectures[-1]).query)["path"] == [camera["chemin_flux"]]
@@ -308,10 +317,10 @@ def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ens
 
     # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis.
     relecture.locator("video").dispatch_event("ended")
-    expect(relecture.locator(".plage-enregistree")).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
+    expect(_plages(relecture)).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ferme_ensuite[0]
-    expect(relecture.locator(".plage-courante")).to_have_count(1)
+    expect(_plage_lue(relecture)).to_have_count(1)
 
 
 def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
@@ -382,7 +391,7 @@ def test_relire_un_segment_play_pause_vitesses_et_enchainement(enregistrement: P
 
     # Au milieu du premier Segment : la vidéo part de son début et joue.
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
-    boite, premiere = timeline.bounding_box(), relecture.locator(".plage-enregistree").first.bounding_box()
+    boite, premiere = timeline.bounding_box(), _plages(relecture).first.bounding_box()
     assert boite
     assert premiere
     _cliquer_a(timeline, (premiere["x"] - boite["x"] + premiere["width"] / 2) / boite["width"])
