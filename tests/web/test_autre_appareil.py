@@ -41,5 +41,5 @@ def test_raison_autre_appareil_a_cote_de_l_etat(administration: Page, api, noms,
     autre_appareil()
 
     expect(ligne(administration, nom)).to_contain_text(
-        "offline (autre appareil à cette adresse)", timeout=DELAI_AUTRE_APPAREIL_MS
+        "Hors ligne (autre appareil à cette adresse)", timeout=DELAI_AUTRE_APPAREIL_MS
     )

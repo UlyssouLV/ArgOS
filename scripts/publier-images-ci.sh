@@ -27,6 +27,7 @@ for entree in "${IMAGES[@]}"; do
     docker build \
         --label "org.opencontainers.image.source=https://github.com/UlyssouLV/ArgOS" \
         --tag "$etiquette" \
+        --build-arg "ARGOS_VERSION=$TAG" \
         "$contexte"
     docker push "$etiquette"
 done

@@ -1,11 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { Agent } from "node:https";
+import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type ProxyOptions } from "vite";
+import { defineConfig, loadEnv, type ProxyOptions, type UserConfig } from "vite";
 
 // Racine du dépôt : compose.yaml et .env.
 const RACINE = "..";
+
+// Build et dev : Tailwind (docs/adr/0016-tailwind-et-shadcn-ui-pour-l-ui-du-site.md), alias @/ → src/.
+const COMMUN: UserConfig = {
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+};
 
 // docker cherché dans ces dossiers seulement, pas dans le PATH : Docker Desktop, Homebrew, paquets Linux.
 const DOCKERS = [
@@ -46,7 +54,7 @@ function premierCertificat(pem: string): string {
 // l'Administrateur, qui n'a pas d'Autorité du Site (pas d'argos-ca.crt) et ne nomme pas forcément localhost.
 export default defineConfig(({ command, mode }) => {
   if (command !== "serve") {
-    return { plugins: [react()] };
+    return COMMUN;
   }
   const portHttps = loadEnv(mode, RACINE, "ARGOS_").ARGOS_PORT_HTTPS || "443";
   const certificat = lireCertificat("serveur.crt");
@@ -61,7 +69,7 @@ export default defineConfig(({ command, mode }) => {
     }),
   };
   return {
-    plugins: [react()],
+    ...COMMUN,
     server: {
       port: 5173,
       strictPort: true,

@@ -4,14 +4,12 @@
 puis remise à son adresse d'origine.
 """
 
-import re
-
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from stack_compose import IPS_SIMULEES, deplacer_cameras_simulees, remettre_cameras_simulees
 from test_administration import administration, api, noms  # noqa: F401 (fixtures)
-from test_detection import DELAI_DETECTION_MS
+from test_detection import candidats, ouvrir_detection, tableau
 
 # Adresse libre du sous-réseau de simulation, hors de la plage dynamique (compose.simulation.yaml).
 NOUVELLE_IP = "172.30.0.33"
@@ -35,12 +33,9 @@ def ajouter_camera_simulee_3(api, nom: str) -> dict:
 
 
 def deja_configurees(administration: Page) -> Locator:
-    section = administration.get_by_role("region", name="Détecter des Caméras")
-    section.get_by_role("button", name="Détecter des Caméras").click()
-    resume = section.get_by_text(re.compile(r"Déjà configurées \(\d+\)"))
-    expect(resume).to_be_visible(timeout=DELAI_DETECTION_MS)
-    resume.click()
-    return section.get_by_role("table", name="Déjà configurées")
+    boite = ouvrir_detection(administration)
+    candidats(boite)
+    return tableau(boite, "Déjà configurées")
 
 
 def test_adresse_mise_a_jour_visible_apres_deplacement(administration: Page, api, noms, deplacer):

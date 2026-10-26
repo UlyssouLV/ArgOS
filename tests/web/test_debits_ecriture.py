@@ -1,17 +1,25 @@
-"""Page Enregistrement : débits, tenue vs Conservation, résumé par Caméra (sans interrupteur)."""
+"""Page Enregistrement : débits, tenue vs Conservation, tableau des Caméras (sans interrupteur)."""
 
 import re
 import uuid
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from stack_compose import client_du_site, compose
 from test_connexion import se_connecter
+from test_mac import cellule
 
 
 def unique(prefixe: str) -> str:
     return f"{prefixe}-{uuid.uuid4().hex[:12]}"
+
+
+def fuseau_du_site(api) -> ZoneInfo:
+    return ZoneInfo(api.get("/api/heure-du-site").json()["fuseau"])
+
 
 CONSERVATION_DEFAUT = 1
 SEUIL_DEFAUT = 1_073_741_824
@@ -44,7 +52,7 @@ def enregistrement(page: Page, administrateur) -> Page:
     return page
 
 
-def _ecrire_segment(id_camera: int, octets: int) -> None:
+def _ecrire_segment(id_camera: int, octets: int, nom_segment: str = "segment.mp4") -> None:
     compose(
         "exec",
         "-T",
@@ -53,7 +61,7 @@ def _ecrire_segment(id_camera: int, octets: int) -> None:
         "-c",
         "from pathlib import Path; "
         f"p = Path('/enregistrements/camera-{id_camera}'); p.mkdir(parents=True, exist_ok=True); "
-        f"(p / 'segment.mp4').write_bytes(b'x' * {octets})",
+        f"(p / '{nom_segment}').write_bytes(b'x' * {octets})",
     )
 
 
@@ -82,32 +90,51 @@ def test_agregats_et_tenue_visibles(enregistrement: Page, api):
     _fixer_debit_encodage(camera["id"], max(1, debit_o_s * 8 // 1000))
 
     enregistrement.reload()
-    expect(enregistrement.get_by_role("heading", name="Enregistrement")).to_be_visible()
-    expect(enregistrement.get_by_text("Débit (enregistrement en cours)", exact=True)).to_be_visible(timeout=10_000)
-    expect(enregistrement.get_by_text("Projection (toutes Caméras actives)", exact=True)).to_be_visible()
-    expect(enregistrement.locator(".tenue-ok, .tenue-ambitieuse, .tenue-inconnue").first).to_contain_text(
-        re.compile(r"Tenue estimée")
-    )
-    expect(enregistrement.locator(".agregats-debit").first).to_contain_text(
-        re.compile(r"compatible avec la conservation|trop ambitieux|tenue inconnue")
-    )
+    debit = enregistrement.get_by_role("region", name="Débit d’écriture")
+    expect(debit.get_by_text("Débit (enregistrement en cours)", exact=True)).to_be_visible(timeout=10_000)
+    expect(debit.get_by_text("Projection (toutes Caméras actives)", exact=True)).to_be_visible()
+    conservation = enregistrement.get_by_role("region", name="Conservation", exact=True)
+    expect(conservation).to_contain_text("Tenue estimée")
+    expect(conservation).to_contain_text(re.compile(r"compatible avec la conservation|trop ambitieux|tenue inconnue"))
 
 
-def test_resume_par_camera_nom_etat_debit(enregistrement: Page, api):
+def test_la_tenue_avertit_quand_le_disque_ne_suit_pas(enregistrement: Page, api):
+    """Débit d'encodage tel que le libre tient 2 h : 30 jours de Conservation sont trop ambitieux."""
+    camera = api.post(
+        "/api/cameras",
+        json={"nom": unique("Debit"), "url_rtsp": f"rtsp://{unique('hote')}.invalid/flux"},
+    ).json()
+    assert api.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
+    libre = api.get("/api/espace-enregistrements").json()["libre_o"]
+    _fixer_debit_encodage(camera["id"], max(1, libre // (2 * 3600) * 8 // 1000))
+    assert api.patch("/api/reglages-site", json={"conservation_h": 30 * 24}).status_code == 200
+
+    enregistrement.reload()
+    conservation = enregistrement.get_by_role("region", name="Conservation", exact=True)
+    expect(conservation.get_by_text("30 j", exact=True)).to_be_visible(timeout=10_000)
+    expect(conservation.get_by_role("img", name="Avertissement").first).to_be_visible()
+    expect(conservation).to_contain_text("trop ambitieux pour la conservation")
+
+
+def test_resume_par_camera_nom_etat_debit_plus_ancien_segment(enregistrement: Page, api):
     nom = unique("Debit")
     camera = api.post(
         "/api/cameras",
         json={"nom": nom, "url_rtsp": f"rtsp://{unique('hote')}.invalid/flux"},
     ).json()
     assert api.patch(f"/api/cameras/{camera['id']}", json={"enregistrement": True}).status_code == 200
-    _ecrire_segment(camera["id"], 150_000)
+    _ecrire_segment(camera["id"], 150_000, nom_segment="2026-10-19_23-59-30-000000.mp4")
 
     enregistrement.reload()
     resume = enregistrement.get_by_role("table", name="Débits par Caméra")
     expect(resume).to_be_visible(timeout=10_000)
     ligne = resume.get_by_role("row").filter(has_text=nom)
-    expect(ligne).to_contain_text(re.compile(r"enregistre|en erreur|à l'arrêt", re.I))
-    expect(ligne).to_contain_text(re.compile(r"o/s|Ko/s|Mo/s|inconnu"))
+    expect(cellule(resume, ligne, "État")).to_have_text(re.compile(r"enregistre|en erreur|à l'arrêt", re.I))
+    expect(cellule(resume, ligne, "Débit")).to_contain_text(re.compile(r"o/s|Ko/s|Mo/s|inconnu"))
+    plus_ancien = datetime(2026, 10, 19, 23, 59, 30, tzinfo=UTC)
+    expect(cellule(resume, ligne, "Plus ancien Segment")).to_have_text(
+        re.compile(rf"{plus_ancien.astimezone(fuseau_du_site(api)):%d/%m/%Y %H:%M}")
+    )
 
 
 def test_interrupteur_absent_de_la_page(enregistrement: Page):

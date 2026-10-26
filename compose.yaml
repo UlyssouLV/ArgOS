@@ -101,7 +101,10 @@ services:
 
   web:
     image: ghcr.io/ulyssoulv/argos-web:${ARGOS_VERSION:-0.9.0}
-    build: ./web
+    build:
+      context: ./web
+      args:
+        ARGOS_VERSION: ${ARGOS_VERSION:-dev}  # Version affichée par l'UI
     restart: unless-stopped
     depends_on:
       certificats:

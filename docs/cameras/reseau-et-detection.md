@@ -1,6 +1,6 @@
 # Réseau du Site et Détection des Caméras
 
-Comprendre, et pouvoir expliquer, comment les Caméras sont reliées à la machine qui héberge ArgOS, et ce que fait le bouton **Détecter des Caméras** de l’Administration. Écrit pour quelqu’un qui n’est pas spécialiste du réseau.
+Comprendre, et pouvoir expliquer, comment les Caméras sont reliées à la machine qui héberge ArgOS, et ce que fait le bouton **Détecter des Caméras** de la page Caméras. Écrit pour quelqu’un qui n’est pas spécialiste du réseau.
 
 Pour ajouter un Candidat comme Caméra : [Ajouter une Caméra](ajouter-une-camera.md). Reconnaître une caméra qui change d’IP (adresse MAC, réseau des caméras) : § 9 et § 10. Pour aller plus loin : [ADR 0002](../adr/0002-detection-depuis-le-reseau-bridge.md) (pourquoi les sous-réseaux sont déclarés), [ADR 0003](../adr/0003-macvlan-sur-la-prise-des-cameras.md) (pourquoi l’API rejoint le réseau des caméras), [sécurité](../securite.md#détection--argos-agit-sur-le-réseau) (ce que la Détection envoie), [schéma du réseau et des Flux](../features/reseau/schema-flux.md).
 
@@ -82,14 +82,14 @@ D’où le **script** `scripts/cameras/configurer-detection.sh` (§ 6) : il tour
 
 ## 4. Ce que fait la Détection, et ce qu’elle ne fait pas
 
-Un clic sur **Détecter des Caméras** (Administration, session connectée) lance, pendant une dizaine de secondes :
+Un clic sur **Détecter des Caméras** (page Caméras, session connectée) ouvre une boîte de dialogue et lance, pendant une dizaine de secondes :
 
 1. **Les cibles** : chaque adresse des sous-réseaux autorisés (sans la première ni la dernière, réservées), sur chaque port caméra (`ARGOS_DETECTION_CAMERAS_PORTS`, par défaut `554` et `8554`, les ports RTSP usuels). Les adresses des conteneurs d’ArgOS (`api`, le pont `mediamtx`) sont retirées d’avance.
 2. **Connexion TCP** sur l’adresse et le port. Rien ne répond, ou refus : on passe à la suivante. Chaque essai est borné à 1,5 s ; 128 essais tournent en même temps. Un `/24` sur deux ports (508 essais) tient ainsi en moins de 10 s.
 3. **Requête RTSP `OPTIONS`**, si la connexion est acceptée : la question la plus anodine du protocole des caméras (« quelles commandes acceptes-tu ? »), sans chemin de Flux ni identifiants. Si la réponse commence par une ligne de statut RTSP (`RTSP/1.0 200 OK`, mais aussi `401 Unauthorized` ou autre), l’hôte est un **Candidat**. Un port ouvert qui ne répond pas en RTSP (une imprimante, un serveur web) n’en est pas un.
 4. **ArgOS lui-même est écarté** : depuis la 0.6.2, la machine qui héberge ArgOS ne publie plus le RTSP du pont (`8554`) ; elle ne répond plus à l’`OPTIONS` et n’est donc pas Candidat. Garde-fou, au cas où `8554` (ou `554`) serait republié sur elle : l’API demande à chaque Candidat, sur le port HTTPS du Site (`443` par défaut), `GET /api/instance` ; celui qui renvoie le jeton de cette instance (tiré au hasard à chaque démarrage) en présentant le certificat du Site est ArgOS, et disparaît de la liste.
 5. **MAC de l’Appareil** : la connexion TCP vient de faire demander la MAC du Candidat (ARP, § 9) ; l’API la lit dans sa table de voisinage. Illisible (réseau routé, Mac de dev avec de vraies caméras) : pas de MAC, « — » dans l’UI.
-6. **Rapprochement avec les Caméras du Site** : d’abord par MAC, un Candidat dont la MAC est celle d’une Caméra (active ou désactivée) est son Appareil, même à une autre IP (§ 10) ; sinon, un Candidat dont l’adresse IP et le port sont ceux de l’URL RTSP d’une Caméra (un nom d’hôte dans l’URL est d’abord résolu en IP). Il est rangé dans **Déjà configurées (n)**, avec le nom de la Caméra, replié par défaut.
+6. **Rapprochement avec les Caméras du Site** : d’abord par MAC, un Candidat dont la MAC est celle d’une Caméra (active ou désactivée) est son Appareil, même à une autre IP (§ 10) ; sinon, un Candidat dont l’adresse IP et le port sont ceux de l’URL RTSP d’une Caméra (un nom d’hôte dans l’URL est d’abord résolu en IP). Il est rangé dans l’onglet **Déjà configurées (n)**, avec le nom de la Caméra ; l’onglet **Candidats (n)**, ouvert par défaut, garde les nouveaux.
 
 L’UI montre ensuite les sous-réseaux couverts et les nouveaux Candidats (IP, port, MAC), triés par adresse. **Filtrer par MAC**, au-dessus de la liste, retrouve la caméra qu’on a dans la main : on tape la MAC telle qu’écrite sur son étiquette (`AA-BB-CC-DD-EE-FF`, `aabb.ccdd.eeff`, majuscules ou non), entière ou en partie. L’API renvoie en plus, pour le diagnostic, le statut RTSP reçu et l’en-tête `Server` annoncé (souvent la marque ou le firmware), et les écrit dans ses journaux :
 

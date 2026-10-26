@@ -64,6 +64,8 @@ Version **0.9.0** : le Site sert l’heure aux Caméras. Un service `temps` (chr
 
 Version **0.9.1** : à chaque vérification (ajout d’une Caméra, changement de l’Heure du Site, toutes les heures, « Vérifier maintenant » et à l’instant de chaque changement d’heure du fuseau), ArgOS **[met à l’heure](docs/glossaire.md#mise-a-l-heure)** chaque Caméra ONVIF active sur l’heure que sert le Site (service `temps`), puis la recale : plus besoin de redémarrer une caméra dont le NTP est bien réglé mais qui dérive. Le tableau de la page Heure du Site montre la **dérive** avant et l’**écart** après, mesurés contre cette même heure (états à l’heure, écart, sans ONVIF, échec). Le fuseau est envoyé au **décalage du moment** (ex. `CEST-2` l’été), pris dans la base des fuseaux de l’hôte : une caméra qui ne sait pas appliquer l’heure d’été incruste quand même l’heure locale du Site. L’install et la mise à jour Ubuntu réactivent la synchro NTP de l’OS si elle est coupée (voir [Caméras qualifiées](docs/cameras/compatibilite.md), [ADR 0015](docs/adr/0015-mise-a-l-heure-a-chaque-verification.md)).
 
+Version **1.0.0** : toute l’interface du Site est **redessinée**, sous les mêmes capacités : thème sombre au rouge du logo, polices embarquées (aucun appel internet), un **rail** latéral (Live, Enregistrement, Relecture, Administration › Caméras / Heure du Site) et le **Live** comme page d’accueil, avec Précédente / Suivante et les flèches ← / →. Les Réglages de la Caméra s’ouvrent dans un panneau latéral, la Détection dans une boîte de dialogue, et chaque action se confirme par un toast. La **[Conservation](docs/glossaire.md#conservation)** va de 1 h à **30 jours**, saisie en jours + heures, et la **Relecture** a sa page : une Caméra, un jour (Timeline de 00h à 24h à l’heure du Site), choisi au sélecteur de jour. Poste fixe et tablette (≥ 768 px) ; pas encore de téléphone (voir [ADR 0016](docs/adr/0016-tailwind-et-shadcn-ui-pour-l-ui-du-site.md), [ADR 0017](docs/adr/0017-conservation-en-jours-et-relecture-a-la-journee.md)).
+
 ## Hébergement local
 
 PC macOS devant soi, clone du dépôt, Caméras simulées pour essayer le Site sans caméra réelle. Pour Windows (Docker Desktop seulement) ou un essai du canal Staging sans Ubuntu : [Essayer staging](#essayer-staging).
@@ -98,7 +100,7 @@ Double-cliquer sur **`lancer-argos.command`** à la racine du dépôt. Il :
 
 Fermer les fenêtres n’arrête pas la stack : `docker compose -f compose.yaml -f compose.simulation.yaml down`. Si le double-clic ne fait rien (dépôt téléchargé en `.zip` plutôt que cloné), lancer une fois `chmod +x lancer-argos.command` dans un Terminal à la racine du dépôt, ou faire clic droit → *Ouvrir* pour passer Gatekeeper.
 
-Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; en labo, le volume Docker `enregistrements` se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
+Les segments d’enregistrement se relisent dans l’UI (page **Relecture**) ; en labo, le volume Docker `enregistrements` se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
 
 ## Hébergement Ubuntu
 
@@ -136,7 +138,7 @@ L’install et chaque mise à jour réactivent la synchronisation NTP de l’OS 
 
 Le Site est à **`https://<IP de la machine>`**. Se connecter avec le compte Administrateur. Arrêt : `sudo systemctl stop argos.service`.
 
-Les segments d’enregistrement se relisent dans l’UI (onglet **Enregistrement**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
+Les segments d’enregistrement se relisent dans l’UI (page **Relecture**) ; le volume Docker `enregistrements` (sous `/opt/argos`) se liste aussi depuis l’hôte : [Inspecter les enregistrements](docs/cameras/inspecter-les-enregistrements.md).
 
 **2. Mettre à jour** : au démarrage ou au restart de `argos.service`, `ExecStartPre` lance `/opt/argos/scripts/mettre-a-jour-le-site.sh`. La même commande unique s’exécute à la main, sans attendre un reboot :
 

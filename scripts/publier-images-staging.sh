@@ -7,6 +7,11 @@ DEPOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DEPOT"
 
 PLATEFORMES="linux/amd64,linux/arm64"
+# Version affichée par l'UI : X.Y.Z de la branche de version (vX.Y.Z-…), le digest :staging étant promu
+# tel quel vers la Release.
+BRANCHE="${GITHUB_REF_NAME:-$(git branch --show-current)}"
+VERSION="$(sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' <<<"$BRANCHE")"
+VERSION="${VERSION:-staging}"
 
 publier() {
     local etiquette="$1" contexte="$2"
@@ -15,6 +20,7 @@ publier() {
         --provenance=false \
         --label "org.opencontainers.image.source=https://github.com/UlyssouLV/ArgOS" \
         --tag "$etiquette" \
+        --build-arg "ARGOS_VERSION=$VERSION" \
         --push \
         "$contexte"
 }

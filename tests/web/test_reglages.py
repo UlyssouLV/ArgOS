@@ -22,7 +22,17 @@ from stack_compose import (
     remettre_onvif_en_usine,
     url_camera_simulee,
 )
-from test_administration import administration, api, creer, ligne, noms, unique, url_simulee  # noqa: F401 (fixtures)
+from test_administration import (  # noqa: F401 (fixtures)
+    administration,
+    api,
+    creer,
+    general,
+    noms,
+    ouvrir_panneau,
+    toast,
+    unique,
+    url_simulee,
+)
 from test_live import (  # noqa: F401 (fixtures)
     DELAI_VIDEO_MS,
     HEVC_PRETENDU,
@@ -61,8 +71,24 @@ def creer_en_clair_accepte(page: Page, api, nom: str, mot_de_passe: str | None =
 
 
 def ouvrir_reglages(page: Page, nom: str) -> Locator:
-    ligne(page, nom).get_by_role("button", name="Réglages").click()
-    return page.get_by_role("region", name=f"Réglages de {nom}")
+    return ouvrir_panneau(page, nom)
+
+
+def section(reglages: Locator, titre: str) -> Locator:
+    """Section repliable du panneau, dépliée ; Image, Encodage et Incrustation attendent la lecture de la caméra."""
+    bouton = reglages.get_by_role("button", name=titre, exact=True)
+    expect(bouton).to_be_visible(timeout=DELAI_LECTURE_MS)
+    if bouton.get_attribute("aria-expanded") == "false":
+        bouton.click()
+    return reglages.get_by_role("region", name=titre, exact=True)
+
+
+def incrustations(reglages: Locator) -> Locator:
+    return section(reglages, "Incrustation")
+
+
+def bandeau_securite(reglages: Locator) -> Locator:
+    return section(reglages, "ONVIF").get_by_role("region", name="Sécurité de l'échange")
 
 
 def valeur(reglages: Locator, terme: str) -> Locator:
@@ -77,16 +103,15 @@ def test_reglages_d_une_camera_active_valeurs_usine_sans_horloge(administration:
 
     reglages = ouvrir_reglages(administration, nom)
 
-    incrustations = reglages.get_by_role("region", name="Incrustations")
-    expect(incrustations).to_be_visible(timeout=DELAI_LECTURE_MS)
-    expect(incrustations.get_by_label("Affichage du nom", exact=True)).to_have_value("affichee")
-    expect(incrustations.get_by_label("Texte du nom", exact=True)).to_have_value("CAM01")
-    expect(incrustations.get_by_label("Position du nom", exact=True)).to_have_value("UpperLeft")
-    expect(incrustations.get_by_label("Affichage de la date et heure", exact=True)).to_have_value("affichee")
-    expect(incrustations).to_contain_text("yyyy-MM-dd HH:mm:ss")
-    expect(incrustations.get_by_label("Position de la date et heure", exact=True)).to_have_value("LowerLeft")
+    incrustation = incrustations(reglages)
+    expect(incrustation.get_by_label("Affichage du nom", exact=True)).to_have_value("affichee")
+    expect(incrustation.get_by_label("Texte du nom", exact=True)).to_have_value("CAM01")
+    expect(incrustation.get_by_label("Position du nom", exact=True)).to_have_value("UpperLeft")
+    expect(incrustation.get_by_label("Affichage de la date et heure", exact=True)).to_have_value("affichee")
+    expect(incrustation).to_contain_text("yyyy-MM-dd HH:mm:ss")
+    expect(incrustation.get_by_label("Position de la date et heure", exact=True)).to_have_value("LowerLeft")
     # Le format de la date ne se règle pas.
-    expect(incrustations.get_by_role("textbox")).to_have_count(1)
+    expect(incrustation.get_by_role("textbox")).to_have_count(1)
     # L'heure se règle pour le Site (page Heure du Site), plus Caméra par Caméra.
     expect(reglages.get_by_role("region", name="Horloge")).to_have_count(0)
     expect(reglages.get_by_label("Fuseau", exact=True)).to_have_count(0)
@@ -116,7 +141,7 @@ def test_position_personnalisee(administration: Page, api, noms, nom_hors_d_un_c
 
     reglages = ouvrir_reglages(administration, nom)
 
-    position = reglages.get_by_label("Position du nom", exact=True)
+    position = incrustations(reglages).get_by_label("Position du nom", exact=True)
     expect(position).to_have_value("Custom", timeout=DELAI_LECTURE_MS)
     expect(position.locator("option:checked")).to_have_text("position personnalisée")
 
@@ -127,7 +152,7 @@ def test_bandeau_chiffre_avec_l_empreinte_courte_et_sa_date(administration: Page
 
     reglages = ouvrir_reglages(administration, nom)
 
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("Échange chiffré", timeout=DELAI_LECTURE_MS)
     (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
     securite = api.get(f"/api/cameras/{camera['id']}/reglages", timeout=30).json()["securite"]
@@ -150,12 +175,12 @@ def test_onvif_en_clair_accepte_puis_bandeau_et_retrait(administration: Page, ap
     )
     expect(accord).to_contain_text("mot de passe")
     expect(accord).to_contain_text("en clair sur le réseau des caméras")
-    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustation", exact=True)).to_have_count(0)
 
     accord.get_by_role("button", name="Régler quand même en clair").click()
 
-    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    incrustations(reglages)
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("ONVIF en clair")
     expect(bandeau).not_to_contain_text("Échange chiffré")
     (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
@@ -166,7 +191,7 @@ def test_onvif_en_clair_accepte_puis_bandeau_et_retrait(administration: Page, ap
     expect(reglages.get_by_role("region", name="ONVIF en clair").get_by_role("alert")).to_contain_text(
         "ONVIF en clair non accepté", timeout=DELAI_LECTURE_MS
     )
-    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustation", exact=True)).to_have_count(0)
     (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
     assert camera["onvif_en_clair_accepte"] is False
 
@@ -177,7 +202,7 @@ def test_pas_de_bandeau_en_clair_en_https(administration: Page, api, noms):
 
     reglages = ouvrir_reglages(administration, nom)
 
-    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
+    incrustations(reglages)
     expect(reglages.get_by_text("ONVIF en clair")).to_have_count(0)
     expect(reglages.get_by_text("Mot de passe court")).to_have_count(0)
 
@@ -188,7 +213,7 @@ def test_mot_de_passe_court_rappele_en_clair(administration: Page, api, noms):
 
     reglages = ouvrir_reglages(administration, nom)
 
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("ONVIF en clair", timeout=DELAI_LECTURE_MS)
     expect(bandeau).to_contain_text("Mot de passe court")
     expect(bandeau).to_contain_text("moins de 12 caractères")
@@ -201,7 +226,7 @@ def test_pas_de_rappel_en_clair_avec_un_mot_de_passe_de_12_caracteres(administra
 
     reglages = ouvrir_reglages(administration, nom)
 
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("ONVIF en clair", timeout=DELAI_LECTURE_MS)
     expect(bandeau).not_to_contain_text("Mot de passe court")
 
@@ -219,7 +244,7 @@ def test_tls_ancien_signale(administration: Page, api, noms, tls_ancien):
 
     reglages = ouvrir_reglages(administration, nom)
 
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("TLS ancien", timeout=DELAI_LECTURE_MS)
 
 
@@ -270,7 +295,7 @@ def test_certificat_change_montre_les_deux_empreintes_puis_confiance_confirmee(
     expect(refus).to_contain_text("remise en usine")
     expect(refus).to_contain_text("nouveau firmware")
     expect(refus).to_contain_text("autre appareil à cette adresse")
-    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustation", exact=True)).to_have_count(0)
 
     refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
     refus.get_by_role("button", name="Annuler").click()
@@ -278,8 +303,8 @@ def test_certificat_change_montre_les_deux_empreintes_puis_confiance_confirmee(
     refus.get_by_role("button", name="Faire confiance au nouveau certificat").click()
     refus.get_by_role("button", name="Confirmer la confiance").click()
 
-    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible(timeout=DELAI_LECTURE_MS)
-    bandeau = reglages.get_by_role("region", name="Sécurité de l'échange")
+    incrustations(reglages)
+    bandeau = bandeau_securite(reglages)
     expect(bandeau).to_contain_text("Échange chiffré")
     expect(bandeau).not_to_contain_text(groupee(securite["empreinte"][:16]))
     expect(reglages.get_by_role("region", name="Certificat changé")).to_have_count(0)
@@ -292,7 +317,7 @@ def test_https_indisponible_puis_oublier_le_certificat(administration: Page, api
 
     refus = reglages.get_by_role("region", name="HTTPS indisponible")
     expect(refus.get_by_role("alert")).to_contain_text("ne répond plus en HTTPS", timeout=DELAI_LECTURE_MS)
-    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustation", exact=True)).to_have_count(0)
 
     refus.get_by_role("button", name="Oublier le certificat de cette caméra").click()
 
@@ -320,18 +345,26 @@ def test_messages_d_erreur(administration: Page, api, noms, url, message):
     reglages = ouvrir_reglages(administration, nom)
 
     expect(reglages.get_by_role("alert")).to_contain_text(message, timeout=DELAI_LECTURE_MS)
-    expect(reglages.get_by_role("region", name="Incrustations")).to_have_count(0)
+    expect(reglages.get_by_role("region", name="Incrustation", exact=True)).to_have_count(0)
 
 
-def test_pas_de_reglages_pour_une_camera_desactivee(administration: Page, api, noms):
+def test_camera_desactivee_seul_general_sans_lecture_onvif(administration: Page, api, noms):
     nom = noms()
     creer(administration, api, nom, url_simulee(4))
-    expect(ligne(administration, nom).get_by_role("button", name="Réglages")).to_be_visible()
+    (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
+    assert api.patch(f"/api/cameras/{camera['id']}", json={"active": False}).status_code == 200
+    administration.reload()
+    lectures: list[str] = []
+    administration.on("request", lambda r: lectures.append(r.url) if r.url.endswith("/reglages") else None)
 
-    ligne(administration, nom).get_by_role("button", name="Désactiver").click()
+    reglages = ouvrir_reglages(administration, nom)
 
-    expect(ligne(administration, nom)).to_contain_text("désactivée")
-    expect(ligne(administration, nom).get_by_role("button", name="Réglages")).to_have_count(0)
+    expect(general(reglages).get_by_role("switch", name="Caméra active")).not_to_be_checked()
+    expect(reglages).to_contain_text("Caméra désactivée")
+    for titre in ("Image", "Encodage", "Incrustation", "ONVIF"):
+        expect(reglages.get_by_role("button", name=titre, exact=True)).to_have_count(0)
+    expect(reglages.locator("video")).to_have_count(0)
+    assert lectures == []
 
 
 # --- Régler les Incrustations ------------------------------------------------------------------------------------
@@ -351,7 +384,7 @@ def ouvrir_formulaire(page: Page, api, noms, numero: int) -> tuple[str, Locator]
     else:
         creer(page, api, nom, url_simulee(numero))
     reglages = ouvrir_reglages(page, nom)
-    expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(incrustations(reglages).get_by_label("Texte du nom", exact=True)).to_be_visible()
     return nom, reglages
 
 
@@ -359,10 +392,10 @@ def statut(reglages: Locator, champ: str) -> Locator:
     return reglages.get_by_role("status", name=f"Statut : {champ}")
 
 
-def enregistrer(page: Page, reglages: Locator) -> dict:
-    """Clique « Enregistrer » ; rend le corps du `PATCH` envoyé à l'API."""
+def appliquer(page: Page, reglages: Locator) -> dict:
+    """Clique « Appliquer » ; rend le corps du `PATCH` envoyé à l'API."""
     with page.expect_request(lambda r: r.method == "PATCH" and r.url.endswith("/reglages")) as requete:
-        reglages.get_by_role("button", name="Enregistrer").click()
+        reglages.get_by_role("button", name="Appliquer").click()
     return requete.value.post_data_json
 
 
@@ -370,11 +403,11 @@ def test_enregistrer_n_envoie_que_les_champs_modifies_et_montre_leur_statut(
     administration: Page, api, noms, remise_en_usine
 ):
     _, reglages = ouvrir_formulaire(administration, api, noms, 2)
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+    expect(reglages.get_by_role("button", name="Appliquer")).to_be_disabled()
 
     reglages.get_by_label("Texte du nom", exact=True).fill("Entrée")
     reglages.get_by_label("Position de la date et heure", exact=True).select_option("UpperRight")
-    envoye = enregistrer(administration, reglages)
+    envoye = appliquer(administration, reglages)
 
     assert envoye == {"incrustations": {"nom": {"texte": "Entrée"}, "date_heure": {"position": "UpperRight"}}}
     expect(statut(reglages, "texte du nom")).to_have_text(
@@ -384,6 +417,7 @@ def test_enregistrer_n_envoie_que_les_champs_modifies_et_montre_leur_statut(
         "pris (demandé : en haut à droite, relu : en haut à droite)"
     )
     expect(statut(reglages, "position du nom")).to_have_count(0)
+    expect(toast(administration, "appliqués.")).to_be_visible()
     # Les valeurs d'origine restent visibles jusqu'à la fermeture.
     expect(reglages).to_contain_text("d'origine : CAM01")
     expect(reglages).to_contain_text("d'origine : en bas à gauche")
@@ -399,12 +433,13 @@ def test_champ_refuse_par_la_camera(administration: Page, api, noms, remise_en_u
     # La Caméra simulée refuse un texte de plus de 32 caractères.
     reglages.get_by_label("Texte du nom", exact=True).fill("X" * 33)
     reglages.get_by_label("Position du nom", exact=True).select_option("LowerRight")
-    enregistrer(administration, reglages)
+    appliquer(administration, reglages)
 
     expect(statut(reglages, "texte du nom")).to_have_text(
         f"refusé (demandé : {'X' * 33}, relu : CAM01)", timeout=DELAI_LECTURE_MS
     )
     expect(statut(reglages, "position du nom")).to_have_text("pris (demandé : en bas à droite, relu : en bas à droite)")
+    expect(toast(administration, "certains n'ont pas été pris par la caméra")).to_be_visible()
 
 
 def test_annuler_remet_les_valeurs_d_origine_sans_rien_envoyer(administration: Page, api, noms):
@@ -418,7 +453,7 @@ def test_annuler_remet_les_valeurs_d_origine_sans_rien_envoyer(administration: P
 
     expect(reglages.get_by_label("Texte du nom", exact=True)).to_have_value("CAM01")
     expect(reglages.get_by_label("Position du nom", exact=True)).to_have_value("UpperLeft")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+    expect(reglages.get_by_role("button", name="Appliquer")).to_be_disabled()
     assert envois == []
 
 
@@ -442,13 +477,13 @@ def test_cacher_apres_confirmation_puis_reafficher(administration: Page, api, no
     expect(affichage).to_have_value("cachee")
     expect(reglages.get_by_label("Position de la date et heure", exact=True)).to_be_disabled()
 
-    assert enregistrer(administration, reglages) == {"incrustations": {"date_heure": {"affichee": False}}}
+    assert appliquer(administration, reglages) == {"incrustations": {"date_heure": {"affichee": False}}}
     expect(statut(reglages, "affichage de la date et heure")).to_have_text(
         "pris (demandé : cachée, relu : cachée)", timeout=DELAI_LECTURE_MS
     )
 
     affichage.select_option("affichee")
-    envoye = enregistrer(administration, reglages)
+    envoye = appliquer(administration, reglages)
 
     assert envoye == {"incrustations": {"date_heure": {"affichee": True, "position": "LowerLeft"}}}
     expect(statut(reglages, "affichage de la date et heure")).to_have_text(
@@ -491,7 +526,7 @@ def test_afficher_propose_seulement_si_la_camera_sait_recreer(
 
 
 def image(reglages: Locator) -> Locator:
-    return reglages.get_by_role("region", name="Image")
+    return section(reglages, "Image")
 
 
 def test_image_usine_curseurs_bornes_et_valeurs_d_origine(administration: Page, api, noms):
@@ -525,7 +560,7 @@ def test_image_enregistree_statuts_pris_et_wdr_pas_pris(administration: Page, ap
     expect(section.locator(".valeur-curseur").first).to_have_text("70")
     section.get_by_label("Contre-jour", exact=True).select_option("ON")
     section.get_by_label("WDR", exact=True).select_option("ON")
-    envoye = enregistrer(administration, reglages)
+    envoye = appliquer(administration, reglages)
 
     assert envoye == {
         "incrustations": {},
@@ -548,12 +583,12 @@ def test_image_annuler_sans_rien_envoyer(administration: Page, api, noms):
 
     section.get_by_label("Luminosité", exact=True).fill("20")
     section.get_by_label("Filtre infrarouge", exact=True).select_option("ON")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_enabled()
+    expect(reglages.get_by_role("button", name="Appliquer")).to_be_enabled()
     reglages.get_by_role("button", name="Annuler").click()
 
     expect(section.get_by_label("Luminosité", exact=True)).to_have_value("50")
     expect(section.get_by_label("Filtre infrarouge", exact=True)).to_have_value("AUTO")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+    expect(reglages.get_by_role("button", name="Appliquer")).to_be_disabled()
     assert envois == []
 
 
@@ -564,7 +599,7 @@ def test_image_non_reglable_sans_service_image_le_reste_reglable(administration:
     expect(section).to_contain_text("Image non réglable sur cette caméra")
     expect(section.get_by_role("slider")).to_have_count(0)
     expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_enabled()
-    expect(reglages.get_by_role("region", name="Incrustations")).to_be_visible()
+    expect(incrustations(reglages)).to_be_visible()
 
 
 # --- Encodage du Flux -------------------------------------------------------------------------------------------
@@ -581,7 +616,7 @@ DELAI_ENCODAGE_MS = 60_000
 
 
 def encodage(reglages: Locator) -> Locator:
-    return reglages.get_by_role("region", name="Encodage du Flux")
+    return section(reglages, "Encodage")
 
 
 def ouvrir_sur_le_profil(page: Page, api, noms, numero: int) -> Locator:
@@ -592,7 +627,7 @@ def ouvrir_sur_le_profil(page: Page, api, noms, numero: int) -> Locator:
         (camera,) = [c for c in api.get("/api/cameras").json() if c["nom"] == nom]
         assert api.put(f"/api/cameras/{camera['id']}/reglages/onvif-en-clair").status_code == 204
     reglages = ouvrir_reglages(page, nom)
-    expect(reglages.get_by_label("Texte du nom", exact=True)).to_be_visible(timeout=DELAI_LECTURE_MS)
+    expect(incrustations(reglages).get_by_label("Texte du nom", exact=True)).to_be_visible()
     return reglages
 
 
@@ -621,10 +656,11 @@ def test_encodage_usine_champs_bornes_et_lecture_seule(administration: Page, api
 def test_hors_bornes_enregistrer_desactive(administration: Page, api, noms):
     reglages = ouvrir_sur_le_profil(administration, api, noms, 2)
 
-    encodage(reglages).get_by_label("Images par seconde", exact=True).fill("25")
+    champ = encodage(reglages).get_by_label("Images par seconde", exact=True)
+    champ.fill("25")
 
-    expect(encodage(reglages)).to_contain_text("hors des bornes de la caméra")
-    expect(reglages.get_by_role("button", name="Enregistrer")).to_be_disabled()
+    expect(champ).to_have_accessible_description("hors des bornes de la caméra (1 à 22)")
+    expect(reglages.get_by_role("button", name="Appliquer")).to_be_disabled()
 
 
 def test_encodage_confirme_avant_envoi_puis_statuts_pris(administration: Page, api, noms, remise_en_usine):
@@ -635,12 +671,12 @@ def test_encodage_confirme_avant_envoi_puis_statuts_pris(administration: Page, a
 
     section.get_by_label("Résolution", exact=True).select_option("1920x1080")
     section.get_by_label("Débit max (kbit/s)", exact=True).fill("2048")
-    reglages.get_by_role("button", name="Enregistrer").click()
+    reglages.get_by_role("button", name="Appliquer").click()
 
     expect(reglages).to_contain_text(COUPURE)
     assert envois == []
     with administration.expect_request(lambda r: r.method == "PATCH") as requete:
-        reglages.get_by_role("button", name="Couper le Flux et enregistrer").click()
+        reglages.get_by_role("button", name="Couper le Flux et appliquer").click()
     assert requete.value.post_data_json == {
         "incrustations": {},
         "encodage": {"resolution": "1920x1080", "debit_max": 2048},
@@ -659,7 +695,7 @@ def test_ne_pas_couper_le_flux_n_envoie_rien(administration: Page, api, noms):
     administration.on("request", lambda r: envois.append(r.url) if r.method == "PATCH" else None)
 
     encodage(reglages).get_by_label("Images par seconde", exact=True).fill("15")
-    reglages.get_by_role("button", name="Enregistrer").click()
+    reglages.get_by_role("button", name="Appliquer").click()
     reglages.get_by_role("button", name="Garder le Flux").click()
 
     expect(reglages).not_to_contain_text(COUPURE)
@@ -671,7 +707,7 @@ def test_image_seule_envoyee_sans_confirmation(administration: Page, api, noms, 
     reglages = ouvrir_sur_le_profil(administration, api, noms, 2)
 
     image(reglages).get_by_label("Luminosité", exact=True).fill("60")
-    envoye = enregistrer(administration, reglages)
+    envoye = appliquer(administration, reglages)
 
     assert envoye == {"incrustations": {}, "image": {"luminosite": 60}}
     expect(reglages).not_to_contain_text(COUPURE)
@@ -705,8 +741,8 @@ def test_camera_sans_reponse_apres_l_envoi(administration: Page, api, noms, muet
     reglages = ouvrir_sur_le_profil(administration, api, noms, 2)
 
     encodage(reglages).get_by_label("Images par seconde", exact=True).fill("15")
-    reglages.get_by_role("button", name="Enregistrer").click()
-    reglages.get_by_role("button", name="Couper le Flux et enregistrer").click()
+    reglages.get_by_role("button", name="Appliquer").click()
+    reglages.get_by_role("button", name="Couper le Flux et appliquer").click()
 
     expect(statut(reglages, "images par seconde")).to_have_text(
         "pas pris — la caméra n'a pas répondu après l'envoi", timeout=DELAI_ENCODAGE_MS

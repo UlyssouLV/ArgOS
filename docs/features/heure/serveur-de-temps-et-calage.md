@@ -43,6 +43,8 @@ Réglages (persistés) :
 
 La page **Heure du Site** affiche aussi la **base des fuseaux** utilisée pour calculer les décalages (`2026e (serveur)` = base de l’hôte ; sinon base embarquée dans l’image). Voir [second avenant ADR 0015](../../adr/0015-mise-a-l-heure-a-chaque-verification.md#second-avenant-091--base-des-fuseaux-de-lhôte-dabord).
 
+![Page Heure du Site : état (heure actuelle, source, fuseau, base des fuseaux), carte Réglage et tableau des Caméras](../../img/features/heure/heure-du-site.png)
+
 ## Ce que le Site envoie à une Caméra
 
 Depuis la 0.9.1, pour `Europe/Paris` :

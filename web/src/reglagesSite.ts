@@ -1,7 +1,8 @@
 import { appeler } from "./api";
 
 export const CONSERVATION_MIN = 1;
-export const CONSERVATION_MAX = 24;
+export const CONSERVATION_MAX = 30 * 24; // 30 jours, stockés en heures (ADR 0017)
+export const HEURES_PAR_JOUR = 24;
 export const SEUIL_MIN_O = 104_857_600; // 100 Mo
 export const SEUIL_DEFAUT_O = 1_073_741_824; // 1 Go
 export const MO = 1_048_576;
@@ -28,6 +29,8 @@ export type DebitCamera = {
   etat_enregistrement: "enregistre" | "a_l_arret" | "en_erreur";
   debit_o_s: number | null;
   source_debit: SourceDebit;
+  /** Début du plus ancien Segment conservé (ISO) ; `null` : aucun. */
+  plus_ancien_segment: string | null;
 };
 
 export type DebitsEcriture = {
@@ -57,6 +60,13 @@ export async function modifierReglagesSite(champs: {
   });
   if (!reponse.ok) throw new Error(`Mise à jour des réglages Site : ${reponse.status}`);
   return reponse.json();
+}
+
+/** La place libre ou le Seuil viennent de changer : la pastille du rail relit l'espace. */
+export const EVENEMENT_ESPACE_MODIFIE = "argos:espace-modifie";
+
+export function signalerEspaceModifie(): void {
+  globalThis.dispatchEvent(new Event(EVENEMENT_ESPACE_MODIFIE));
 }
 
 export async function lireEspaceEnregistrements(): Promise<EspaceEnregistrements> {
@@ -91,13 +101,32 @@ export function formaterDebit(octetsParSeconde: number | null): string {
   return `${octetsParSeconde.toLocaleString("fr-FR")} o/s`;
 }
 
-/** Affiche une durée en secondes (heures / minutes). */
+/** Conservation en heures découpée pour la saisie jours + heures. */
+export function joursEtHeures(heures: number): { jours: number; heures: number } {
+  return { jours: Math.floor(heures / HEURES_PAR_JOUR), heures: heures % HEURES_PAR_JOUR };
+}
+
+/** Saisie jours + heures en heures de Conservation ; `null` : hors 1 h – 30 jours ou pas des entiers. */
+export function conservationSaisie(jours: string, heures: string): number | null {
+  const j = Number(jours === "" ? "0" : jours);
+  const h = Number(heures === "" ? "0" : heures);
+  if (!Number.isInteger(j) || !Number.isInteger(h) || j < 0 || h < 0 || h >= HEURES_PAR_JOUR) return null;
+  const total = j * HEURES_PAR_JOUR + h;
+  return total >= CONSERVATION_MIN && total <= CONSERVATION_MAX ? total : null;
+}
+
+/** Heures affichées en jours / heures : « 7 j », « 2 j 6 h », « 12 h ». */
+export function formaterConservation(heures: number): string {
+  const decoupe = joursEtHeures(heures);
+  if (decoupe.jours === 0) return `${decoupe.heures} h`;
+  const jours = `${decoupe.jours.toLocaleString("fr-FR")} j`;
+  return decoupe.heures === 0 ? jours : `${jours} ${decoupe.heures} h`;
+}
+
+/** Affiche une durée en secondes (jours / heures, ou minutes sous l'heure). */
 export function formaterDuree(secondes: number | null): string {
   if (secondes === null) return "—";
-  const heures = secondes / 3600;
-  if (heures >= 1) {
-    return `${heures.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} h`;
-  }
+  if (secondes >= 3600) return formaterConservation(Math.floor(secondes / 3600));
   return `${Math.max(1, Math.round(secondes / 60)).toLocaleString("fr-FR")} min`;
 }
 

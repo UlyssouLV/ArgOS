@@ -69,6 +69,11 @@ export function texteHeure(dateUtc: Date | null, fuseau: string): string {
   return dateUtc.toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "full", timeStyle: "medium" });
 }
 
+/** Date courte d'un tableau, au fuseau du Site (`undefined` tant qu'il n'est pas lu : celui du navigateur). */
+export function dateCourteDuSite(iso: string, fuseau: string | undefined, timeStyle: "short" | "medium"): string {
+  return new Date(iso).toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "short", timeStyle });
+}
+
 /** Dernière vérification de l'Horloge d'une Caméra active ; `etat` `null` : jamais vérifiée. */
 export type EtatHorloge = "a_l_heure" | "ecart" | "sans_onvif" | "echec";
 
@@ -119,4 +124,16 @@ export function texteEcart(ecartS: number | null): string {
     signDisplay: "always",
   });
   return `${nombre} s`;
+}
+
+/** Résultat de « Vérifier maintenant » en une phrase : nombre de Caméras par état, dans l'ordre du libellé. */
+export function texteBilanVerification(horloges: HorlogeVerifiee[]): string {
+  if (horloges.length === 0) return "Aucune Caméra active à vérifier.";
+  const parEtat = new Map<string, number>();
+  for (const { etat } of horloges) {
+    const libelle = libelleEtatHorloge(etat);
+    parEtat.set(libelle, (parEtat.get(libelle) ?? 0) + 1);
+  }
+  const detail = [...parEtat].map(([libelle, nombre]) => `${nombre} ${libelle}`).join(", ");
+  return `Caméras vérifiées : ${detail}.`;
 }

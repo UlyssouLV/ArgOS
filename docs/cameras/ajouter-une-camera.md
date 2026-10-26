@@ -6,9 +6,9 @@ Pour aller plus loin : [Réseau du Site et Détection des Caméras](reseau-et-de
 
 ## 1. Le déroulé
 
-Dans l’**Administration**, section Détection :
+Page **Caméras** (Administration), bouton **Détecter des Caméras** en tête de page (ou dans l’état vide « Aucune Caméra ») : une boîte de dialogue s’ouvre et lance la Détection. Les Candidats s’y lisent en deux onglets, **Candidats (n)** et **Déjà configurées (n)**.
 
-1. **Ajouter** sur un nouveau Candidat (ou **Ajouter par adresse IP**, § 6). Un panneau s’ouvre sous la ligne, sans quitter la liste.
+1. **Ajouter** sur un nouveau Candidat (ou **Ajouter par adresse IP**, § 6). Un panneau s’ouvre sous la ligne, dans la boîte.
 2. **Recherche du Flux…** : ArgOS essaie les chemins courants des caméras (§ 2). Quelques secondes.
 3. Selon la réponse de la caméra :
    - Flux trouvé → **Aperçu** (§ 5) ;
@@ -16,9 +16,9 @@ Dans l’**Administration**, section Détection :
    - **Cette caméra demande un mot de passe.** → identifiant et mot de passe (§ 3) ;
    - **Flux introuvable.** → chemin RTSP (§ 4) ;
    - **Aucune caméra ne répond à cette adresse.** → rien à faire depuis ArgOS : la caméra est éteinte, a changé d’adresse, ou ne parle pas RTSP sur ce port.
-4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active, apparaît dans la liste des Caméras et dans le Live, et le Candidat passe dans **Déjà configurées**, sans relancer de Détection. Si l’appareil porte déjà une autre Caméra (même MAC, autre chemin : enregistreur, encodeur multi-voies), l’Aperçu avertit **Cet appareil porte déjà la Caméra &lt;nom&gt;** ; l’ajout reste permis.
+4. Sous l’Aperçu : **Nom** (obligatoire), **Emplacement** (facultatif), puis **Ajouter la Caméra**. Elle est créée active ; la boîte se referme, un toast annonce **Caméra &lt;nom&gt; ajoutée.**, et elle apparaît dans le tableau des Caméras et dans le Live. Rouverte, la boîte garde la Détection : le Candidat est passé dans **Déjà configurées**, sans relancer de Détection (**Relancer la Détection** pour une nouvelle). Si l’appareil porte déjà une autre Caméra (même MAC, autre chemin : enregistreur, encodeur multi-voies), l’Aperçu avertit **Cet appareil porte déjà la Caméra &lt;nom&gt;** ; l’ajout reste permis.
 
-**Annuler** est offert à chaque étape : rien n’est créé, et l’Aperçu est retiré. Un nom déjà pris est refusé avec le message habituel ; l’Aperçu reste ouvert pour corriger.
+**Annuler** est offert à chaque étape : rien n’est créé, et l’Aperçu est retiré. Fermer la boîte (**Fermer** ou Échap) fait de même. Un nom déjà pris est refusé avec le message habituel ; l’Aperçu reste ouvert pour corriger.
 
 ## 2. Les chemins courants
 
@@ -85,7 +85,7 @@ Un codec **ni H.264 ni H.265** (MJPEG…) n’est toujours pas montré : le pann
 
 ## 6. Ajouter par adresse IP
 
-Pour un appareil que la Détection n’a pas trouvé (sous-réseau non déclaré, port exotique, Détection pas configurée) : **Ajouter par adresse IP**, dans la section Détection. IP, port (`554` par défaut), **Ajouter** : la suite est exactement le même parcours qu’un Candidat détecté.
+Pour un appareil que la Détection n’a pas trouvé (sous-réseau non déclaré, port exotique, Détection pas configurée) : **Ajouter par adresse IP**, sous les onglets de la boîte « Détecter des Caméras ». IP, port (`554` par défaut), **Ajouter** : la suite est exactement le même parcours qu’un Candidat détecté.
 
 Avant d’essayer, ArgOS refuse :
 

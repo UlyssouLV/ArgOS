@@ -1,4 +1,4 @@
-"""Conservation Site : réglage 1–24 h, persistance et poussée `recordDeleteAfter` au pont."""
+"""Conservation Site : réglage 1 h – 30 jours (ADR 0017), persistance et poussée `recordDeleteAfter` au pont."""
 
 import json
 import time
@@ -82,9 +82,17 @@ def test_regler_la_conservation_la_persiste(connecte):
     assert connecte.get("/api/reglages-site").json()["conservation_h"] == 6
 
 
+def test_conservation_en_jours_jusqu_a_trente_jours(connecte):
+    for heures in (7 * 24, 30 * 24):
+        reponse = connecte.patch("/api/reglages-site", json={"conservation_h": heures})
+
+        assert reponse.status_code == 200, heures
+        assert connecte.get("/api/reglages-site").json()["conservation_h"] == heures
+
+
 def test_conservation_hors_bornes_refusee(connecte):
     avant = connecte.get("/api/reglages-site").json()["conservation_h"]
-    for heures in (0, 25, -1):
+    for heures in (0, 30 * 24 + 1, -1):
         reponse = connecte.patch("/api/reglages-site", json={"conservation_h": heures})
 
         assert reponse.status_code == 422, heures

@@ -10,7 +10,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from stack_compose import compose, remettre_onvif_en_usine, url_camera_simulee
-from test_administration import administration, api, noms, unique  # noqa: F401 (fixtures)
+from test_administration import administration, api, noms, toast, unique  # noqa: F401 (fixtures)
 
 # Adresse de temps sur le réseau des Caméras simulées (compose.simulation.yaml).
 ADRESSE_TEMPS = "172.30.0.10"
@@ -41,7 +41,7 @@ def heure_d_origine(api):
 
 @pytest.fixture
 def heure_du_site(administration: Page) -> Page:
-    administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
+    administration.get_by_role("navigation", name="Navigation").get_by_role("link", name="Heure du Site").click()
     expect(administration).to_have_url(re.compile(r"/administration/heure-du-site$"))
     expect(administration.get_by_role("heading", name="Heure du Site")).to_be_visible()
     return administration
@@ -77,7 +77,7 @@ def test_horloge_du_serveur_et_fuseau_enregistres(heure_du_site: Page, api, heur
         reglage.get_by_role("button", name="Enregistrer").click()
 
     assert envoi.value.post_data_json == {"source": "horloge_serveur", "fuseau": fuseau}
-    expect(heure_du_site.get_by_role("status")).to_contain_text("les Caméras actives sont mises à l’heure et recalées")
+    expect(toast(heure_du_site, "les Caméras actives sont mises à l’heure et recalées")).to_be_visible()
     expect(valeur(heure_du_site, "Fuseau")).to_have_text(fuseau)
     expect(valeur(heure_du_site, "Source utilisée")).to_have_text("horloge du serveur", timeout=DELAI_SOURCE_MS)
     expect(reglage.get_by_label("Adresse du serveur NTP")).to_be_disabled()
@@ -127,11 +127,11 @@ def test_tableau_des_cameras_et_verifier_maintenant(administration: Page, api, n
     for nom, numero in ((a_l_heure, 2), (sans_onvif, 1)):
         reponse = api.post("/api/cameras", json={"nom": nom, "url_rtsp": url_camera_simulee(numero, unique("ui"))})
         assert reponse.status_code == 201, reponse.text
-    administration.get_by_role("navigation", name="Réglages du Site").get_by_role("link", name="Heure du Site").click()
+    administration.get_by_role("navigation", name="Navigation").get_by_role("link", name="Heure du Site").click()
     tableau = administration.get_by_role("table", name="Caméras")
 
     expect(tableau.get_by_role("columnheader")).to_have_text(
-        ["Caméra", "État", "Dérive", "Écart", "Dernière vérification"]
+        ["Caméra", "Mise à l’heure", "Dérive", "Écart", "Dernière vérification"]
     )
     # Vérifiées à l'ajout.
     nom, etat, derive, ecart, verifiee = colonnes(tableau.get_by_role("row").filter(has_text=sans_onvif))
@@ -155,4 +155,5 @@ def test_tableau_des_cameras_et_verifier_maintenant(administration: Page, api, n
     expect(derive).to_have_text(re.compile(r"^[+−-]\d,\d s$"))
     expect(ecart).to_have_text(re.compile(r"^[+−-]\d,\d s$"))
     expect(tableau).not_to_contain_text(re.compile("calée|recalée"))
+    expect(toast(administration, "Caméras vérifiées")).to_be_visible()
     expect(administration.get_by_role("button", name="Vérifier maintenant")).to_be_enabled()

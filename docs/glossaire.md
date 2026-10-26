@@ -184,7 +184,7 @@ Consultation dans l’UI de l’historique enregistré d’une Caméra : choisir
 
 ## Timeline d’enregistrement {#timeline-d-enregistrement}
 
-Bande temporelle sur la fenêtre de Conservation d’une Caméra en Relecture : plages où des Segments existent mises en évidence ; un clic positionne la lecture au début du Segment concerné.
+Bande temporelle d’un jour (00h → 24h, heure du Site) dans la fenêtre de Conservation d’une Caméra en Relecture : plages où des Segments existent mises en évidence ; un clic positionne la lecture au début du Segment concerné.
 
 À éviter : scrubber Live, curseur media générique.
 

@@ -5,6 +5,9 @@ COPY package.json package-lock.json ./
 # Aucun paquet n'a besoin de scripts d'installation sous Linux (fsevents ne sert que sur macOS).
 RUN npm ci --ignore-scripts
 COPY . .
+# Version d'ArgOS affichée par l'UI (Connexion, rail) ; dev hors image publiée.
+ARG ARGOS_VERSION=dev
+ENV VITE_ARGOS_VERSION=$ARGOS_VERSION
 RUN npm run build
 
 # Étape 2 : l'origine HTTPS du Site (nginx.conf.template) : fichiers statiques, relais de l'API et du Live.

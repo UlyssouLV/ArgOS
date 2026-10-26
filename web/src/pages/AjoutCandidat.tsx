@@ -1,5 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LONGUEUR_MOT_DE_PASSE_SUR, messageEchec, motDePasseCourt, texteMac, type Camera } from "../cameras";
 import {
   ajouterDepuisEssai,
@@ -49,7 +53,7 @@ type PropsAjout = Readonly<{
 }>;
 
 /**
- * Panneau sous la ligne d'un Candidat : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
+ * Panneau d'ajout, sous la ligne d'un Candidat ou sous « Ajouter par adresse IP » : essai (« Recherche du Flux… »), puis Aperçu, nom et emplacement.
  * Caméra à mot de passe : identifiant et mot de passe, puis « Valider ».
  * Flux introuvable : chemin RTSP saisi, essayé avec les identifiants déjà donnés, puis « Valider ».
  * L'Aperçu se lit comme le Live, d'après le codec de l'essai (H.265 en HLS, le reste en WebRTC).
@@ -60,6 +64,7 @@ type PropsAjout = Readonly<{
  * l'ajout les retire côté serveur. Panneau quitté sans « Annuler » : l'Aperçu expire de lui-même.
  */
 export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: PropsAjout) {
+  const id = useId();
   const [essai, setEssai] = useState<Essai | null>(premierEssai ?? null);
   const [nom, setNom] = useState("");
   const [emplacement, setEmplacement] = useState("");
@@ -154,75 +159,116 @@ export function AjoutCandidat({ candidat, premierEssai, onAjoutee, onFermer }: P
   }
 
   return (
-    <form className="ajout-candidat" aria-label={`Ajouter ${candidat.ip}:${candidat.port}`} onSubmit={soumettre}>
-      {essai === null && erreur === null && <output>Recherche du Flux…</output>}
-      {essai && essai.issue !== "flux_trouve" && <p className="erreur">{MESSAGES[essai.issue]}</p>}
-      {essai && essai.issue !== "injoignable" && <p className="mac">MAC de l'Appareil : {texteMac(essai.mac)}</p>}
+    <form
+      aria-label={`Ajouter ${candidat.ip}:${candidat.port}`}
+      className="grid gap-3 rounded-lg border bg-card p-4"
+      onSubmit={soumettre}
+    >
+      {essai === null && erreur === null && (
+        <output className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          Recherche du Flux…
+        </output>
+      )}
+      {essai && essai.issue !== "flux_trouve" && <p className="text-destructive">{MESSAGES[essai.issue]}</p>}
+      {essai && essai.issue !== "injoignable" && (
+        <p className="font-mono text-xs text-muted-foreground">MAC de l'Appareil : {texteMac(essai.mac)}</p>
+      )}
       {identifiantsDemandes && (
-        <>
-          <label>
-            <span>Identifiant</span>
-            <input name="identifiant" required autoComplete="off" value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} />
-          </label>
-          <label>
-            <span>Mot de passe</span>
-            <input
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Champ id={`${id}-identifiant`} libelle="Identifiant">
+            <Input
+              id={`${id}-identifiant`}
+              name="identifiant"
+              required
+              autoComplete="off"
+              value={identifiant}
+              onChange={(e) => setIdentifiant(e.target.value)}
+            />
+          </Champ>
+          <Champ id={`${id}-mot-de-passe`} libelle="Mot de passe">
+            <Input
+              id={`${id}-mot-de-passe`}
               name="mot_de_passe"
               type="password"
               autoComplete="new-password"
               value={motDePasse}
               onChange={(e) => setMotDePasse(e.target.value)}
             />
-          </label>
-        </>
+          </Champ>
+        </div>
       )}
-      {signalerMotDePasseCourt && <p className="avertissement">{MOT_DE_PASSE_COURT}</p>}
+      {signalerMotDePasseCourt && <Avertissement>{MOT_DE_PASSE_COURT}</Avertissement>}
       {cheminDemande && (
-        <label>
-          <span>Chemin RTSP</span>
-          <input
+        <Champ id={`${id}-chemin`} libelle="Chemin RTSP">
+          <Input
+            id={`${id}-chemin`}
             name="chemin"
             required
             autoComplete="off"
             placeholder="/chemin/du/flux"
+            className="font-mono"
             value={chemin}
             onChange={(e) => setChemin(e.target.value)}
           />
-        </label>
+        </Champ>
       )}
       {apercu && (
         <>
-          <LecteurFlux cheminFlux={apercu} codec={codec} />
-          {codecIllisible && <p className="erreur">{messageCodec(codec)}</p>}
+          <LecteurFlux
+            cheminFlux={apercu}
+            codec={codec}
+            className="overflow-hidden rounded-md"
+          />
+          {codecIllisible && <p className="text-destructive">{messageCodec(codec)}</p>}
           {essai?.appareil_deja_connu && (
-            <p className="avertissement">Cet appareil porte déjà la Caméra {essai.appareil_deja_connu.nom}</p>
+            <Avertissement>Cet appareil porte déjà la Caméra {essai.appareil_deja_connu.nom}</Avertissement>
           )}
-          <label>
-            <span>Nom</span>
-            <input name="nom" required value={nom} onChange={(e) => setNom(e.target.value)} />
-          </label>
-          <label>
-            <span>Emplacement</span>
-            <input name="emplacement" placeholder="facultatif" value={emplacement} onChange={(e) => setEmplacement(e.target.value)} />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Champ id={`${id}-nom`} libelle="Nom">
+              <Input id={`${id}-nom`} name="nom" required value={nom} onChange={(e) => setNom(e.target.value)} />
+            </Champ>
+            <Champ id={`${id}-emplacement`} libelle="Emplacement">
+              <Input
+                id={`${id}-emplacement`}
+                name="emplacement"
+                placeholder="facultatif"
+                value={emplacement}
+                onChange={(e) => setEmplacement(e.target.value)}
+              />
+            </Champ>
+          </div>
         </>
       )}
-      <div className="boutons">
-        {apercu && (
-          <button type="submit" disabled={envoi}>
-            Ajouter la Caméra
-          </button>
-        )}
-        {(identifiantsDemandes || cheminDemande) && <button type="submit">Valider</button>}
-        <button type="button" onClick={annuler}>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" onClick={annuler}>
           Annuler
-        </button>
+        </Button>
+        {(identifiantsDemandes || cheminDemande) && <Button type="submit">Valider</Button>}
+        {apercu && (
+          <Button type="submit" disabled={envoi}>
+            Ajouter la Caméra
+          </Button>
+        )}
       </div>
       {erreur && (
-        <p className="erreur" role="alert">
+        <p role="alert" className="text-13 text-destructive">
           {erreur}
         </p>
       )}
     </form>
   );
+}
+
+function Champ({ id, libelle, children }: Readonly<{ id: string; libelle: string; children: ReactNode }>) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{libelle}</Label>
+      {children}
+    </div>
+  );
+}
+
+function Avertissement({ children }: Readonly<{ children: ReactNode }>) {
+  return <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-13">{children}</p>;
 }

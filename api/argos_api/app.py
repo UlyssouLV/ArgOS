@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from time import monotonic
 from ipaddress import IPv4Address, IPv4Network
@@ -421,7 +421,7 @@ def creer_app(
         return debits_ecriture.lire(racine_enregistrements, base, espace.libre_o)
 
     app.include_router(
-        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements, calage)
+        _routes_cameras(base, administrateur_connecte, horloge, racine_enregistrements, calage, fuseau_hote)
     )
     hote_pont = urlsplit(configuration.url_api_mediamtx).hostname or ""
 
@@ -464,6 +464,7 @@ def _routes_cameras(
     horloge: Horloge,
     racine_enregistrements: Path,
     calage: Calage,
+    fuseau_hote: str,
 ) -> APIRouter:
     """Toutes les routes des Caméras exigent une session valide : rien ne fuite sans connexion."""
     Base = Annotated[Session, Depends(base)]
@@ -497,8 +498,9 @@ def _routes_cameras(
             cameras.supprimer(base, id_camera, racine_enregistrements)
 
     @routes.get("/{id_camera}/segments")
-    def lire_segments(id_camera: int, base: Base) -> SegmentsFermes:
-        """Relecture : Segments fermés sur la Conservation du Site ; le Segment encore en écriture est exclu."""
+    def lire_segments(id_camera: int, base: Base, jour: date | None = None) -> SegmentsFermes:
+        """Relecture d'un jour (`AAAA-MM-JJ`, le jour courant par défaut) au fuseau de l'Heure du Site : Segments
+        fermés qui le touchent dans la Conservation ; le Segment encore en écriture est exclu (ADR 0017)."""
         with _erreurs_cameras():
             camera = cameras.lire(base, id_camera, racine_enregistrements)
         return segments_fermes.lire(
@@ -507,6 +509,8 @@ def _routes_cameras(
             camera.enregistrement,
             reglages_site.conservation_h(base),
             horloge(),
+            heure_site.lire(base, fuseau_hote).fuseau,
+            jour,
         )
 
     @routes.get(

@@ -1,5 +1,5 @@
 import { appeler } from "./api";
-import { Refus, type Camera } from "./cameras";
+import { Refus, refusDe, type Camera } from "./cameras";
 
 /** Réglage de la Détection : `raison` dit pourquoi elle est indisponible (`null` : configurée). */
 export type EtatDetection = {
@@ -67,17 +67,31 @@ export function filtrerParMac(candidats: Candidat[], saisie: string): Candidat[]
 
 async function lire<T>(reponse: Response): Promise<T> {
   if (reponse.ok) return reponse.json();
-  const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
-  throw new Refus(typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`);
+  throw await refusDe(reponse);
 }
 
 export async function lireEtatDetection(): Promise<EtatDetection> {
   return lire(await appeler("/api/detection"));
 }
 
-/** Détection synchrone : une dizaine de secondes pour un /24 sur deux ports. */
+/** Attente entre deux demandes quand une Détection tourne déjà, et nombre de demandes (une minute en tout). */
+const ATTENTE_DETECTION_MS = 2_000;
+const DEMANDES_DETECTION = 30;
+
+/**
+ * Détection synchrone : une dizaine de secondes pour un /24 sur deux ports. À n'appeler que Détection configurée :
+ * un refus `409` dit alors qu'une autre tourne déjà (autre onglet, page rechargée pendant la sienne), et la
+ * demande est refaite jusqu'à ce qu'elle se termine.
+ */
 export async function lancerDetection(): Promise<ResultatDetection> {
-  return lire(await appeler("/api/detection", { method: "POST" }));
+  for (let demande = 1; ; demande++) {
+    try {
+      return await lire(await appeler("/api/detection", { method: "POST" }));
+    } catch (e) {
+      if (!(e instanceof Refus && e.statut === 409) || demande >= DEMANDES_DETECTION) throw e;
+      await new Promise((reprise) => setTimeout(reprise, ATTENTE_DETECTION_MS));
+    }
+  }
 }
 
 /** Issue d'un essai : seul `flux_trouve` ouvre un Aperçu. */
