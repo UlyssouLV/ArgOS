@@ -10,7 +10,7 @@ description: >-
 
 # Finalise the version
 
-Triggered by **« Finalise la version »** (or equivalent), only after **`/th`** closed the human-test child (and thus after **`/ps`** / `:staging`). Do **not** run `/code-review` or `/ps` here. Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`). The quality gate is step 3: skip if this `HEAD` was already **`OK`** in `/ps`; re-run if docs (or anything) moved `HEAD`.
+Triggered by **« Finalise la version »** (or equivalent), only after **`/th`** closed the human-test child (and thus after **`/ps`** / `:staging`). Do **not** run `/code-review` or `/ps` here. Release and squash go through **`creer-release`** (`/crel`) and **`fusionner-pr`** (`/mpr`), not inline. Docs commit goes through **`commit`** (`/c -a -p`). The quality gate is step 3: skip if this `HEAD` was already **`OK`** in `/ps`; re-run if docs (or anything) moved `HEAD`. Step 3b checks that `:staging` was published from this `HEAD`.
 
 A version = one feature branch + one PR that ships a **set** of child issues (parent spec). Starting a version is skill `ouvrir-la-version`.
 
@@ -70,7 +70,19 @@ Otherwise run **`quality-gate`** as if **`/qg`** (no wait yet):
 - Not **`OK`** (`ERROR`, `WARN`, …) → run skill **`corriger-quality-gate`** as if **`/cqg`**.
   - That skill stopped without a code change (policy / user needed) → **stop**. Do not `/crel` or `/mpr`.
   - Working tree dirty after the fix → run **`/t`** (fail → **stop**). Stage the files that fix touched and run skill **`commit`** as if **`/c -p`**. Then **`/qg -w`** once. Not **`OK`**, or no analysis this time → **stop**. Do not `/crel` or `/mpr`.
-  - After a fix that changes `HEAD`: tell the user in French that `:staging` and `/th` may be stale; prefer re-run **`/ps`** then a short `/th` before release. If they insist on shipping this SHA anyway, continue only after they type **oui**.
+  - After a fix that changes `HEAD`: tell the user in French that `:staging` and `/th` may be stale. Step 3b then requires a new **`/ps`**; suggest a short `/th` too.
+
+## 3b. `:staging` is this `HEAD`
+
+The Release tag lands on this `HEAD`, and the promotion copies `:staging` to `X.Y.Z` without rebuilding. `scripts/promouvoir-images-release.sh` refuses a `:staging` built from another commit.
+
+```bash
+gh run list --workflow "Publier images staging" --limit 20 --json headSha,status,conclusion
+```
+
+Some run has `headSha` = `git rev-parse HEAD`, `status` `completed`, `conclusion` `success` → one line; continue.
+
+Otherwise (no run, run still going, or failed, or only older SHAs): **stop**. Do not `/crel` or `/mpr`. Tell the user in French that `:staging` does not hold this `HEAD` (last published SHA if any) and to run **`/ps`**, then Finalise again.
 
 ## 4. Release, then squash
 

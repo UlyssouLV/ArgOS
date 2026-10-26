@@ -21,7 +21,9 @@ If the user has not clearly accepted the review this turn: ask whether `/code-re
 
 ## 1. Implementation children Closed; human-test still Open
 
-List children of the parent. Every **`ready-for-agent`** (and other implementation) child in scope must be **Closed**. The **`Tests humains — VX.Y.Z`** child must still be **Open** (label `ready-for-human`). Otherwise **stop** and say what is wrong (too early, or `/th` already done → Finalise).
+List children of the parent. Every **`ready-for-agent`** (and other implementation) child in scope must be **Closed**. Otherwise **stop** and say what is still Open.
+
+The **`Tests humains — VX.Y.Z`** child is normally still **Open** (label `ready-for-human`). Already **Closed** (`/th` ran before `/ps`, or `HEAD` moved after `/ps`) → do **not** stop: run steps 2 and 3 anyway, since Finalise and the promotion need `:staging` built from this `HEAD`. In step 4, tell the user `/th` is already recorded and the next step is « Finalise la version ».
 
 ## 2. Quality gate
 
@@ -43,7 +45,7 @@ From the **repo root**, current branch:
 gh workflow run "Publier images staging" --ref "$(git branch --show-current)"
 ```
 
-Then wait until that run completes successfully on this ref (`gh run list --workflow "Publier images staging" --branch …`, then `gh run watch`). Failure → **stop**. Do not invent another publish path.
+Then wait until that run completes successfully on this ref (`gh run list --workflow "Publier images staging" --branch …`, then `gh run watch`), and check that its `headSha` is `git rev-parse HEAD`. Failure, or no run for this SHA → **stop**. Do not invent another publish path. Do not hand off to `/th` or Finalise before this run is green: « Finalise la version » checks for it.
 
 Do **not** push `:staging` from `main` here. This SHA is the early-access digest for `/th`.
 

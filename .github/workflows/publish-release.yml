@@ -1,6 +1,7 @@
 # Canal production : retaggue le digest :staging vers X.Y.Z et :latest (sans rebuild),
 # et joint l'artefact du Site. Déclenchement manuel : après `/ps` + `/th` + Release,
 # lancer ce workflow avec le tag vX.Y.Z (même digest early access).
+# Refuse si :staging n'a pas été construit depuis le commit du tag (/ps sauté ou HEAD bougé après /ps).
 name: Promouvoir images vers Release
 
 on:

@@ -47,11 +47,23 @@ def test_le_workflow_promouvoit_staging_vers_la_release_sans_rebuild():
         assert service in script
 
 
-def test_promouvoir_retaggue_le_digest_staging_vers_la_version_et_latest(tmp_path: Path):
+SHA_RELEASE = "94b22cedd5ce96a0c2ca6204a1804853d96506f3"
+
+
+def promouvoir(tmp_path: Path, revision_staging: str | None) -> tuple[subprocess.CompletedProcess, str]:
+    """Lance la promo avec un faux docker : `imagetools inspect` rend :staging portant `revision_staging`."""
     journal = tmp_path / "docker.txt"
+    journal.touch()
     binaire = tmp_path / "bin"
     binaire.mkdir()
-    (binaire / "docker").write_text(f'#!/bin/sh\necho "$*" >> "{journal}"\n')
+    labels = "{}" if revision_staging is None else (
+        f'{{"org.opencontainers.image.revision": "{revision_staging}"}}'
+    )
+    image = f'{{"linux/amd64": {{"config": {{"Labels": {labels}}}}}, "linux/arm64": {{"config": {{"Labels": {labels}}}}}}}'
+    (binaire / "docker").write_text(
+        "#!/bin/sh\n"
+        f'case "$*" in *"imagetools inspect"*) echo \'{image}\' ;; *) echo "$*" >> "{journal}" ;; esac\n'
+    )
     (binaire / "docker").chmod(0o755)
 
     proc = subprocess.run(
@@ -61,16 +73,35 @@ def test_promouvoir_retaggue_le_digest_staging_vers_la_version_et_latest(tmp_pat
         env=os.environ | {
             "PATH": f"{binaire}{os.pathsep}{os.environ['PATH']}",
             "ARGOS_RELEASE_TAG": "v0.7.3",
+            "ARGOS_RELEASE_SHA": SHA_RELEASE,
         },
         timeout=DELAI_S,
     )
+    return proc, journal.read_text()
+
+
+def test_promouvoir_retaggue_le_digest_staging_vers_la_version_et_latest(tmp_path: Path):
+    proc, commandes = promouvoir(tmp_path, SHA_RELEASE)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    commandes = journal.read_text()
     assert "buildx build" not in commandes
     for service in ("api", "web", "pont", "certificats", "temps"):
         assert f"--tag ghcr.io/ulyssoulv/argos-{service}:0.7.3" in commandes
         assert f"--tag ghcr.io/ulyssoulv/argos-{service}:latest" in commandes
         assert f"ghcr.io/ulyssoulv/argos-{service}:staging" in commandes
+
+
+def test_promouvoir_refuse_un_staging_construit_depuis_un_autre_commit(tmp_path: Path):
+    # :staging resté sur une version précédente (/ps sauté) : rien n'est retaggué.
+    proc, commandes = promouvoir(tmp_path, "aaba297000000000000000000000000000000000")
+    assert proc.returncode != 0
+    assert SHA_RELEASE in proc.stderr
+    assert "imagetools create" not in commandes
+
+
+def test_promouvoir_refuse_un_staging_sans_commit_de_construction(tmp_path: Path):
+    proc, commandes = promouvoir(tmp_path, None)
+    assert proc.returncode != 0
+    assert "imagetools create" not in commandes
 
 
 def test_l_artefact_du_site_a_compose_et_detection_sans_env_ni_secrets(tmp_path: Path):
