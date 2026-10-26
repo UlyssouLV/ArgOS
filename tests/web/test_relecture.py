@@ -110,6 +110,11 @@ def _plages(zone: Locator) -> Locator:
     return zone.get_by_role("img", name=re.compile(r"^Plage (enregistrée|lue) "))
 
 
+def _video(zone: Locator) -> Locator:
+    """Vidéo à l'écran ; la suite préchargée reste cachée."""
+    return zone.locator("video").filter(visible=True)
+
+
 def _plage_lue(zone: Locator) -> Locator:
     return zone.get_by_role("img", name=re.compile(r"^Plage lue "))
 
@@ -328,11 +333,47 @@ def test_la_timeline_se_rafraichit_et_l_enchainement_attend_le_segment_ferme_ens
     _attendre(enregistrement, lambda: len(relectures) >= 1)
 
     # Fin du dernier Segment connu : le viewer attend le rafraîchissement qui apporte le Segment fermé depuis.
-    relecture.locator("video").dispatch_event("ended")
+    _video(relecture).dispatch_event("ended")
     expect(_plages(relecture)).to_have_count(2, timeout=DELAI_RAFRAICHISSEMENT_MS)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == ferme_ensuite[0]
     expect(_plage_lue(relecture)).to_have_count(1)
+
+
+def test_la_suite_d_une_fenetre_se_precharge_et_prend_le_relais_sans_recharger(enregistrement: Page, api, noms, relectures):
+    camera = _camera(api, noms, url_injoignable())
+    maintenant = _maintenant()
+    debut = maintenant - timedelta(minutes=30)
+    # Une Plage de 10 min en Segments d'une minute : plusieurs fenêtres de 3 min s'y suivent.
+    segments = [(debut + timedelta(minutes=i), debut + timedelta(minutes=i + 1)) for i in range(10)]
+    _simuler_segments(enregistrement, camera["id"], (maintenant - timedelta(hours=1), maintenant), segments)
+    relecture = _selectionner(enregistrement, camera["nom"])
+    relecture.get_by_role("button", name="Timeline d’enregistrement").press("Enter")
+    _attendre(enregistrement, lambda: len(relectures) >= 1)
+    assert datetime.fromisoformat(_debut_demande(relectures[0])) == debut
+    video = _video(relecture)
+
+    # Loin de la fin de la fenêtre, rien ne se précharge (la position se simule : ces Segments n'existent pas).
+    video.evaluate("v => { v.currentTime = 100; v.dispatchEvent(new Event('timeupdate')); }")
+    enregistrement.wait_for_timeout(500)
+    expect(relecture.locator("video")).to_have_count(1)
+
+    # À 20 s de la fin, la suite dans la Plage se demande au pont, cachée, sans interrompre la vidéo à l'écran.
+    video.evaluate("v => { v.currentTime = 160; v.dispatchEvent(new Event('timeupdate')); }")
+    expect(relecture.locator("video")).to_have_count(2)
+    _attendre(enregistrement, lambda: len(relectures) >= 2)
+    suite = debut + timedelta(minutes=3)
+    assert datetime.fromisoformat(_debut_demande(relectures[-1])) == suite
+    prechargee = relecture.locator("video").filter(visible=False)
+    expect(prechargee).to_have_count(1)
+    prechargee.evaluate("v => { v.marque = true; }")
+
+    # À la fin de la fenêtre, la vidéo préchargée prend le relais : pas de nouvelle demande au pont.
+    video.dispatch_event("ended")
+    expect(relecture.locator("video")).to_have_count(1)
+    expect(_video(relecture)).to_have_js_property("marque", True)
+    expect(relecture.get_by_label("Instant lu")).to_have_text(suite.strftime("%H:%M:%S"))
+    assert {datetime.fromisoformat(_debut_demande(url)) for url in relectures} == {debut, suite}
 
 
 def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
@@ -411,7 +452,7 @@ def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistremen
     segments = _segments_fermes(api, camera["id"], 3)
     _resserrer_la_fenetre(enregistrement, camera["id"])
     relecture = _selectionner(enregistrement, camera["nom"])
-    video = relecture.locator("video")
+    video = _video(relecture)
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
     # Au milieu du premier Segment : la vidéo part de cette seconde, pas du début du Segment, et joue.
@@ -420,6 +461,11 @@ def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistremen
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
     start = datetime.fromisoformat(_debut_demande(relectures[0]))
     assert abs((start - _milieu(segments[0])).total_seconds()) < 0.5
+    # La fenêtre traverse les Segments de la Plage sans recharger la vidéo.
+    video.evaluate("v => { v.marque = v.currentSrc; }")
+    debut_suivant = (datetime.fromisoformat(segments[2]["debut"]) - start).total_seconds()
+    _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > debut_suivant + 0.2, DELAI_VIDEO_MS / 1000)
+    assert video.evaluate("v => v.marque === v.currentSrc")
     expect(relecture.get_by_role("progressbar", name="Progression dans la Plage")).to_be_visible()
     expect(relecture.get_by_label("Instant lu")).to_have_text(re.compile(r"^\d{2}:\d{2}:\d{2}$"))
 

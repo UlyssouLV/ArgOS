@@ -55,3 +55,11 @@ export function fenetre(plage: Intervalle, instant: number): Fenetre | null {
     duration: Math.min(DUREE_FENETRE_S, (fin - depart) / 1000),
   };
 }
+
+/** Temps réel (s) avant la fin d'une fenêtre où sa suite se précharge : assez pour un premier rendu du pont. */
+export const ANTICIPATION_S = 30;
+
+/** La fenêtre lue à `position` (s), à `vitesse`, finit dans `ANTICIPATION_S` de temps réel : sa suite se précharge. */
+export function aRenouveler(lue: Fenetre, position: number, vitesse: number): boolean {
+  return (lue.duration - position) / vitesse <= ANTICIPATION_S;
+}

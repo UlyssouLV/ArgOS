@@ -120,3 +120,17 @@ def test_la_fenetre_d_un_instant_fractionnaire_finit_a_la_fin_de_la_plage():
     plage = _intervalle("10:00:00", "10:05:00")
 
     assert _appeler("fenetre", plage, _ms("10:04:00") + 0.7) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
+
+
+FENETRE = {"start": _iso("10:00:00"), "duration": 180}
+
+
+@pytest.mark.parametrize(("position", "vitesse"), [(150, 1), (170, 2), (0, 16)])
+def test_la_fenetre_se_renouvelle_a_l_approche_de_sa_fin_en_temps_reel(position, vitesse):
+    # 30 s de lecture au plus : la suite a le temps de se charger, à ×16 dès le début d'une fenêtre de 3 min.
+    assert _appeler("aRenouveler", FENETRE, position, vitesse) is True
+
+
+@pytest.mark.parametrize(("position", "vitesse"), [(0, 1), (100, 1), (0, 4)])
+def test_la_fenetre_ne_se_renouvelle_pas_loin_de_sa_fin(position, vitesse):
+    assert _appeler("aRenouveler", FENETRE, position, vitesse) is False

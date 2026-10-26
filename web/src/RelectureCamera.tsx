@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { sessionValide } from "./api";
 import { messageEchec, texteEtat, type Camera, type Etat } from "./cameras";
 import { hevcDecodable } from "./hls";
-import { plageCourante, plagesEnregistrees, type Fenetre } from "./plages";
+import { aRenouveler, plageCourante, plagesEnregistrees, type Fenetre } from "./plages";
 import {
   VITESSES,
   fenetreVisee,
@@ -62,6 +62,11 @@ function heureDuSite(instant: number, fuseau: string): string {
   return new Date(instant).toLocaleTimeString("fr-FR", { timeZone: fuseau });
 }
 
+/** Instant (ms) où s'achève une fenêtre ; arrondi : `duration` en secondes perdrait la milliseconde de fin de Plage. */
+function finDe({ start, duration }: Fenetre): number {
+  return Date.parse(start) + Math.round(duration * 1000);
+}
+
 function dateDuSite(iso: string, fuseau: string): string {
   return new Date(iso).toLocaleString("fr-FR", { timeZone: fuseau, dateStyle: "medium", timeStyle: "short" });
 }
@@ -69,8 +74,8 @@ function dateDuSite(iso: string, fuseau: string): string {
 /**
  * Relecture d'une Caméra, un jour du Site à la fois (docs/adr/0013-relecture-des-enregistrements.md, ADR 0017) :
  * en-tête (Caméra, jour), viewer, puis Timeline d'enregistrement de 00h à 24h. Un clic sur une Plage enregistrée lit
- * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture ; à la fin d'une fenêtre, le viewer reprend
- * après elle, à la même vitesse.
+ * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture. Avant la fin d'une fenêtre, sa suite se
+ * précharge dans une seconde vidéo, cachée, qui prend le relais à la fin, à la même vitesse : pas d'interruption visible.
  */
 export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelecture) {
   const naviguer = useNavigate();
@@ -99,7 +104,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
         })
         .catch((e: unknown) => !annule && setErreur(messageEchec(e)));
     setLue(null);
-    setLecture(null);
+    lireFenetre(null);
     setAcheve(null);
     void lire();
     const minuterie = setInterval(() => void lire(), RAFRAICHISSEMENT_MS);
@@ -121,9 +126,27 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     [camera.codec],
   );
 
-  useEffect(() => {
+  // Suite préchargée, cachée : même fenêtre que `suiteDeLecture` à la fin de la lecture, donc même vidéo au relais.
+  const suivante =
+    lue === null || lecture === null || h265Illisible || !aRenouveler(lecture, position, vitesse)
+      ? null
+      : suiteDeLecture(lue.segments, finDe(lecture));
+
+  /** Fenêtre à lire, depuis son début ; position et état repartent avec elle, sans rendu intermédiaire. */
+  function lireFenetre(fenetre: Fenetre | null) {
+    setLecture(fenetre);
     setPosition(0);
     setEtat("lisible");
+  }
+
+  // Relais par la suite préchargée : ses métadonnées sont déjà là, elle ne relance pas `onLoadedMetadata`.
+  useEffect(() => {
+    const lecteur = video.current;
+    // Une suite préchargée en échec ne relance pas `onError` en prenant le relais.
+    if (lecteur?.error) surErreur();
+    if (lecteur === null || lecteur.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    lecteur.playbackRate = vitesse;
+    void lecteur.play().catch(() => {});
   }, [lecture]);
 
   // Fin de la fenêtre au bout des Segments connus : on reprend dès qu'un rafraîchissement apporte la suite.
@@ -132,7 +155,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     const suite = suiteDeLecture(lue.segments, acheve);
     if (suite === null) return;
     setAcheve(null);
-    setLecture(suite);
+    lireFenetre(suite);
   }, [lue, acheve]);
 
   useEffect(() => {
@@ -162,7 +185,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
       void video.current.play().catch(() => {});
     }
     setAcheve(null);
-    setLecture(visee);
+    lireFenetre(visee);
   }
 
   function surErreur() {
@@ -262,27 +285,48 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
           </Alert>
         )}
         <div className="relative aspect-video max-h-[60vh] w-full overflow-hidden rounded-lg border bg-video">
-          {lecture !== null && (
-            <video
-              ref={video}
-              className="size-full object-contain"
-              src={h265Illisible ? undefined : urlRelecture(cheminFlux(camera.id), lecture)}
-              autoPlay
-              muted
-              playsInline
-              onLoadedMetadata={(e) => {
-                e.currentTarget.playbackRate = vitesse;
-                // `autoPlay` seul ne part pas toujours sur un MP4 d'une minute (Chromium) : on lance la lecture.
-                void e.currentTarget.play().catch(() => {});
-              }}
-              onPlay={() => setEnPause(false)}
-              onPause={() => setEnPause(true)}
-              onTimeUpdate={(e) => setPosition(e.currentTarget.currentTime)}
-              // Arrondi : `duration` en secondes perdrait la milliseconde de fin de Plage.
-              onEnded={() => setAcheve(Date.parse(lecture.start) + Math.round(lecture.duration * 1000))}
-              onError={surErreur}
-            />
-          )}
+          {/* Une seule liste à clé = URL : au relais, la vidéo préchargée reste le même élément, sans recharger son `src`. */}
+          {[lecture, suivante].map((fenetre) => {
+            if (fenetre === null) return null;
+            const url = urlRelecture(cheminFlux(camera.id), fenetre);
+            if (fenetre !== lecture) {
+              return (
+                <video
+                  key={url}
+                  className="invisible absolute inset-0 size-full object-contain"
+                  src={url}
+                  preload="auto"
+                  muted
+                  playsInline
+                  aria-hidden="true"
+                  onLoadedMetadata={(e) => {
+                    e.currentTarget.playbackRate = vitesse;
+                  }}
+                />
+              );
+            }
+            return (
+              <video
+                key={url}
+                ref={video}
+                className="size-full object-contain"
+                src={h265Illisible ? undefined : url}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={(e) => {
+                  e.currentTarget.playbackRate = vitesse;
+                  // `autoPlay` seul ne part pas toujours sur un MP4 d'une minute (Chromium) : on lance la lecture.
+                  void e.currentTarget.play().catch(() => {});
+                }}
+                onPlay={() => setEnPause(false)}
+                onPause={() => setEnPause(true)}
+                onTimeUpdate={(e) => setPosition(e.currentTarget.currentTime)}
+                onEnded={() => setAcheve(finDe(fenetre))}
+                onError={surErreur}
+              />
+            );
+          })}
           {lecture !== null && h265Illisible && <MessageVideo>Ce navigateur ne lit pas le H.265</MessageVideo>}
           {lecture !== null && !h265Illisible && etat === "indisponible" && (
             <MessageVideo>Enregistrement indisponible</MessageVideo>
