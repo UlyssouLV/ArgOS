@@ -120,3 +120,15 @@ export function texteEcart(ecartS: number | null): string {
   });
   return `${nombre} s`;
 }
+
+/** Résultat de « Vérifier maintenant » en une phrase : nombre de Caméras par état, dans l'ordre du libellé. */
+export function texteBilanVerification(horloges: HorlogeVerifiee[]): string {
+  if (horloges.length === 0) return "Aucune Caméra active à vérifier.";
+  const parEtat = new Map<string, number>();
+  for (const { etat } of horloges) {
+    const libelle = libelleEtatHorloge(etat);
+    parEtat.set(libelle, (parEtat.get(libelle) ?? 0) + 1);
+  }
+  const detail = [...parEtat].map(([libelle, nombre]) => `${nombre} ${libelle}`).join(", ");
+  return `Caméras vérifiées : ${detail}.`;
+}

@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Clock, RefreshCw } from "lucide-react";
 
-import { AncienStyle } from "@/components/AncienStyle";
 import { EnTeteDePage } from "@/components/EnTeteDePage";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { notifier } from "@/notifier";
 import { messageEchec } from "../cameras";
 import {
   libelleEtatHorloge,
@@ -11,10 +21,12 @@ import {
   modifierHeureDuSite,
   MOTIF_SERVEUR_NTP,
   texteBaseDesFuseaux,
+  texteBilanVerification,
   texteEcart,
   texteHeure,
   texteSourceUtilisee,
   verifierLesCameras,
+  type EtatHorloge,
   type HeureDuSite as Heure,
   type HorlogeVerifiee,
   type Source,
@@ -22,6 +34,16 @@ import {
 
 // Relecture de ce que sert le Serveur de temps du Site (source utilisée, repli) et du tableau des Caméras.
 const RAFRAICHISSEMENT_MS = 10_000;
+
+// Pastille de la Mise à l'heure, toujours suivie de son libellé ; jamais vérifiée : cerclée.
+const COULEURS_ETAT: Record<EtatHorloge, string> = {
+  a_l_heure: "bg-success",
+  ecart: "bg-destructive",
+  sans_onvif: "bg-unknown",
+  echec: "bg-destructive",
+};
+
+const COLONNES = ["Caméra", "Mise à l’heure", "Dérive", "Écart", "Dernière vérification"];
 
 /** Page Heure du Site de l'Administration (docs/adr/0014-serveur-de-temps-du-site.md). */
 export function HeureDuSite() {
@@ -34,7 +56,6 @@ export function HeureDuSite() {
   const [serveur, setServeur] = useState("");
   const [fuseau, setFuseau] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [horloges, setHorloges] = useState<HorlogeVerifiee[] | null>(null);
   const [verificationEnCours, setVerificationEnCours] = useState(false);
@@ -83,11 +104,10 @@ export function HeureDuSite() {
         await modifierHeureDuSite({ source, fuseau, ...(source === "ntp" ? { serveur_ntp: serveur.trim() } : {}) }),
         true,
       );
-      setErreur(null);
-      setMessage("Heure du Site enregistrée : les Caméras actives sont mises à l’heure et recalées.");
+      notifier("Heure du Site enregistrée : les Caméras actives sont mises à l’heure et recalées.");
     } catch (e) {
-      setErreur(messageEchec(e));
-      setMessage(null);
+      const message = messageEchec(e);
+      if (message) notifier(message, "echec");
     } finally {
       setEnCours(false);
     }
@@ -96,10 +116,12 @@ export function HeureDuSite() {
   async function verifierMaintenant() {
     setVerificationEnCours(true);
     try {
-      setHorloges(await verifierLesCameras());
-      setErreur(null);
+      const verifiees = await verifierLesCameras();
+      setHorloges(verifiees);
+      notifier(texteBilanVerification(verifiees));
     } catch (e) {
-      setErreur(messageEchec(e));
+      const message = messageEchec(e);
+      if (message) notifier(message, "echec");
     } finally {
       setVerificationEnCours(false);
     }
@@ -115,146 +137,229 @@ export function HeureDuSite() {
 
   return (
     <>
-      <EnTeteDePage titre="Heure du Site" surtitre="Administration" />
-      <AncienStyle>
-        <section className="heure-du-site">
-          {erreur && (
-            <p className="erreur" role="alert">
-              {erreur}
-            </p>
-          )}
-          {message && (
-            <p className="message" role="status">
-              {message}
-            </p>
-          )}
-          {heure && (
-            <dl className="etat-heure" aria-label="Heure du Site">
-              <div>
-                <dt>Heure actuelle du Site</dt>
-                <dd>{texteHeure(ecartMs === null ? null : new Date(maintenant + ecartMs), heure.fuseau)}</dd>
-              </div>
-              <div>
-                <dt>Source utilisée</dt>
-                <dd>{texteSourceUtilisee(heure)}</dd>
-              </div>
-              <div>
-                <dt>Fuseau</dt>
-                <dd>
+      <EnTeteDePage
+        titre="Heure du Site"
+        surtitre="Administration"
+        actions={
+          <Button disabled={verificationEnCours} onClick={() => void verifierMaintenant()}>
+            <RefreshCw className={cn(verificationEnCours && "animate-spin")} />
+            {verificationEnCours ? "Vérification…" : "Vérifier maintenant"}
+          </Button>
+        }
+      />
+      <div className="flex flex-col gap-6 p-6">
+        {erreur && (
+          <Alert variant="destructive">
+            <AlertDescription>{erreur}</AlertDescription>
+          </Alert>
+        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Réglage</CardTitle>
+            <CardDescription>
+              Enregistrer met à l’heure et recale toutes les Caméras actives : serveur NTP = le Site, fuseau = celui
+              du Site.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-8 lg:grid-cols-2">
+            {heure ? (
+              <dl className="grid content-start gap-4" aria-label="Heure du Site">
+                <Valeur terme="Heure actuelle du Site">
+                  <span className="font-mono text-2xl tabular-nums">
+                    {texteHeure(ecartMs === null ? null : new Date(maintenant + ecartMs), heure.fuseau)}
+                  </span>
+                </Valeur>
+                <Valeur terme="Source utilisée">{texteSourceUtilisee(heure)}</Valeur>
+                <Valeur terme="Fuseau">
                   {heure.fuseau}
                   {heure.fuseau_de_l_hote && " (celui du serveur)"}
-                </dd>
+                </Valeur>
+                <Valeur terme="Adresse du Serveur de temps">
+                  {heure.adresse_serveur_de_temps ? (
+                    <span className="font-mono">{heure.adresse_serveur_de_temps}</span>
+                  ) : (
+                    <span className="text-destructive">
+                      inconnue : renseigner l’IP du Site (MTX_WEBRTCADDITIONALHOSTS) ; aucune Caméra n’est calée
+                    </span>
+                  )}
+                </Valeur>
+                <Valeur terme="Base des fuseaux">{texteBaseDesFuseaux(heure.base_des_fuseaux)}</Valeur>
+              </dl>
+            ) : (
+              !erreur && <SquelettesHeure />
+            )}
+            <form
+              className="grid content-start gap-5"
+              aria-label="Régler l’Heure du Site"
+              onSubmit={(e) => void enregistrer(e)}
+            >
+              <fieldset className="grid gap-3" disabled={heure === null || enCours}>
+                <legend className="mb-3 text-sm font-medium">Source de l’heure</legend>
+                <Label className="font-normal">
+                  <input
+                    type="radio"
+                    name="source"
+                    className="size-4 accent-brand"
+                    checked={source === "ntp"}
+                    onChange={() => setSource("ntp")}
+                  />
+                  Serveur NTP externe
+                </Label>
+                <div className="grid gap-1.5 pl-6">
+                  <Label htmlFor="serveur-ntp" className="text-13 text-muted-foreground">
+                    Adresse du serveur NTP
+                  </Label>
+                  <Input
+                    id="serveur-ntp"
+                    type="text"
+                    className="font-mono"
+                    value={serveur}
+                    required={source === "ntp"}
+                    pattern={MOTIF_SERVEUR_NTP}
+                    disabled={source !== "ntp"}
+                    onChange={(e) => setServeur(e.target.value)}
+                  />
+                </div>
+                <Label className="font-normal">
+                  <input
+                    type="radio"
+                    name="source"
+                    className="size-4 accent-brand"
+                    checked={source === "horloge_serveur"}
+                    onChange={() => setSource("horloge_serveur")}
+                  />
+                  Horloge du serveur
+                </Label>
+                <p className="text-13 text-muted-foreground">
+                  Un serveur NTP injoignable laisse le Site servir l’horloge du serveur, jusqu’à ce qu’il réponde.
+                </p>
+              </fieldset>
+              <div className="grid gap-1.5">
+                <Label htmlFor="fuseau-du-site">Fuseau du Site</Label>
+                <NativeSelect
+                  id="fuseau-du-site"
+                  value={fuseau}
+                  disabled={heure === null || enCours}
+                  onChange={(e) => setFuseau(e.target.value)}
+                >
+                  {fuseauxProposes.map((nom) => (
+                    <option key={nom} value={nom}>
+                      {nom}
+                    </option>
+                  ))}
+                </NativeSelect>
               </div>
               <div>
-                <dt>Adresse du Serveur de temps</dt>
-                <dd>
-                  {heure.adresse_serveur_de_temps ??
-                    "inconnue : renseigner l’IP du Site (MTX_WEBRTCADDITIONALHOSTS) ; aucune Caméra n’est calée"}
-                </dd>
+                <Button type="submit" disabled={heure === null || inchangee || enCours}>
+                  Enregistrer
+                </Button>
               </div>
-              <div>
-                <dt>Base des fuseaux</dt>
-                <dd>{texteBaseDesFuseaux(heure.base_des_fuseaux)}</dd>
-              </div>
-            </dl>
-          )}
-          <form className="reglage-heure" aria-label="Régler l’Heure du Site" onSubmit={(e) => void enregistrer(e)}>
-            <fieldset disabled={heure === null || enCours}>
-              <legend>Source de l’heure</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="source"
-                  checked={source === "ntp"}
-                  onChange={() => setSource("ntp")}
-                />
-                Serveur NTP externe
-              </label>
-              <label className="serveur-ntp">
-                Adresse du serveur NTP
-                <input
-                  type="text"
-                  value={serveur}
-                  required={source === "ntp"}
-                  pattern={MOTIF_SERVEUR_NTP}
-                  disabled={source !== "ntp"}
-                  onChange={(e) => setServeur(e.target.value)}
-                />
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="source"
-                  checked={source === "horloge_serveur"}
-                  onChange={() => setSource("horloge_serveur")}
-                />
-                Horloge du serveur
-              </label>
-              <p className="aide">
-                Un serveur NTP injoignable laisse le Site servir l’horloge du serveur, jusqu’à ce qu’il réponde.
-              </p>
-            </fieldset>
-            <label>
-              Fuseau du Site
-              <select value={fuseau} disabled={heure === null || enCours} onChange={(e) => setFuseau(e.target.value)}>
-                {fuseauxProposes.map((nom) => (
-                  <option key={nom} value={nom}>
-                    {nom}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="aide">
-              Enregistrer met à l’heure et recale toutes les Caméras actives : serveur NTP = le Site, fuseau = celui du
-              Site.
-            </p>
-            <button type="submit" disabled={heure === null || inchangee || enCours}>
-              Enregistrer
-            </button>
-          </form>
-          <section className="horloges-cameras" aria-labelledby="titre-horloges-cameras">
-            <h2 id="titre-horloges-cameras">Caméras</h2>
-            <p className="aide">
+            </form>
+          </CardContent>
+        </Card>
+        <section className="flex flex-col gap-3" aria-labelledby="titre-horloges-cameras">
+          <div>
+            <h2 id="titre-horloges-cameras" className="text-base font-semibold">
+              Caméras
+            </h2>
+            <p className="text-13 text-muted-foreground">
               Vérifiées toutes les heures : chaque Caméra est mise à l’heure du Serveur de temps du Site, puis recalée
               dessus. La dérive est mesurée avant, l’écart après ; au-delà de 2 s d’écart, elle n’est pas à l’heure.
             </p>
-            <button type="button" disabled={verificationEnCours} onClick={() => void verifierMaintenant()}>
-              {verificationEnCours ? "Vérification…" : "Vérifier maintenant"}
-            </button>
-            {horloges && (
-              <table className="resume-cameras" aria-labelledby="titre-horloges-cameras">
-                <thead>
-                  <tr>
-                    <th scope="col">Caméra</th>
-                    <th scope="col">État</th>
-                    <th scope="col">Dérive</th>
-                    <th scope="col">Écart</th>
-                    <th scope="col">Dernière vérification</th>
-                  </tr>
-                </thead>
-                <tbody>
+          </div>
+          {horloges === null && !erreur && <SquelettesCameras />}
+          {horloges?.length === 0 && <AucuneCameraActive />}
+          {horloges && horloges.length > 0 && (
+            <div className="rounded-lg border bg-card">
+              <Table aria-label="Caméras">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    {COLONNES.map((colonne) => (
+                      <TableHead key={colonne}>{colonne}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {horloges.map((camera) => (
-                    <tr key={camera.id} className={camera.etat ? `horloge-${camera.etat}` : undefined}>
-                      <td>{camera.nom}</td>
-                      <td>{libelleEtatHorloge(camera.etat)}</td>
-                      <td>{texteEcart(camera.derive_s)}</td>
-                      <td>{texteEcart(camera.ecart_s)}</td>
-                      <td>
-                        {camera.verifiee_le === null
-                          ? "—"
-                          : new Date(camera.verifiee_le).toLocaleString("fr-FR", {
-                              dateStyle: "short",
-                              timeStyle: "medium",
-                            })}
-                      </td>
-                    </tr>
+                    <LigneHorloge key={camera.id} camera={camera} />
                   ))}
-                </tbody>
-              </table>
-            )}
-          </section>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </section>
-      </AncienStyle>
+      </div>
     </>
+  );
+}
+
+function Valeur({ terme, children }: Readonly<{ terme: string; children: ReactNode }>) {
+  return (
+    <div className="grid gap-1">
+      <dt className="text-13 text-muted-foreground">{terme}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function SquelettesHeure() {
+  return (
+    <div className="grid content-start gap-4" aria-busy="true" aria-label="Chargement de l’Heure du Site">
+      <Skeleton className="h-8 w-3/4" />
+      {[0, 1, 2, 3].map((rang) => (
+        <Skeleton key={rang} className="h-5 w-1/2" />
+      ))}
+    </div>
+  );
+}
+
+function SquelettesCameras() {
+  return (
+    <div className="space-y-2 rounded-lg border bg-card p-4" aria-busy="true" aria-label="Chargement des Caméras">
+      {[0, 1, 2].map((rang) => (
+        <Skeleton key={rang} className="h-10 w-full" />
+      ))}
+    </div>
+  );
+}
+
+/** État vide : rien à mettre à l'heure tant qu'aucune Caméra n'est active. */
+function AucuneCameraActive() {
+  return (
+    <section
+      aria-label="Aucune Caméra active"
+      className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-card px-6 py-12 text-center"
+    >
+      <Clock className="size-8 text-muted-foreground" aria-hidden="true" />
+      <p className="text-base font-semibold">Aucune Caméra active</p>
+      <p className="text-muted-foreground">Les Caméras actives sont mises à l’heure du Site dès leur ajout.</p>
+    </section>
+  );
+}
+
+function LigneHorloge({ camera }: Readonly<{ camera: HorlogeVerifiee }>) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{camera.nom}</TableCell>
+      <TableCell>
+        <span className="flex items-center gap-1.5 text-13">
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              camera.etat ? COULEURS_ETAT[camera.etat] : "border border-unknown",
+            )}
+            aria-hidden="true"
+          />
+          {libelleEtatHorloge(camera.etat)}
+        </span>
+      </TableCell>
+      <TableCell className="font-mono text-xs">{texteEcart(camera.derive_s)}</TableCell>
+      <TableCell className="font-mono text-xs">{texteEcart(camera.ecart_s)}</TableCell>
+      <TableCell className="font-mono text-xs">
+        {camera.verifiee_le === null
+          ? "—"
+          : new Date(camera.verifiee_le).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" })}
+      </TableCell>
+    </TableRow>
   );
 }
