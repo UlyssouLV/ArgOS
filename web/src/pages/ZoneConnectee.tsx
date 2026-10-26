@@ -9,7 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { VERSION_ARGOS } from "@/version";
-import { lireEspaceEnregistrements } from "../reglagesSite";
+import { EVENEMENT_ESPACE_MODIFIE, lireEspaceEnregistrements } from "../reglagesSite";
 import { useSession } from "../session";
 
 /** Entrée du rail : icône seule sous 1024 px (libellé en infobulle), libellé à côté au-delà. */
@@ -61,15 +61,19 @@ export function ZoneConnectee() {
   useEffect(() => {
     if (session.etat !== "connecte") return;
     let annule = false;
-    void lireEspaceEnregistrements()
-      .then((espace) => {
-        if (!annule) setSousSeuil(espace.sous_seuil);
-      })
-      .catch(() => {
-        if (!annule) setSousSeuil(false);
-      });
+    const relire = () =>
+      void lireEspaceEnregistrements()
+        .then((espace) => {
+          if (!annule) setSousSeuil(espace.sous_seuil);
+        })
+        .catch(() => {
+          if (!annule) setSousSeuil(false);
+        });
+    relire();
+    globalThis.addEventListener(EVENEMENT_ESPACE_MODIFIE, relire);
     return () => {
       annule = true;
+      globalThis.removeEventListener(EVENEMENT_ESPACE_MODIFIE, relire);
     };
   }, [session.etat, location.pathname]);
 

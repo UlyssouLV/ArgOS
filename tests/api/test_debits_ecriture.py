@@ -237,3 +237,26 @@ def test_tenue_trop_ambitieuse_quand_conservation_depasse(connecte, creer_camera
     assert corps["tenue_enregistrement_ok"] is False
     assert corps["tenue_enregistrement_s"] is not None
     assert corps["tenue_enregistrement_s"] < corps["conservation_s"]
+
+
+def test_plus_ancien_segment_de_chaque_camera(connecte, creer_camera):
+    """Début du plus ancien Segment, lu dans son nom (recordPath du pont, heure UTC) ; aucun : `None`."""
+    avec = creer_camera().json()
+    sans = creer_camera().json()
+    compose(
+        "exec",
+        "-T",
+        "api",
+        "python",
+        "-c",
+        "from pathlib import Path\n"
+        f"p = Path('/enregistrements/camera-{avec['id']}'); p.mkdir(parents=True, exist_ok=True)\n"
+        "(p / '2026-10-20_08-15-00-000000.mp4').write_bytes(b'x')\n"
+        "(p / '2026-10-19_23-59-30-500000.mp4').write_bytes(b'x')\n"
+        "(p / 'pas-un-segment.mp4').write_bytes(b'x')\n",
+    )
+
+    cameras = {c["id"]: c for c in connecte.get("/api/debits-ecriture").json()["cameras"]}
+
+    assert cameras[avec["id"]]["plus_ancien_segment"] == "2026-10-19T23:59:30.500000Z"
+    assert cameras[sans["id"]]["plus_ancien_segment"] is None

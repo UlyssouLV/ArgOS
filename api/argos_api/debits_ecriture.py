@@ -1,6 +1,7 @@
 """Débits d'écriture des Segments et estimation de tenue (ADR 0012)."""
 
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from argos_api import reglages_site
+from argos_api import reglages_site, segments_fermes
 from argos_api.cameras import CameraLue, EtatEnregistrement
 from argos_api.modeles import Camera
 from argos_api.pont import chemin_flux
@@ -27,6 +28,8 @@ class DebitCamera(BaseModel):
     etat_enregistrement: EtatEnregistrement
     debit_o_s: int | None
     source_debit: SourceDebit
+    # Début du plus ancien Segment conservé ; `None` : aucun.
+    plus_ancien_segment: datetime | None
 
 
 class DebitsEcriture(BaseModel):
@@ -56,6 +59,7 @@ def lire(racine: Path, base: Session, libre_o: int) -> DebitsEcriture:
                 etat_enregistrement=lue.etat_enregistrement,
                 debit_o_s=debit_o_s,
                 source_debit=source,
+                plus_ancien_segment=segments_fermes.debut_plus_ancien(racine, camera.id),
             )
         )
 

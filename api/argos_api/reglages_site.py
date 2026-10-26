@@ -1,4 +1,4 @@
-"""Réglages globaux du Site : Conservation des Segments et Seuil de place disque (ADR 0012).
+"""Réglages globaux du Site : Conservation des Segments (1 h – 30 jours, ADR 0017) et Seuil de place disque (ADR 0012).
 
 L'Heure du Site, dans la même ligne, se règle par `heure_site`.
 """
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from argos_api.modeles import ReglagesSite
 
 CONSERVATION_MIN = 1
-CONSERVATION_MAX = 24
+CONSERVATION_MAX = 30 * 24  # 30 jours, stockés en heures (ADR 0017)
 CONSERVATION_DEFAUT = 1
 SEUIL_MIN = 104_857_600  # 100 Mo
 SEUIL_DEFAUT = 1_073_741_824  # 1 Go

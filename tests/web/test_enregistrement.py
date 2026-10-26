@@ -93,4 +93,5 @@ def test_pas_de_lien_de_telechargement_ni_de_relecture_des_segments(administrati
 
     expect(camera.get_by_role("link")).to_have_count(0)
     expect(administration.get_by_role("link", name="Télécharger")).to_have_count(0)
-    expect(administration.get_by_text("relecture", exact=False)).to_have_count(0)
+    # Hors du rail, dont l'entrée Relecture mène à la page dédiée (ADR 0017).
+    expect(administration.get_by_role("main").get_by_text("relecture", exact=False)).to_have_count(0)

@@ -75,6 +75,11 @@ def lire(
     )
 
 
+def debut_plus_ancien(racine: Path, id_camera: int) -> datetime | None:
+    """Début du plus ancien Segment de la Caméra, lu dans son nom ; `None` : aucun."""
+    return min((debut for debut, _ in _fichiers(racine / chemin_flux(id_camera))), default=None)
+
+
 def _minuit(jour: date, zone: ZoneInfo) -> datetime:
     return datetime.combine(jour, time(), zone).astimezone(UTC)
 
