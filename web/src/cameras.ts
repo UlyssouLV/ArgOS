@@ -95,8 +95,15 @@ export function texteAgeSegment(age: number | null): string {
   return `${Math.floor(secondes / 3600)} h`;
 }
 
-/** Refus de l'API, à afficher tel quel dans le formulaire. */
-export class Refus extends Error {}
+/** Refus de l'API, à afficher tel quel ; `statut` HTTP pour le rattacher au champ en cause (409, 422). */
+export class Refus extends Error {
+  constructor(
+    message: string,
+    readonly statut?: number,
+  ) {
+    super(message);
+  }
+}
 
 const URL_INVALIDE = "URL RTSP invalide. Format attendu : rtsp://[utilisateur:motdepasse@]hote[:port]/chemin";
 
@@ -108,9 +115,12 @@ export function messageEchec(erreur: unknown): string | null {
 }
 
 async function lever(reponse: Response): Promise<never> {
-  if (reponse.status === 422) throw new Refus(URL_INVALIDE);
+  if (reponse.status === 422) throw new Refus(URL_INVALIDE, 422);
   const corps = (await reponse.json().catch(() => ({}))) as { detail?: unknown };
-  throw new Refus(typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`);
+  throw new Refus(
+    typeof corps.detail === "string" ? corps.detail : `Refusé par l'API (${reponse.status}).`,
+    reponse.status,
+  );
 }
 
 async function envoyer(chemin: string, methode: string, corps?: object): Promise<Response> {

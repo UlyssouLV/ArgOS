@@ -92,3 +92,9 @@
     @apply bg-background font-sans text-sm text-foreground antialiased;
   }
 }
+
+/* Panneau latéral droit ouvert (Réglages de la Caméra, max-w-xl) : les toasts se posent à sa gauche plutôt que
+   sur son pied (Annuler / Appliquer). Hors couche et !important : sonner injecte ses propres règles. */
+body:has([data-slot="sheet-content"]) [data-sonner-toaster][data-x-position="right"] {
+  right: calc(min(36rem, 100vw) + 1.5rem) !important;
+}

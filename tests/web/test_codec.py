@@ -31,9 +31,9 @@ def test_colonne_codec_des_cameras(administration: Page, api, noms, sans_essai):
 
     administration.route("**/api/cameras", lambda route: en_mjpeg(route) if route.request.method == "GET" else route.continue_())
     administration.reload()
-    tableau = administration.get_by_role("table").filter(has=administration.get_by_role("columnheader", name="Nom"))
+    tableau = administration.get_by_role("table", name="Caméras", exact=True)
 
-    expect(cellule(tableau, ligne(administration, h264), "Codec")).to_have_text("H.264")
-    expect(cellule(tableau, ligne(administration, h265), "Codec")).to_have_text("H.265")
-    expect(cellule(tableau, ligne(administration, inconnu), "Codec")).to_have_text("inconnu")
-    expect(cellule(tableau, ligne(administration, autre), "Codec")).to_have_text("MJPEG")
+    expect(cellule(tableau, ligne(administration, h264), "Flux")).to_have_text("H.264")
+    expect(cellule(tableau, ligne(administration, h265), "Flux")).to_have_text("H.265")
+    expect(cellule(tableau, ligne(administration, inconnu), "Flux")).to_have_text("inconnu")
+    expect(cellule(tableau, ligne(administration, autre), "Flux")).to_have_text("MJPEG")

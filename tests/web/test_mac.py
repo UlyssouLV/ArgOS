@@ -48,10 +48,10 @@ def test_colonne_mac_des_cameras(administration: Page, api, noms, sans_essai):
     assert api.post("/api/essai", json={"ip": ip_de(1), "port": 554}, timeout=30).json()["issue"] == "flux_trouve"
     assert api.post("/api/essai/camera", json={"nom": lue}).status_code == 201
     creer(administration, api, inconnue, url_injoignable(), emplacement="Portail")
-    tableau = administration.get_by_role("table").filter(has=administration.get_by_role("columnheader", name="Nom"))
+    tableau = administration.get_by_role("table", name="Caméras", exact=True)
 
-    expect(cellule(tableau, ligne(administration, lue), "MAC")).to_have_text(MACS_SIMULEES[1])
-    expect(cellule(tableau, ligne(administration, inconnue), "MAC")).to_have_text(INCONNUE)
+    expect(cellule(tableau, ligne(administration, lue), "Adresse")).to_contain_text(f"MAC {MACS_SIMULEES[1]}")
+    expect(cellule(tableau, ligne(administration, inconnue), "Adresse")).to_contain_text(f"MAC {INCONNUE}")
 
 
 @pytest.mark.parametrize("tableau_candidats", ["Candidats", "Déjà configurées"])

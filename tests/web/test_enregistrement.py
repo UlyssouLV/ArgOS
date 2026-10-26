@@ -2,7 +2,7 @@
 
 from playwright.sync_api import Page, Route, expect
 
-from test_administration import administration, api, creer, ligne, noms, url_injoignable, url_simulee  # noqa: F401
+from test_administration import administration, api, creer, ligne, noms, toast, url_injoignable, url_simulee  # noqa: F401
 from test_mac import cellule
 
 DELAI_ONLINE_MS = 45_000
@@ -12,7 +12,7 @@ def test_interrupteur_et_indicateur_dans_la_liste(administration: Page, api, nom
     nom = noms()
     creer(administration, api, nom, url_injoignable())
     camera = ligne(administration, nom)
-    tableau = administration.get_by_role("table").filter(has=administration.get_by_role("columnheader", name="Nom"))
+    tableau = administration.get_by_role("table", name="Caméras", exact=True)
     interrupteur = camera.get_by_role("switch", name="Enregistrement")
     identifiant = next(c["id"] for c in api.get("/api/cameras").json() if c["nom"] == nom)
 
@@ -28,11 +28,12 @@ def test_interrupteur_allume_l_enregistrement_d_une_camera_en_ligne(administrati
     nom = noms()
     creer(administration, api, nom, url_simulee(1))
     camera = ligne(administration, nom)
-    expect(camera).to_contain_text("online", timeout=DELAI_ONLINE_MS)
+    expect(camera).to_contain_text("En ligne", timeout=DELAI_ONLINE_MS)
 
     camera.get_by_role("switch", name="Enregistrement").click()
 
     expect(camera.get_by_role("switch", name="Enregistrement")).to_be_checked()
+    expect(toast(administration, f"Enregistrement de {nom} activé.")).to_be_visible()
     expect(camera.get_by_text("enregistre", exact=True)).to_be_visible()
     lue = next(c for c in api.get("/api/cameras").json() if c["nom"] == nom)
     assert lue["enregistrement"] is True
@@ -43,7 +44,7 @@ def test_indicateur_en_erreur_chemin_et_age_du_segment(administration: Page, api
     nom = noms()
     creer(administration, api, nom, url_injoignable())
     camera = ligne(administration, nom)
-    tableau = administration.get_by_role("table").filter(has=administration.get_by_role("columnheader", name="Nom"))
+    tableau = administration.get_by_role("table", name="Caméras", exact=True)
 
     def avec_indicateur(route: Route) -> None:
         reponse = route.fetch()
@@ -76,8 +77,10 @@ def test_indicateur_en_erreur_chemin_et_age_du_segment(administration: Page, api
 def test_interrupteur_desactive_sur_une_camera_desactivee(administration: Page, api, noms):
     nom = noms()
     creer(administration, api, nom, url_injoignable())
+    identifiant = next(c["id"] for c in api.get("/api/cameras").json() if c["nom"] == nom)
+    assert api.patch(f"/api/cameras/{identifiant}", json={"active": False}).status_code == 200
+    administration.reload()
     camera = ligne(administration, nom)
-    camera.get_by_role("button", name="Désactiver").click()
 
     expect(camera.get_by_role("switch", name="Enregistrement")).to_be_disabled()
     expect(camera).to_contain_text("à l'arrêt")

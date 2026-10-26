@@ -1,41 +1,44 @@
-import { Fragment, useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { CameraOff, Settings2 } from "lucide-react";
 
 import { AncienStyle } from "@/components/AncienStyle";
 import { EnTeteDePage } from "@/components/EnTeteDePage";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { notifier } from "@/notifier";
 import {
   listerCameras,
   messageEchec,
   modifierCamera,
-  supprimerCamera,
   texteAgeSegment,
   texteCodec,
+  texteEtat,
   texteEtatEnregistrement,
   texteMac,
   texteRaison,
   type Camera,
-  type RaisonEtat,
-  type SaisieCamera,
+  type Etat,
 } from "../cameras";
 import { DetecterCameras } from "./DetecterCameras";
 import { ReglagesCamera } from "./ReglagesCamera";
 
 const RAFRAICHISSEMENT_MS = 10_000;
 
-function dateVerification(camera: Camera): string {
-  return camera.etat_verifie_le ? new Date(camera.etat_verifie_le).toLocaleString("fr-FR") : "—";
-}
+const COULEURS_ETAT: Record<Etat, string> = {
+  online: "bg-success",
+  offline: "bg-destructive",
+  unknown: "bg-unknown",
+};
 
-/** Raison de l'état, entre parenthèses à côté ; rien si ArgOS ne la sait pas. */
-function Raison({ raison }: { raison: RaisonEtat | null }) {
-  const texte = texteRaison(raison);
-  return texte && <span className="raison-etat"> ({texte})</span>;
-}
+const COLONNES = ["Nom", "Adresse", "État", "Flux", "Enregistrement", "Réglages"];
 
 export function Administration() {
   const [cameras, setCameras] = useState<Camera[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [enEdition, setEnEdition] = useState<number | null>(null);
-  const [aSupprimer, setASupprimer] = useState<number | null>(null);
   const [enReglages, setEnReglages] = useState<number | null>(null);
 
   const rafraichir = useCallback(async () => {
@@ -53,268 +56,153 @@ export function Administration() {
     return () => clearInterval(minuterie);
   }, [rafraichir]);
 
-  /** Action d'une ligne : son échec s'affiche au-dessus de la liste, puis la liste est relue. */
-  async function agir(action: () => Promise<void>) {
+  /** Interrupteur d'une ligne : résultat en toast, puis la liste est relue. */
+  async function changerEnregistrement(camera: Camera, enregistrement: boolean) {
     try {
-      await action();
-      setErreur(null);
+      await modifierCamera(camera.id, { enregistrement });
+      notifier(`Enregistrement de ${camera.nom} ${enregistrement ? "activé" : "arrêté"}.`);
     } catch (e) {
-      setErreur(messageEchec(e));
+      const message = messageEchec(e);
+      if (message) notifier(message, "echec");
     }
     await rafraichir();
   }
 
-  async function enregistrer(id: number, saisie: SaisieCamera) {
-    await modifierCamera(id, saisie);
-    setEnEdition(null);
-    await rafraichir();
-  }
+  const reglee = cameras?.find((camera) => camera.id === enReglages) ?? null;
 
   return (
     <>
       <EnTeteDePage titre="Caméras" surtitre="Administration" />
-      <AncienStyle>
-        <section className="administration">
-          {erreur && (
-            <p className="erreur" role="alert">
-              {erreur}
-            </p>
-          )}
-          {cameras?.length === 0 && <p>Aucune Caméra : en ajouter une depuis « Détecter des Caméras » ci-dessous.</p>}
-          {cameras && cameras.length > 0 && (
-            <table className="cameras">
-              <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>Emplacement</th>
-                  <th>Hôte:port</th>
-                  <th>MAC</th>
-                  <th>URL RTSP</th>
-                  <th>Active</th>
-                  <th>Enregistrement</th>
-                  <th>État</th>
-                  <th>Codec</th>
-                  <th>Dernière vérification</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cameras.map((camera) =>
-                  enEdition === camera.id ? (
-                    <tr key={camera.id}>
-                      <td colSpan={11}>
-                        <FormulaireCamera
-                          titre={`Modifier ${camera.nom}`}
-                          initiale={camera}
-                          libelle="Enregistrer"
-                          onValider={(saisie) => enregistrer(camera.id, saisie)}
-                          onAnnuler={() => setEnEdition(null)}
-                        />
-                      </td>
-                    </tr>
-                  ) : (
-                    <Fragment key={camera.id}>
-                      <tr>
-                        <td>{camera.nom}</td>
-                        <td>{camera.emplacement ?? "—"}</td>
-                        <td>
-                          {camera.hote}:{camera.port}
-                        </td>
-                        <td className="mac">{texteMac(camera.mac)}</td>
-                        <td className="url">{camera.url_rtsp}</td>
-                        <td>{camera.active ? "active" : "désactivée"}</td>
-                        <td>
-                          <IndicateurEnregistrement
-                            camera={camera}
-                            onChanger={(enregistrement) => agir(() => modifierCamera(camera.id, { enregistrement }))}
-                          />
-                        </td>
-                        <td>
-                          <span className={`etat etat-${camera.etat}`}>{camera.etat}</span>
-                          <Raison raison={camera.raison_etat} />
-                        </td>
-                        <td>{texteCodec(camera.codec)}</td>
-                        <td>{dateVerification(camera)}</td>
-                        <td>
-                          <div className="actions">
-                            <ActionsCamera
-                              camera={camera}
-                              confirmation={aSupprimer === camera.id}
-                              onModifier={() => setEnEdition(camera.id)}
-                              onReglages={() => setEnReglages(camera.id)}
-                              onActiver={(active) => agir(() => modifierCamera(camera.id, { active }))}
-                              onDemanderSuppression={(demande) => setASupprimer(demande ? camera.id : null)}
-                              onSupprimer={() => agir(() => supprimerCamera(camera.id))}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                      {enReglages === camera.id && camera.active && (
-                        <tr>
-                          <td colSpan={11}>
-                            <ReglagesCamera camera={camera} onFermer={() => setEnReglages(null)} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ),
-                )}
-              </tbody>
-            </table>
-          )}
-          <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
-        </section>
-      </AncienStyle>
+      <div className="flex flex-col gap-6 p-6">
+        {erreur && (
+          <Alert variant="destructive">
+            <AlertDescription>{erreur}</AlertDescription>
+          </Alert>
+        )}
+        {cameras === null && !erreur && <Squelettes />}
+        {cameras?.length === 0 && <AucuneCamera />}
+        {cameras && cameras.length > 0 && (
+          <div className="rounded-lg border bg-card">
+            <Table aria-label="Caméras">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  {COLONNES.map((colonne) => (
+                    <TableHead key={colonne} className={cn(colonne === "Réglages" && "text-right")}>
+                      {colonne}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cameras.map((camera) => (
+                  <LigneCamera
+                    key={camera.id}
+                    camera={camera}
+                    onEnregistrement={(enregistrement) => void changerEnregistrement(camera, enregistrement)}
+                    onReglages={() => setEnReglages(camera.id)}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        <AncienStyle>
+          <section className="administration">
+            <DetecterCameras onCameraAjoutee={() => void rafraichir()} />
+          </section>
+        </AncienStyle>
+      </div>
+      {reglee && <ReglagesCamera camera={reglee} onFermer={() => setEnReglages(null)} onModifiee={rafraichir} />}
     </>
   );
 }
 
-function IndicateurEnregistrement({
-  camera,
-  onChanger,
-}: {
-  camera: Camera;
-  onChanger: (enregistrement: boolean) => void;
-}) {
+function Squelettes() {
   return (
-    <div className="enregistrement">
-      <label>
-        <input
-          type="checkbox"
-          role="switch"
-          aria-label="Enregistrement"
-          checked={camera.enregistrement}
-          disabled={!camera.active}
-          onChange={(e) => onChanger(e.target.checked)}
-        />
-      </label>
-      <span className={`etat-enregistrement etat-enregistrement-${camera.etat_enregistrement}`}>
-        {texteEtatEnregistrement(camera.etat_enregistrement)}
-      </span>
-      <span className="dossier-enregistrement">{camera.dossier_enregistrement}</span>
-      <span>{texteAgeSegment(camera.age_dernier_segment_s)}</span>
+    <div className="space-y-2 rounded-lg border bg-card p-4" aria-busy="true" aria-label="Chargement des Caméras">
+      {[0, 1, 2].map((rang) => (
+        <Skeleton key={rang} className="h-10 w-full" />
+      ))}
     </div>
   );
 }
 
-type PropsActions = Readonly<{
-  camera: Camera;
-  confirmation: boolean;
-  onModifier: () => void;
-  onReglages: () => void;
-  onActiver: (active: boolean) => void;
-  onDemanderSuppression: (demande: boolean) => void;
-  onSupprimer: () => void;
-}>;
-
-/** Réglages seulement pour une Caméra active ; suppression seulement pour une désactivée, après confirmation. */
-function ActionsCamera({ camera, confirmation, onModifier, onReglages, onActiver, onDemanderSuppression, onSupprimer }: PropsActions) {
-  if (confirmation) {
-    return (
-      <>
-        <span>Supprimer définitivement ?</span>
-        <button type="button" className="danger" onClick={onSupprimer}>
-          Confirmer la suppression
-        </button>
-        <button type="button" onClick={() => onDemanderSuppression(false)}>
-          Annuler
-        </button>
-      </>
-    );
-  }
+/** État vide : icône, phrase et l'action utile, la Détection. */
+function AucuneCamera() {
   return (
-    <>
-      <button type="button" onClick={onModifier}>
-        Modifier
-      </button>
-      {camera.active ? (
-        <>
-          <button type="button" onClick={onReglages}>
-            Réglages
-          </button>
-          <button type="button" onClick={() => onActiver(false)}>
-            Désactiver
-          </button>
-        </>
-      ) : (
-        <>
-          <button type="button" onClick={() => onActiver(true)}>
-            Réactiver
-          </button>
-          <button type="button" className="danger" onClick={() => onDemanderSuppression(true)}>
-            Supprimer
-          </button>
-        </>
-      )}
-    </>
+    <section
+      aria-label="Aucune Caméra"
+      className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-card px-6 py-12 text-center"
+    >
+      <CameraOff className="size-8 text-muted-foreground" aria-hidden="true" />
+      <p className="text-base font-semibold">Aucune Caméra</p>
+      <p className="text-muted-foreground">Détectez les caméras du réseau pour en ajouter une.</p>
+      <Button
+        variant="outline"
+        onClick={() => document.getElementById("titre-detection")?.scrollIntoView({ behavior: "smooth" })}
+      >
+        Détecter des Caméras
+      </Button>
+    </section>
   );
 }
 
-type PropsFormulaire = Readonly<{
-  titre: string;
-  initiale: SaisieCamera;
-  libelle: string;
-  onValider: (saisie: SaisieCamera) => Promise<void>;
-  onAnnuler?: () => void;
-}>;
-
-/** Modification : un refus de l'API (409 doublon, 422 URL invalide) s'affiche dans le formulaire. */
-function FormulaireCamera({ titre, initiale, libelle, onValider, onAnnuler }: PropsFormulaire) {
-  const [nom, setNom] = useState(initiale.nom);
-  // En modification, l'URL masquée est renvoyée telle quelle si elle n'est pas touchée.
-  const [url, setUrl] = useState(initiale.url_rtsp);
-  const [emplacement, setEmplacement] = useState(initiale.emplacement ?? "");
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [envoi, setEnvoi] = useState(false);
-
-  async function valider(evenement: FormEvent) {
-    evenement.preventDefault();
-    setEnvoi(true);
-    setErreur(null);
-    try {
-      await onValider({ nom, url_rtsp: url, emplacement: emplacement.trim() || null });
-    } catch (e) {
-      setErreur(messageEchec(e));
-    } finally {
-      setEnvoi(false);
-    }
-  }
-
+function LigneCamera({
+  camera,
+  onEnregistrement,
+  onReglages,
+}: Readonly<{ camera: Camera; onEnregistrement: (enregistrement: boolean) => void; onReglages: () => void }>) {
+  const raison = texteRaison(camera.raison_etat);
   return (
-    <form className="formulaire-camera" aria-label={titre} onSubmit={valider}>
-      <label>
-        <span>Nom</span>
-        <input name="nom" required value={nom} onChange={(e) => setNom(e.target.value)} />
-      </label>
-      <label>
-        <span>URL RTSP</span>
-        <input
-          name="url_rtsp"
-          required
-          placeholder="rtsp://utilisateur:motdepasse@hote:554/chemin"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-      </label>
-      <label>
-        <span>Emplacement</span>
-        <input name="emplacement" placeholder="facultatif" value={emplacement} onChange={(e) => setEmplacement(e.target.value)} />
-      </label>
-      <div className="boutons">
-        <button type="submit" disabled={envoi}>
-          {libelle}
-        </button>
-        {onAnnuler && (
-          <button type="button" onClick={onAnnuler}>
-            Annuler
-          </button>
+    <TableRow>
+      <TableCell>
+        <div className="font-medium">{camera.nom}</div>
+        {camera.emplacement && <div className="text-13 text-muted-foreground">{camera.emplacement}</div>}
+      </TableCell>
+      <TableCell className="font-mono text-xs">
+        <div>
+          {camera.hote}:{camera.port}
+        </div>
+        <div className="text-muted-foreground">
+          <span>MAC</span> <span>{texteMac(camera.mac)}</span>
+        </div>
+      </TableCell>
+      <TableCell>
+        {camera.active ? (
+          <span className="flex items-center gap-1.5 text-13">
+            <span className={cn("size-2 shrink-0 rounded-full", COULEURS_ETAT[camera.etat])} aria-hidden="true" />
+            {texteEtat(camera.etat)}
+            {raison && <span className="text-muted-foreground"> ({raison})</span>}
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-13 text-muted-foreground">
+            <span className="size-2 shrink-0 rounded-full border border-unknown" aria-hidden="true" />
+            Désactivée
+          </span>
         )}
-      </div>
-      {erreur && (
-        <p className="erreur" role="alert">
-          {erreur}
-        </p>
-      )}
-    </form>
+      </TableCell>
+      <TableCell className="font-mono text-xs">{texteCodec(camera.codec)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Switch
+            aria-label="Enregistrement"
+            checked={camera.enregistrement}
+            disabled={!camera.active}
+            onCheckedChange={onEnregistrement}
+          />
+          <span className={cn("text-13", camera.etat_enregistrement === "en_erreur" && "text-destructive")}>
+            {texteEtatEnregistrement(camera.etat_enregistrement)}
+          </span>
+          <span className="text-13 text-muted-foreground">· {texteAgeSegment(camera.age_dernier_segment_s)}</span>
+        </div>
+        <div className="mt-0.5 font-mono text-xs text-muted-foreground">{camera.dossier_enregistrement}</div>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button variant="outline" size="sm" onClick={onReglages}>
+          <Settings2 />
+          Réglages
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }
