@@ -36,7 +36,7 @@ Contraintes transverses :
 
 ## Prochaine : 1.1.0 — Relecture continue
 
-Objectif. En relecture, enchaîner les plages enregistrées sans interruption visible à chaque passage d’une plage à la suivante. Se positionner à la seconde près sur la timeline du jour.
+Objectif. En relecture, parcourir une plage enregistrée sans interruption visible à chaque Segment, et sauter les trous jusqu’à la plage suivante. Se positionner à la seconde près sur la timeline du jour.
 
 Hors périmètre : téléchargement / export d’une plage (1.1.1) ; accélération du démarrage Live (1.2.0) ; traits d’activité sur la timeline (2.0.0).
 

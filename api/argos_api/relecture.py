@@ -19,17 +19,18 @@ import struct
 import urllib.parse
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import BinaryIO
+
+from argos_api.pont import PREFIXE
+from argos_api.segments import derniere_ecriture, segments_du_dossier
 
 # Boîtes qui ne contiennent que des boîtes, de `trak` jusqu'aux tables de morceaux.
 CONTENEURS = {b"trak", b"mdia", b"minf", b"stbl"}
 GESTIONNAIRE_VIDEO = b"vide"
-# recordPath du pont (media/mediamtx.yml) : `%Y-%m-%d_%H-%M-%S-%f`, heure UTC du conteneur, suffixe `.mp4`.
-FORMAT_NOM_SEGMENT = "%Y-%m-%d_%H-%M-%S-%f"
-SUFFIXE_SEGMENT = ".mp4"
 # Chemin du pont d'une Caméra (`camera-<id>`, ADR 0011) : seul nom de dossier lu sous la racine des enregistrements.
-CHEMIN_CAMERA = re.compile(r"camera-\d+")
+CHEMIN_CAMERA = re.compile(rf"{re.escape(PREFIXE)}\d+")
 # Écart (s) entre heure réelle et vidéo d'un Segment en deçà duquel la fenêtre ne bouge pas : la dernière image et la
 # dernière écriture du fichier ne tombent jamais pile ensemble. Même tolérance que la contiguïté des Segments.
 ECART_MIN_S = 1.0
@@ -104,9 +105,8 @@ def recaler(racine: Path, chemin: str, debut: datetime, duree_s: float) -> tuple
         return debut, duree_s
     segments = sorted(segments_du_dossier(racine / chemin))
     for (debut_segment, fichier), suivant in zip(segments, [*segments[1:], None]):
-        try:
-            fin = datetime.fromtimestamp(fichier.stat().st_mtime, UTC)
-        except OSError:
+        fin = derniere_ecriture(fichier)
+        if fin is None:
             return debut, duree_s
         if suivant is not None:
             fin = min(fin, suivant[0])
@@ -122,7 +122,17 @@ def recaler(racine: Path, chemin: str, debut: datetime, duree_s: float) -> tuple
 
 
 def fin_de_la_video(fichier: Path) -> float | None:
-    """Fin (s) de la piste vidéo d'un Segment fMP4 du pont, depuis son début ; None sans vidéo ou s'il est illisible."""
+    """Fin (s) de la piste vidéo d'un Segment fMP4 du pont, depuis son début ; None sans vidéo ou s'il est illisible.
+    Lue une fois par version du fichier : Safari demande chaque fenêtre en plusieurs `Range`, autant de `/get`."""
+    try:
+        etat = fichier.stat()
+    except OSError:
+        return None
+    return _fin_de_la_video(fichier, etat.st_mtime_ns, etat.st_size)
+
+
+@lru_cache(maxsize=256)
+def _fin_de_la_video(fichier: Path, _mtime_ns: int, _taille: int) -> float | None:
     try:
         with fichier.open("rb") as flux:
             piste, fin = None, None
@@ -135,23 +145,6 @@ def fin_de_la_video(fichier: Path) -> float | None:
     except (OSError, struct.error, IndexError):
         return None
     return None if piste is None or fin is None else fin / piste[1]
-
-
-def segments_du_dossier(dossier: Path) -> list[tuple[datetime, Path]]:
-    """Segments du dossier repérés par le début lu dans leur nom, sans toucher aux fichiers ; aucun s'il est illisible."""
-    try:
-        chemins = list(dossier.iterdir())
-    except OSError:
-        return []
-    lus = []
-    for chemin in chemins:
-        if chemin.suffix != SUFFIXE_SEGMENT:
-            continue
-        try:
-            lus.append((datetime.strptime(chemin.stem, FORMAT_NOM_SEGMENT).replace(tzinfo=UTC), chemin))
-        except ValueError:
-            continue
-    return lus
 
 
 def _boites_du_fichier(flux: BinaryIO, voulues: set[bytes]) -> Iterator[tuple[bytes, bytes]]:

@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from argos_api.relecture import FORMAT_NOM_SEGMENT, SUFFIXE_SEGMENT
+from argos_api.segments import FORMAT_NOM_SEGMENT, SUFFIXE_SEGMENT
 from stack_compose import compose, raccourcir_les_segments
 from test_cameras import connecte, creer_camera  # noqa: F401 (fixtures)
 from test_enregistrement import DELAI_PONT_S

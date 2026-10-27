@@ -124,12 +124,12 @@ export function memeFenetre(a: Fenetre | null, b: Fenetre | null): boolean {
  * Durée (s) de la vidéo d'une fenêtre : celle du MP4 servi, `dureeVideo`, une fois connue. Une Caméra dont le Pont jette
  * la vidéo du début de chaque Segment (Cam 01, #172) en sert moins que la fenêtre n'en couvre.
  */
-function dureeLue(lue: Fenetre, dureeVideo: number | null | undefined): number {
-  return dureeVideo != null && Number.isFinite(dureeVideo) ? Math.min(lue.duration, dureeVideo) : lue.duration;
+function dureeLue(lue: Fenetre, dureeVideo: number | null): number {
+  return dureeVideo !== null && Number.isFinite(dureeVideo) ? Math.min(lue.duration, dureeVideo) : lue.duration;
 }
 
 /** La fenêtre lue à `position` (s), à `vitesse`, finit dans `ANTICIPATION_S` de temps réel : sa suite se précharge. */
-export function aRenouveler(lue: Fenetre, position: number, vitesse: number, dureeVideo?: number | null): boolean {
+export function aRenouveler(lue: Fenetre, position: number, vitesse: number, dureeVideo: number | null = null): boolean {
   return (dureeLue(lue, dureeVideo) - position) / vitesse <= ANTICIPATION_S;
 }
 
@@ -137,6 +137,6 @@ export function aRenouveler(lue: Fenetre, position: number, vitesse: number, dur
  * Instant (ms) de l'image à `position` (s) de la fenêtre lue. Sa vidéo finit avec la fenêtre : plus courte que
  * celle-ci, elle commence d'autant plus tard que `start` (début de Segment perdu à l'enregistrement, #172).
  */
-export function instantLu(lue: Fenetre, position: number, dureeVideo?: number | null): number {
+export function instantDeLaFenetre(lue: Fenetre, position: number, dureeVideo: number | null = null): number {
   return Date.parse(lue.start) + (lue.duration - dureeLue(lue, dureeVideo) + position) * 1000;
 }

@@ -18,7 +18,7 @@ import {
   fenetreDansLaPlage,
   fenetreDepuis,
   finDeFenetre,
-  instantLu as instantDeLaFenetre,
+  instantDeLaFenetre,
   memeFenetre,
   plageCourante,
   plageSuivante,
@@ -188,8 +188,9 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   function instantVise(event: MouseEvent<HTMLButtonElement>, jourLu: SegmentsFermes): number {
     // Au clavier (Entrée, Espace), pas de position : on passe au début de la Plage suivante, ou de la première.
     if (event.detail === 0) {
-      const suivante = instantLu === null ? null : plageSuivante(plages, instantLu);
-      return Date.parse((suivante ?? plages[0]).debut);
+      const cible = (instantLu === null ? null : plageSuivante(plages, instantLu)) ?? plages.at(0);
+      // Aucune Plage : le début du jour, où `fenetreDepuis` ne trouve rien à lire.
+      return cible === undefined ? Date.parse(jourLu.debut_jour) : Date.parse(cible.debut);
     }
     const boite = event.currentTarget.getBoundingClientRect();
     return instantSurLeJour(jourLu, (event.clientX - boite.left) / boite.width);

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from argos_api.cameras import AGE_MAX_DERNIER_SEGMENT_S
 from argos_api.pont import chemin_flux
-from argos_api.relecture import segments_du_dossier
+from argos_api.segments import derniere_ecriture, segments_du_dossier
 
 
 class SegmentFerme(BaseModel):
@@ -82,10 +82,5 @@ def _minuit(jour: date, zone: ZoneInfo) -> datetime:
 
 
 def _segment(debut: datetime, chemin: Path) -> SegmentFerme | None:
-    try:
-        if not chemin.is_file():
-            return None
-        fin = datetime.fromtimestamp(chemin.stat().st_mtime, UTC)
-    except OSError:
-        return None
-    return SegmentFerme(debut=debut, fin=max(debut, fin))
+    fin = derniere_ecriture(chemin)
+    return None if fin is None else SegmentFerme(debut=debut, fin=max(debut, fin))

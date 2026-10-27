@@ -13,7 +13,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from argos_api import relecture
+from argos_api import relecture, segments
 
 VIDEO, AUDIO = 1, 2
 ECHELLE_VIDEO, ECHELLE_AUDIO = 90_000, 8_000
@@ -88,7 +88,7 @@ def cam01(tmp_path: Path) -> Path:
     dossier = tmp_path / "camera-2"
     dossier.mkdir()
     for debut in (DEBUT, SUIVANT):
-        chemin = dossier / f"{debut.strftime(relecture.FORMAT_NOM_SEGMENT)}.mp4"
+        chemin = dossier / f"{debut.strftime(segments.FORMAT_NOM_SEGMENT)}.mp4"
         chemin.write_bytes(segment_fmp4(video=(0.017, 61.717), audio=(0, 76.08)))
         fin = debut + timedelta(seconds=76.08)
         os.utime(chemin, (fin.timestamp(), fin.timestamp()))

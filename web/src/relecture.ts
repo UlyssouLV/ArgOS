@@ -69,7 +69,7 @@ export function retenirCameraRelue(idCamera: number): void {
   }
 }
 
-/** MP4 de la fenêtre, assemblé par le Pont sans réencodage, au-delà d'un Segment s'il le faut. */
+/** MP4 de la fenêtre, assemblé par le Pont sans réencodage, dans un seul Segment (ADR 0018, #172). */
 export function urlRelecture(cheminFlux: string, { start, duration }: Fenetre): string {
   const parametres = new URLSearchParams({
     path: cheminFlux,

@@ -151,7 +151,7 @@ def test_la_fin_de_la_fenetre_est_celle_de_sa_video_quand_elle_est_plus_courte()
 @pytest.mark.parametrize(("duree_video", "attendu"), [(None, "10:00:20"), (76, "10:00:20"), (62, "10:00:34")])
 def test_l_instant_lu_est_celui_de_l_image(duree_video, attendu):
     # Une vidéo plus courte que la fenêtre finit avec elle : elle commence d'autant plus tard (#172).
-    assert _appeler("instantLu", FENETRE, 20, duree_video) == _ms(attendu)
+    assert _appeler("instantDeLaFenetre", FENETRE, 20, duree_video) == _ms(attendu)
 
 
 SEGMENTS_DU_JOUR = [
