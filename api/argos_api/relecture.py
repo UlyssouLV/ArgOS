@@ -8,15 +8,31 @@ retirer (ou sans piste vidéo) passe tel quel. Sans dépendance hors stdlib.
 
 Safari ouvre une `<video>` par `Range: bytes=0-1` et refuse tout sauf un `206` (#143) : `servir_par_plages` répond
 à cet en-tête.
+
+Une caméra qui horodate son audio en avance sur sa vidéo (Cam 01, #172) fait ouvrir au pont chaque Segment à l'heure
+de l'audio : la vidéo arrivée « trop tard » est jetée, et la vidéo du Segment, qui finit à sa fin réelle, commence
+plus tard que son nom. `recaler` décale d'autant la fenêtre demandée, pour lire l'image de l'instant visé.
 """
 
 import re
 import struct
+import urllib.parse
 from collections.abc import Iterable, Iterator
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import BinaryIO
 
 # Boîtes qui ne contiennent que des boîtes, de `trak` jusqu'aux tables de morceaux.
 CONTENEURS = {b"trak", b"mdia", b"minf", b"stbl"}
 GESTIONNAIRE_VIDEO = b"vide"
+# recordPath du pont (media/mediamtx.yml) : `%Y-%m-%d_%H-%M-%S-%f`, heure UTC du conteneur, suffixe `.mp4`.
+FORMAT_NOM_SEGMENT = "%Y-%m-%d_%H-%M-%S-%f"
+SUFFIXE_SEGMENT = ".mp4"
+# Chemin du pont d'une Caméra (`camera-<id>`, ADR 0011) : seul nom de dossier lu sous la racine des enregistrements.
+CHEMIN_CAMERA = re.compile(r"camera-\d+")
+# Écart (s) entre heure réelle et vidéo d'un Segment en deçà duquel la fenêtre ne bouge pas : la dernière image et la
+# dernière écriture du fichier ne tombent jamais pile ensemble. Même tolérance que la contiguïté des Segments.
+ECART_MIN_S = 1.0
 # Une seule plage, `a-b`, `a-` ou `-n` (RFC 9110, 14.1.2) ; plusieurs plages font servir le fichier entier.
 PLAGE = re.compile(r"\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*")
 
@@ -57,6 +73,170 @@ def servir_par_plages(mp4: bytes, entete: str | None) -> tuple[int, dict[str, st
         return 200, {"Accept-Ranges": "bytes"}, mp4
     debut, fin = bornes
     return 206, {"Accept-Ranges": "bytes", "Content-Range": f"bytes {debut}-{fin - 1}/{len(mp4)}"}, mp4[debut:fin]
+
+
+def recaler_la_requete(racine: Path, requete: str) -> str:
+    """Requête `/get` (`path`, `start` RFC 3339, `duration` en secondes…) avec sa fenêtre recalée par `recaler` ;
+    telle quelle si elle ne se lit pas : le pont répond lui-même à une requête invalide."""
+    parametres = urllib.parse.parse_qs(requete, keep_blank_values=True)
+    try:
+        (chemin,), (start,), (duration,) = parametres["path"], parametres["start"], parametres["duration"]
+        debut, duree_s = datetime.fromisoformat(start), float(duration)
+    except (KeyError, ValueError):
+        return requete
+    if debut.tzinfo is None:
+        return requete
+    recale, duree = recaler(racine, chemin, debut.astimezone(UTC), duree_s)
+    if (recale, duree) == (debut, duree_s):
+        return requete
+    parametres["start"] = [recale.isoformat().replace("+00:00", "Z")]
+    parametres["duration"] = [f"{duree:.6f}"]
+    return urllib.parse.urlencode(parametres, doseq=True)
+
+
+def recaler(racine: Path, chemin: str, debut: datetime, duree_s: float) -> tuple[datetime, float]:
+    """Fenêtre (`start`, `duration`) à demander au pont pour lire l'image de `debut`. Le Segment qui le couvre a moins
+    de vidéo que d'heure réelle : sa vidéo finit à sa fin (début du suivant, sinon dernière écriture), et le pont la
+    place depuis son début ; le début de la fenêtre recule de l'écart, sans passer avant le Segment. Sa fin ne bouge
+    pas : l'audio, en avance, précède la vidéo dans le fichier, et le pont s'arrête au premier échantillon qui dépasse
+    la fenêtre, toutes pistes confondues. Hors d'un Segment connu, ou à vidéo complète, elle passe telle quelle."""
+    if not CHEMIN_CAMERA.fullmatch(chemin):
+        return debut, duree_s
+    segments = sorted(segments_du_dossier(racine / chemin))
+    for (debut_segment, fichier), suivant in zip(segments, [*segments[1:], None]):
+        try:
+            fin = datetime.fromtimestamp(fichier.stat().st_mtime, UTC)
+        except OSError:
+            return debut, duree_s
+        if suivant is not None:
+            fin = min(fin, suivant[0])
+        if not debut_segment <= debut < fin:
+            continue
+        video = fin_de_la_video(fichier)
+        ecart = (fin - debut_segment).total_seconds() - (video or 0)
+        if video is None or ecart < ECART_MIN_S:
+            return debut, duree_s
+        recale = max(debut_segment, debut - timedelta(seconds=ecart))
+        return recale, (debut + timedelta(seconds=duree_s) - recale).total_seconds()
+    return debut, duree_s
+
+
+def fin_de_la_video(fichier: Path) -> float | None:
+    """Fin (s) de la piste vidéo d'un Segment fMP4 du pont, depuis son début ; None sans vidéo ou s'il est illisible."""
+    try:
+        with fichier.open("rb") as flux:
+            piste, fin = None, None
+            for type_, contenu in _boites_du_fichier(flux, {b"moov", b"moof"}):
+                if type_ == b"moov":
+                    piste = _piste_video(contenu)
+                elif piste is not None:
+                    for fin_traf in _fins_dans_le_fragment(contenu, piste[0]):
+                        fin = fin_traf if fin is None else max(fin, fin_traf)
+    except (OSError, struct.error, IndexError):
+        return None
+    return None if piste is None or fin is None else fin / piste[1]
+
+
+def segments_du_dossier(dossier: Path) -> list[tuple[datetime, Path]]:
+    """Segments du dossier repérés par le début lu dans leur nom, sans toucher aux fichiers ; aucun s'il est illisible."""
+    try:
+        chemins = list(dossier.iterdir())
+    except OSError:
+        return []
+    lus = []
+    for chemin in chemins:
+        if chemin.suffix != SUFFIXE_SEGMENT:
+            continue
+        try:
+            lus.append((datetime.strptime(chemin.stem, FORMAT_NOM_SEGMENT).replace(tzinfo=UTC), chemin))
+        except ValueError:
+            continue
+    return lus
+
+
+def _boites_du_fichier(flux: BinaryIO, voulues: set[bytes]) -> Iterator[tuple[bytes, bytes]]:
+    """(type, boîte entière) des boîtes de premier niveau de type `voulues` ; les autres sont sautées sans être lues.
+    S'arrête à la première boîte tronquée ou mal formée."""
+    while len(entete := flux.read(8)) == 8:
+        taille, type_ = struct.unpack(">I4s", entete)
+        if taille == 1:
+            suite = flux.read(8)
+            if len(suite) < 8:
+                return
+            entete += suite
+            (taille,) = struct.unpack(">Q", suite)
+        if taille < len(entete):
+            return
+        if type_ not in voulues:
+            flux.seek(taille - len(entete), 1)
+            continue
+        contenu = flux.read(taille - len(entete))
+        if len(contenu) < taille - len(entete):
+            return
+        yield type_, entete + contenu
+
+
+def _piste_video(moov: bytes) -> tuple[int, int] | None:
+    """(identifiant, échelle de temps) de la première piste vidéo de `moov`."""
+    for type_, debut, fin in _boites(moov, 8, len(moov)):
+        if type_ != b"trak" or _gestionnaire(moov, debut, fin) != GESTIONNAIRE_VIDEO:
+            continue
+        identifiant = echelle = None
+        for type_enfant, debut_enfant, _ in _boites(moov, debut + 8, fin):
+            if type_enfant == b"tkhd":
+                identifiant = _champ_versionne(moov, debut_enfant, 12)
+            elif type_enfant == b"mdia":
+                for type_mdhd, debut_mdhd, _ in _boites(moov, debut_enfant + 8, fin):
+                    if type_mdhd == b"mdhd":
+                        echelle = _champ_versionne(moov, debut_mdhd, 12)
+        if identifiant is not None and echelle:
+            return identifiant, echelle
+    return None
+
+
+def _champ_versionne(octets: bytes, debut: int, decalage_v0: int) -> int:
+    """Champ 32 bits après les dates de création et de modification d'une boîte complète (`tkhd`, `mdhd`) : 32 bits
+    chacune en version 0, 64 en version 1."""
+    position = debut + 8 + decalage_v0 + (8 if octets[debut + 8] == 1 else 0)
+    return struct.unpack(">I", octets[position : position + 4])[0]
+
+
+def _fins_dans_le_fragment(moof: bytes, piste: int) -> Iterator[int]:
+    """Fin (`tfdt` + durées des échantillons, dans l'échelle de la piste) de chaque `traf` de `piste` dans `moof`."""
+    for type_, debut, fin in _boites(moof, 8, len(moof)):
+        if type_ != b"traf":
+            continue
+        enfants = {t: (d, f) for t, d, f in _boites(moof, debut + 8, fin)}
+        if b"tfhd" not in enfants or b"tfdt" not in enfants or b"trun" not in enfants:
+            continue
+        debut_tfhd = enfants[b"tfhd"][0]
+        drapeaux_tfhd = int.from_bytes(moof[debut_tfhd + 9 : debut_tfhd + 12])
+        if struct.unpack(">I", moof[debut_tfhd + 12 : debut_tfhd + 16])[0] != piste:
+            continue
+        # Durée par défaut : après l'identifiant, le décalage de base (8 octets) et l'index de description (4).
+        position = debut_tfhd + 16 + (8 if drapeaux_tfhd & 0x01 else 0) + (4 if drapeaux_tfhd & 0x02 else 0)
+        defaut = struct.unpack(">I", moof[position : position + 4])[0] if drapeaux_tfhd & 0x08 else 0
+        debut_tfdt = enfants[b"tfdt"][0]
+        if moof[debut_tfdt + 8] == 1:
+            (base,) = struct.unpack(">Q", moof[debut_tfdt + 12 : debut_tfdt + 20])
+        else:
+            (base,) = struct.unpack(">I", moof[debut_tfdt + 12 : debut_tfdt + 16])
+        yield base + sum(_durees(moof, enfants[b"trun"][0], defaut))
+
+
+def _durees(moof: bytes, debut: int, defaut: int) -> Iterator[int]:
+    """Durée de chaque échantillon d'un `trun` ; `defaut` (celle du `tfhd`) s'il n'en porte pas."""
+    drapeaux = int.from_bytes(moof[debut + 9 : debut + 12])
+    (nombre,) = struct.unpack(">I", moof[debut + 12 : debut + 16])
+    position = debut + 16 + (4 if drapeaux & 0x01 else 0) + (4 if drapeaux & 0x04 else 0)
+    # Champs par échantillon : durée, taille, drapeaux, décalage de composition, 4 octets chacun s'il est présent.
+    pas = 4 * sum(1 for bit in (0x100, 0x200, 0x400, 0x800) if drapeaux & bit)
+    for _ in range(nombre):
+        if drapeaux & 0x100:
+            yield struct.unpack(">I", moof[position : position + 4])[0]
+        else:
+            yield defaut
+        position += pas
 
 
 def video_seule(morceaux: Iterable[bytes]) -> Iterator[bytes]:

@@ -1,4 +1,4 @@
-"""Plages enregistrées, fenêtre de lecture et Plage suivante de la Relecture continue (ADR 0018, #165).
+"""Plages enregistrées, fenêtre de lecture et Plage suivante de la Relecture continue (ADR 0018, #165, #172).
 
 Tests unitaires de `web/src/plages.ts`, exécuté tel quel par Node (types effacés) ; le lecteur est testé dans
 test_relecture.py.
@@ -78,16 +78,10 @@ def test_sans_segment_aucune_plage():
     assert _appeler("plagesEnregistrees", []) == []
 
 
-def test_la_fenetre_dure_environ_trois_minutes_depuis_l_instant():
-    plage = _intervalle("10:00:00", "11:00:00")
+def test_la_fenetre_va_de_l_instant_a_la_fin_de_l_intervalle():
+    segment = _intervalle("10:00:00", "10:01:16")
 
-    assert _appeler("fenetreDans", plage, _ms("10:12:34")) == {"start": "2026-10-26T10:12:34.000Z", "duration": 180}
-
-
-def test_la_fenetre_est_coupee_a_la_fin_de_la_plage():
-    plage = _intervalle("10:00:00", "10:05:00")
-
-    assert _appeler("fenetreDans", plage, _ms("10:04:00")) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
+    assert _appeler("fenetreDans", segment, _ms("10:00:34")) == {"start": "2026-10-26T10:00:34.000Z", "duration": 42}
 
 
 @pytest.mark.parametrize("heure", ["09:59:59", "10:04:59.500", "10:05:00", "10:30:00"])
@@ -134,18 +128,30 @@ def test_la_fenetre_au_debut_d_une_plage_a_la_microseconde_part_de_son_premier_s
     assert datetime.fromisoformat(fenetre["start"]) >= datetime.fromisoformat(plage["debut"])
 
 
-FENETRE = {"start": _iso("10:00:00"), "duration": 180}
+FENETRE = {"start": _iso("10:00:00"), "duration": 76}
 
 
-@pytest.mark.parametrize(("position", "vitesse"), [(150, 1), (170, 2), (0, 16)])
+@pytest.mark.parametrize(("position", "vitesse"), [(46, 1), (20, 2), (0, 4)])
 def test_la_fenetre_se_renouvelle_a_l_approche_de_sa_fin_en_temps_reel(position, vitesse):
-    # 30 s de lecture au plus : la suite a le temps de se charger, à ×16 dès le début d'une fenêtre de 3 min.
+    # 30 s de lecture au plus : la suite a le temps de se charger, à ×4 dès le début d'une fenêtre d'un Segment.
     assert _appeler("aRenouveler", FENETRE, position, vitesse) is True
 
 
-@pytest.mark.parametrize(("position", "vitesse"), [(0, 1), (100, 1), (0, 4)])
+@pytest.mark.parametrize(("position", "vitesse"), [(0, 1), (40, 1), (0, 2)])
 def test_la_fenetre_ne_se_renouvelle_pas_loin_de_sa_fin(position, vitesse):
     assert _appeler("aRenouveler", FENETRE, position, vitesse) is False
+
+
+def test_la_fin_de_la_fenetre_est_celle_de_sa_video_quand_elle_est_plus_courte():
+    # Cam 01 : 62 s de vidéo pour 76 s d'heure réelle ; à 35 s, il en reste 27 de lecture.
+    assert _appeler("aRenouveler", FENETRE, 35, 1, 62) is True
+    assert _appeler("aRenouveler", FENETRE, 30, 1, 62) is False
+
+
+@pytest.mark.parametrize(("duree_video", "attendu"), [(None, "10:00:20"), (76, "10:00:20"), (62, "10:00:34")])
+def test_l_instant_lu_est_celui_de_l_image(duree_video, attendu):
+    # Une vidéo plus courte que la fenêtre finit avec elle : elle commence d'autant plus tard (#172).
+    assert _appeler("instantLu", FENETRE, 20, duree_video) == _ms(attendu)
 
 
 SEGMENTS_DU_JOUR = [
@@ -155,8 +161,28 @@ SEGMENTS_DU_JOUR = [
 ]
 
 
-def test_la_fenetre_depuis_un_instant_d_une_plage_part_de_cet_instant():
-    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms("10:00:30")) == {"start": _iso("10:00:30.000"), "duration": 90}
+def test_la_fenetre_depuis_un_instant_d_une_plage_s_arrete_a_la_fin_de_son_segment():
+    # Jamais deux Segments dans un MP4 : le pont les assemblerait, au risque d'une erreur de décodage (#172).
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms("10:00:30")) == {"start": _iso("10:00:30.000"), "duration": 30}
+
+
+@pytest.mark.parametrize("heure", ["10:01:00", "10:00:59.500"])
+def test_a_la_fin_d_un_segment_la_fenetre_part_du_debut_du_suivant(heure):
+    # Le relais en lecture, ou un clic à moins d'une seconde de la fin : le Segment suivant de la Plage, en entier.
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms(heure)) == {"start": _iso("10:01:00"), "duration": 60}
+
+
+def test_la_fenetre_s_arrete_au_debut_du_segment_suivant_meme_ecrit_apres():
+    # Dernière écriture d'un Segment après le début du suivant : le pont prendrait les premières images de celui-ci.
+    segments = [_intervalle("10:00:00", "10:01:00.300"), _intervalle("10:01:00", "10:02:00")]
+
+    assert _appeler("fenetreDepuis", segments, _ms("10:00:30")) == {"start": _iso("10:00:30.000"), "duration": 30}
+
+
+def test_entre_deux_segments_contigus_la_fenetre_part_du_suivant():
+    segments = [_intervalle("10:00:00", "10:00:59.500"), _intervalle("10:01:00.250", "10:02:00")]
+
+    assert _appeler("fenetreDepuis", segments, _ms("10:01:00"))["start"] == _iso("10:01:00.250")
 
 
 @pytest.mark.parametrize("heure", ["10:02:00", "10:10:00", "10:19:59"])
@@ -181,7 +207,7 @@ def test_la_fenetre_dans_la_plage_ne_saute_pas_de_trou():
     # Fin d'une Plage, la suivante plus loin : rien tant qu'un Segment fermé ne la prolonge pas.
     assert _appeler("fenetreDansLaPlage", SEGMENTS_DU_JOUR, _ms("10:02:00")) is None
     prolongee = [*SEGMENTS_DU_JOUR, _intervalle("10:02:00", "10:03:00")]
-    assert _appeler("fenetreDansLaPlage", prolongee, _ms("10:02:00")) == {"start": _iso("10:02:00.000"), "duration": 60}
+    assert _appeler("fenetreDansLaPlage", prolongee, _ms("10:02:00")) == {"start": _iso("10:02:00"), "duration": 60}
 
 
 def test_la_fin_d_une_fenetre_retombe_sur_la_milliseconde():

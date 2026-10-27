@@ -288,7 +288,7 @@ def test_clic_sur_une_plage_part_de_la_seconde_visee(enregistrement: Page, api, 
     assert abs((start - (maintenant - timedelta(minutes=47))).total_seconds()) < PRECISION_CLIC_S
     parametres = parse_qs(urlparse(relectures[-1]).query)
     assert parametres["path"] == [camera["chemin_flux"]]
-    # Fenêtre coupée à la fin de la Plage : 2 min, sous les 3 min de la fenêtre de lecture.
+    # Fenêtre coupée à la fin du Segment (ici toute la Plage) : 2 min.
     assert float(parametres["duration"][0]) == pytest.approx((ancien[1] - start).total_seconds(), abs=0.01)
     expect(relecture.get_by_label("Instant lu")).to_have_text(start.strftime("%H:%M:%S"))
 
@@ -458,7 +458,7 @@ def test_la_suite_d_une_fenetre_se_precharge_et_prend_le_relais_sans_recharger(e
     camera = _camera(api, noms, url_injoignable())
     maintenant = _maintenant()
     debut = maintenant - timedelta(minutes=30)
-    # Une Plage de 10 min en Segments d'une minute : plusieurs fenêtres de 3 min s'y suivent.
+    # Une Plage de 10 min en Segments d'une minute : une fenêtre par Segment (#172).
     segments = [(debut + timedelta(minutes=i), debut + timedelta(minutes=i + 1)) for i in range(10)]
     _simuler_segments(enregistrement, camera["id"], (maintenant - timedelta(hours=1), maintenant), segments)
     relecture = _selectionner(enregistrement, camera["nom"])
@@ -468,15 +468,15 @@ def test_la_suite_d_une_fenetre_se_precharge_et_prend_le_relais_sans_recharger(e
     video = _video(relecture)
 
     # Loin de la fin de la fenêtre, rien ne se précharge (la position se simule : ces Segments n'existent pas).
-    video.evaluate("v => { v.currentTime = 100; v.dispatchEvent(new Event('timeupdate')); }")
+    video.evaluate("v => { v.currentTime = 10; v.dispatchEvent(new Event('timeupdate')); }")
     enregistrement.wait_for_timeout(500)
     expect(relecture.locator("video")).to_have_count(1)
 
-    # À 20 s de la fin, la suite dans la Plage se demande au pont, cachée, sans interrompre la vidéo à l'écran.
-    video.evaluate("v => { v.currentTime = 160; v.dispatchEvent(new Event('timeupdate')); }")
+    # À 20 s de la fin, le Segment suivant se demande au pont, caché, sans interrompre la vidéo à l'écran.
+    video.evaluate("v => { v.currentTime = 40; v.dispatchEvent(new Event('timeupdate')); }")
     expect(relecture.locator("video")).to_have_count(2)
     _attendre(enregistrement, lambda: len(relectures) >= 2)
-    suite = debut + timedelta(minutes=3)
+    suite = debut + timedelta(minutes=1)
     assert datetime.fromisoformat(_debut_demande(relectures[-1])) == suite
     prechargee = relecture.locator("video").filter(visible=False)
     expect(prechargee).to_have_count(1)
@@ -495,7 +495,7 @@ def test_la_suite_prechargee_reste_la_meme_quand_la_plage_s_allonge(enregistreme
     maintenant = _maintenant()
     fenetre = (maintenant - timedelta(hours=1), maintenant)
     debut = maintenant - timedelta(minutes=10)
-    # Une Plage de 4 min : la suite de la première fenêtre en dure 1 ; un Segment fermé ensuite l'allonge d'une minute.
+    # Une Plage de 4 min : la suite de la première fenêtre est le second Segment ; un Segment fermé ensuite l'allonge.
     connus = [(debut + timedelta(minutes=i), debut + timedelta(minutes=i + 1)) for i in range(4)]
     ferme_ensuite = (debut + timedelta(minutes=4), debut + timedelta(minutes=5))
     lectures = 0
@@ -510,7 +510,7 @@ def test_la_suite_prechargee_reste_la_meme_quand_la_plage_s_allonge(enregistreme
     relecture.get_by_role("button", name="Timeline d’enregistrement").press("Enter")
     _attendre(enregistrement, lambda: len(relectures) >= 1)
     video = _video(relecture)
-    video.evaluate("v => { v.currentTime = 160; v.dispatchEvent(new Event('timeupdate')); }")
+    video.evaluate("v => { v.currentTime = 40; v.dispatchEvent(new Event('timeupdate')); }")
     _attendre(enregistrement, lambda: len(relectures) >= 2)
     prechargee = relecture.locator("video").filter(visible=False)
     expect(prechargee).to_have_count(1)
@@ -525,7 +525,7 @@ def test_la_suite_prechargee_reste_la_meme_quand_la_plage_s_allonge(enregistreme
     assert len(relectures) == 2
     video.dispatch_event("ended")
     expect(_video(relecture)).to_have_js_property("marque", True)
-    expect(relecture.get_by_label("Instant lu")).to_have_text(_heure(debut + timedelta(minutes=3)))
+    expect(relecture.get_by_label("Instant lu")).to_have_text(_heure(debut + timedelta(minutes=1)))
 
 
 def test_camera_h265_sur_un_navigateur_sans_hevc_le_dit_sans_rien_demander(enregistrement: Page, api, noms, relectures):
@@ -588,9 +588,10 @@ def _cliquer_a_l_instant(timeline: Locator, jour: tuple[datetime, datetime], ins
     _cliquer_a(timeline, (instant - jour[0]) / (jour[1] - jour[0]))
 
 
-def _milieu(segment: dict) -> datetime:
+def _dans(segment: dict) -> datetime:
+    """Au quart d'un Segment : il en reste plus d'une seconde à lire, la fenêtre part de cet instant."""
     debut, fin = datetime.fromisoformat(segment["debut"]), datetime.fromisoformat(segment["fin"])
-    return debut + (fin - debut) / 2
+    return debut + (fin - debut) / 4
 
 
 def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistrement: Page, api, noms, relectures):
@@ -605,24 +606,31 @@ def test_relire_une_plage_seek_play_pause_vitesses_et_enchainement(enregistremen
     video = _video(relecture)
     timeline = relecture.get_by_role("button", name="Timeline d’enregistrement")
 
-    # Au milieu du Segment : la vidéo part de cette seconde, pas du début du Segment, et joue.
-    _cliquer_a_l_instant(timeline, jour, _milieu(segments[0]))
+    # Dans le Segment : la vidéo part de cette seconde, pas du début du Segment, et joue.
+    _cliquer_a_l_instant(timeline, jour, _dans(segments[0]))
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
     start = datetime.fromisoformat(_debut_demande(relectures[0]))
-    assert abs((start - _milieu(segments[0])).total_seconds()) < 0.5
-    # La fenêtre traverse les Segments de la Plage sans recharger la vidéo.
-    video.evaluate("v => { v.marque = v.currentSrc; }")
-    debut_suivant = (datetime.fromisoformat(segments[2]["debut"]) - start).total_seconds()
-    _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > debut_suivant + 0.2, DELAI_VIDEO_MS / 1000)
-    assert video.evaluate("v => v.marque === v.currentSrc")
+    assert abs((start - _dans(segments[0])).total_seconds()) < 0.5
+    # La fenêtre s'arrête à la fin de son Segment ; le suivant, préchargé, prend le relais et joue, sans erreur au
+    # passage d'un Segment à l'autre (#172).
+    suivant = datetime.fromisoformat(segments[1]["debut"])
+    _attendre(enregistrement, lambda: any(datetime.fromisoformat(_debut_demande(u)) == suivant for u in relectures))
+    _attendre(
+        enregistrement,
+        lambda: video.evaluate("v => new URL(v.currentSrc).searchParams.get('start')") == segments[1]["debut"].replace("+00:00", "Z")
+        and video.evaluate("v => v.currentTime") > 0.2,
+        DELAI_VIDEO_MS / 1000,
+    )
+    expect(relecture.get_by_text("Enregistrement indisponible")).to_have_count(0)
     expect(relecture.get_by_role("progressbar", name="Progression dans la Plage")).to_be_visible()
     expect(relecture.get_by_label("Instant lu")).to_have_text(re.compile(r"^\d{2}:\d{2}:\d{2}$"))
 
     # En lecture, un clic ailleurs repart de cette seconde, et la lecture continue.
-    _cliquer_a_l_instant(timeline, jour, _milieu(segments[2]))
-    _attendre(enregistrement, lambda: len(relectures) >= 2)
-    assert abs((datetime.fromisoformat(_debut_demande(relectures[-1])) - _milieu(segments[2])).total_seconds()) < 0.5
+    demandees = len(relectures)
+    _cliquer_a_l_instant(timeline, jour, _dans(segments[2]))
+    _attendre(enregistrement, lambda: len(relectures) > demandees)
+    assert abs((datetime.fromisoformat(_debut_demande(relectures[-1])) - _dans(segments[2])).total_seconds()) < 0.5
     expect(video).to_have_js_property("paused", False, timeout=DELAI_VIDEO_MS)
     _attendre(enregistrement, lambda: video.evaluate("v => v.currentTime") > 0.2, DELAI_VIDEO_MS / 1000)
 

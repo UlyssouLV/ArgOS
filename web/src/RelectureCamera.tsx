@@ -18,6 +18,7 @@ import {
   fenetreDansLaPlage,
   fenetreDepuis,
   finDeFenetre,
+  instantLu as instantDeLaFenetre,
   memeFenetre,
   plageCourante,
   plageSuivante,
@@ -78,10 +79,10 @@ function dateDuSite(iso: string, fuseau: string): string {
 /**
  * Relecture d'une Caméra, un jour du Site à la fois (docs/adr/0013-relecture-des-enregistrements.md, ADR 0017) :
  * en-tête (Caméra, jour), viewer, puis Timeline d'enregistrement de 00h à 24h. Un clic sur une Plage enregistrée lit
- * une fenêtre depuis la seconde visée (ADR 0018), même en pleine lecture ; un clic dans un trou, ou la fin d'une
- * Plage, passe au début de la Plage suivante du jour, et après la dernière la lecture s'arrête. Avant la fin d'une
- * fenêtre, sa suite se précharge dans une seconde vidéo, cachée, qui prend le relais à la fin, à la même vitesse : pas
- * d'interruption visible.
+ * une fenêtre depuis la seconde visée jusqu'à la fin de son Segment (ADR 0018, #172), même en pleine lecture ; un
+ * clic dans un trou, ou la fin d'une Plage, passe au début de la Plage suivante du jour, et après la dernière la
+ * lecture s'arrête. Avant la fin d'une fenêtre, sa suite (le Segment suivant) se précharge dans une seconde vidéo,
+ * cachée, qui prend le relais à la fin, à la même vitesse : pas d'interruption visible.
  */
 export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelecture) {
   const naviguer = useNavigate();
@@ -99,6 +100,8 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   const [vitesse, setVitesse] = useState<Vitesse>(1);
   const [enPause, setEnPause] = useState(true);
   const [position, setPosition] = useState(0);
+  // Durée (s) de la vidéo à l'écran, connue avec ses métadonnées : plus courte que la fenêtre chez Cam 01 (#172).
+  const [dureeVideo, setDureeVideo] = useState<number | null>(null);
 
   // Changer de Caméra ou de jour recharge la Timeline et arrête la fenêtre en cours : elle n'est plus sur ce jour.
   useEffect(() => {
@@ -123,7 +126,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   }, [camera.id, jour]);
 
   const plages = useMemo(() => (lue === null ? [] : plagesEnregistrees(lue.segments)), [lue]);
-  const instantLu = lecture === null ? null : Date.parse(lecture.start) + position * 1000;
+  const instantLu = lecture === null ? null : instantDeLaFenetre(lecture, position, dureeVideo);
   const plageLue = lecture === null ? null : plageCourante(plages, Date.parse(lecture.start));
   // Décidé avant de donner une source à la vidéo : sinon son échec masquerait le message (comme au Live).
   const h265Illisible = useMemo(
@@ -134,15 +137,16 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
   // À l'approche de la fin, la suite (dans la Plage, ou au début de la suivante) se demande une fois, cachée.
   useEffect(() => {
     if (suivante !== null || lue === null || lecture === null || h265Illisible) return;
-    if (!aRenouveler(lecture, position, vitesse)) return;
+    if (!aRenouveler(lecture, position, vitesse, dureeVideo)) return;
     setSuivante(fenetreDepuis(lue.segments, finDeFenetre(lecture)));
-  }, [lue, lecture, position, vitesse, suivante, h265Illisible]);
+  }, [lue, lecture, position, vitesse, dureeVideo, suivante, h265Illisible]);
 
   /** Fenêtre à lire, depuis son début ; position, état et suite repartent avec elle, sans rendu intermédiaire. */
   function lireFenetre(fenetre: Fenetre | null) {
     setLecture(fenetre);
     setSuivante(null);
     setPosition(0);
+    setDureeVideo(null);
     setEtat("lisible");
   }
 
@@ -160,6 +164,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
     // Une suite préchargée en échec ne relance pas `onError` en prenant le relais.
     if (lecteur?.error) surErreur();
     if (lecteur === null || lecteur.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    setDureeVideo(lecteur.duration);
     lecteur.playbackRate = vitesse;
     void lecteur.play().catch(() => {});
   }, [lecture]);
@@ -330,6 +335,7 @@ export function RelectureCamera({ camera, cameras, jour, onJour }: PropsRelectur
                 muted
                 playsInline
                 onLoadedMetadata={(e) => {
+                  setDureeVideo(e.currentTarget.duration);
                   e.currentTarget.playbackRate = vitesse;
                   // `autoPlay` seul ne part pas toujours sur un MP4 d'une minute (Chromium) : on lance la lecture.
                   void e.currentTarget.play().catch(() => {});

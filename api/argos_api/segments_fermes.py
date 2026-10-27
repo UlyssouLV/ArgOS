@@ -8,10 +8,7 @@ from pydantic import BaseModel
 
 from argos_api.cameras import AGE_MAX_DERNIER_SEGMENT_S
 from argos_api.pont import chemin_flux
-
-# recordPath du pont (media/mediamtx.yml) : `%Y-%m-%d_%H-%M-%S-%f`, heure UTC du conteneur, suffixe `.mp4`.
-FORMAT_NOM_SEGMENT = "%Y-%m-%d_%H-%M-%S-%f"
-SUFFIXE_SEGMENT = ".mp4"
+from argos_api.relecture import segments_du_dossier
 
 
 class SegmentFerme(BaseModel):
@@ -52,7 +49,7 @@ def lire(
     debut_jour = _minuit(jour, zone)
     fin_jour = _minuit(jour + timedelta(days=1), zone)
 
-    fichiers = sorted(_fichiers(racine / chemin_flux(id_camera)))
+    fichiers = sorted(segments_du_dossier(racine / chemin_flux(id_camera)))
     if fichiers and enregistrement:
         dernier = _segment(*fichiers[-1])
         if dernier is None or (maintenant - dernier.fin).total_seconds() < AGE_MAX_DERNIER_SEGMENT_S:
@@ -77,29 +74,11 @@ def lire(
 
 def debut_plus_ancien(racine: Path, id_camera: int) -> datetime | None:
     """Début du plus ancien Segment de la Caméra, lu dans son nom ; `None` : aucun."""
-    return min((debut for debut, _ in _fichiers(racine / chemin_flux(id_camera))), default=None)
+    return min((debut for debut, _ in segments_du_dossier(racine / chemin_flux(id_camera))), default=None)
 
 
 def _minuit(jour: date, zone: ZoneInfo) -> datetime:
     return datetime.combine(jour, time(), zone).astimezone(UTC)
-
-
-def _fichiers(dossier: Path) -> list[tuple[datetime, Path]]:
-    """Segments du dossier repérés par le début lu dans leur nom, sans toucher aux fichiers."""
-    if not dossier.is_dir():
-        return []
-    lus: list[tuple[datetime, Path]] = []
-    try:
-        for chemin in dossier.iterdir():
-            if chemin.suffix != SUFFIXE_SEGMENT:
-                continue
-            try:
-                lus.append((datetime.strptime(chemin.stem, FORMAT_NOM_SEGMENT).replace(tzinfo=UTC), chemin))
-            except ValueError:
-                continue
-    except OSError:
-        return []
-    return lus
 
 
 def _segment(debut: datetime, chemin: Path) -> SegmentFerme | None:

@@ -166,7 +166,7 @@ Suite de Segments d’enregistrement **contigus** (sans trou) d’une Caméra, r
 
 ## Fenêtre de lecture {#fenetre-de-lecture}
 
-Extrait d’une Plage enregistrée (environ 3 min) que la Relecture demande au Pont depuis l’instant lu, renouvelé avant sa fin et coupé à la fin de la Plage. L’ADR 0018 la nomme « fenêtre glissante ».
+Extrait d’une Plage enregistrée que la Relecture demande au Pont depuis l’instant lu jusqu’à la fin de son Segment, jamais au-delà (#172) ; le Segment suivant se précharge avant sa fin. L’ADR 0018 la nomme « fenêtre glissante ».
 
 À éviter : fenêtre glissante seule (le terme désigne aussi la Conservation), buffer, chunk.
 

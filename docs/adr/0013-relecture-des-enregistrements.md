@@ -12,7 +12,7 @@ L’enregistrement continu (ADR 0011) et le suivi stockage (ADR 0012) laissent l
 
 > **Modifié en V1.1.0** ([#164](https://github.com/UlyssouLV/ArgOS/issues/164)) — Granularité clic Timeline et enchaînement des Segments
 > Avant : Clic = début du Segment ; nouveau `src` à chaque Segment (`onEnded`)
-> Après : Clic = seconde visée ; fenêtre de lecture multi-Segments dans une Plage enregistrée, préchargée avant sa fin (ADR 0018)
+> Après : Clic = seconde visée ; fenêtre de lecture d’un Segment au plus dans une Plage enregistrée, la suivante préchargée avant sa fin (ADR 0018, #172)
 
 ## Considered Options
 
