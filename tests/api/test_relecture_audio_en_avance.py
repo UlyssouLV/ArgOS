@@ -28,8 +28,9 @@ AVANCE_AUDIO_S = 14
 DUREE_SEGMENTS_S = 20
 # Le temps que l'audio prenne son avance : le pont se recale plusieurs fois (« detected drift ») avant de s'y tenir.
 DELAI_AVANCE_S = AVANCE_AUDIO_S + 10
-# Deux Segments fermés après l'avance prise, chacun d'environ DUREE_SEGMENTS_S + AVANCE_AUDIO_S, avec de la marge.
-DELAI_SEGMENTS_S = DELAI_PONT_S + DELAI_AVANCE_S + 3 * (DUREE_SEGMENTS_S + AVANCE_AUDIO_S)
+# Deux Segments fermés après l'avance prise, chacun d'environ DUREE_SEGMENTS_S + AVANCE_AUDIO_S, plus celui à cheval
+# sur DELAI_AVANCE_S et un de marge : à la première ouverture du chemin, deux suffisaient à peine sur un runner chargé.
+DELAI_SEGMENTS_S = DELAI_PONT_S + DELAI_AVANCE_S + 4 * (DUREE_SEGMENTS_S + AVANCE_AUDIO_S)
 IMAGE_FFPROBE = "linuxserver/ffmpeg:version-7.1-cli"
 # Piste 1 des Segments : la vidéo, premier média annoncé par la Caméra simulée.
 VIDEO_JETEE = "[recorder] sample of track 1 received too late, discarding"
