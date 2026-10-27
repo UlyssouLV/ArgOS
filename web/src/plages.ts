@@ -61,9 +61,12 @@ export function fenetreDans(plage: Intervalle, instant: number): Fenetre | null 
   const fin = Date.parse(plage.fin);
   // À la milliseconde, comme `start` : un clic tombe entre deux, et la fenêtre doit finir pile à la fin de la Plage.
   const depart = Math.trunc(instant);
-  if (depart < Date.parse(plage.debut) || fin - depart < DUREE_MIN_FENETRE_MS) return null;
+  const debut = Date.parse(plage.debut);
+  if (depart < debut || fin - depart < DUREE_MIN_FENETRE_MS) return null;
   return {
-    start: new Date(depart).toISOString(),
+    // Dans la milliseconde du début, `start` reprend le début du premier Segment, à la microseconde : arrondi, il le
+    // précéderait et MediaMTX ne trouverait aucun Segment (404).
+    start: depart === debut ? plage.debut : new Date(depart).toISOString(),
     duration: Math.min(DUREE_FENETRE_S, (fin - depart) / 1000),
   };
 }

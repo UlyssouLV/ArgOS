@@ -123,6 +123,17 @@ def test_la_fenetre_d_un_instant_fractionnaire_finit_a_la_fin_de_la_plage():
     assert _appeler("fenetreDans", plage, _ms("10:04:00") + 0.7) == {"start": "2026-10-26T10:04:00.000Z", "duration": 60}
 
 
+def test_la_fenetre_au_debut_d_une_plage_a_la_microseconde_part_de_son_premier_segment():
+    # Un Segment commence à la microseconde (nom `…_10-20-00-958136`) : arrondi à la milliseconde, `start` le
+    # précéderait et MediaMTX répondrait 404 (#171).
+    plage = _intervalle("10:20:00.958136", "10:25:00")
+
+    fenetre = _appeler("fenetreDans", plage, _ms("10:20:00.958136"))
+
+    assert fenetre["start"] == _iso("10:20:00.958136")
+    assert datetime.fromisoformat(fenetre["start"]) >= datetime.fromisoformat(plage["debut"])
+
+
 FENETRE = {"start": _iso("10:00:00"), "duration": 180}
 
 
@@ -150,7 +161,16 @@ def test_la_fenetre_depuis_un_instant_d_une_plage_part_de_cet_instant():
 
 @pytest.mark.parametrize("heure", ["10:02:00", "10:10:00", "10:19:59"])
 def test_la_fenetre_depuis_un_trou_ou_la_fin_d_une_plage_part_du_debut_de_la_suivante(heure):
-    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms(heure)) == {"start": _iso("10:20:00.000"), "duration": 60}
+    # Début de la Plage suivante : `start` est celui de son premier Segment, tel quel.
+    assert _appeler("fenetreDepuis", SEGMENTS_DU_JOUR, _ms(heure)) == {"start": _iso("10:20:00"), "duration": 60}
+
+
+@pytest.mark.parametrize("heure", ["10:02:00", "10:10:00", "10:20:00.958"])
+def test_depuis_un_trou_la_fenetre_part_du_premier_segment_a_la_microseconde(heure):
+    # Saut de trou en lecture, clic dans un trou, Entrée sur la Timeline : tous passent par `fenetreDepuis`.
+    segments = [_intervalle("10:00:00", "10:02:00"), _intervalle("10:20:00.958136", "10:21:00")]
+
+    assert _appeler("fenetreDepuis", segments, _ms(heure))["start"] == _iso("10:20:00.958136")
 
 
 def test_apres_la_derniere_plage_plus_de_fenetre():
