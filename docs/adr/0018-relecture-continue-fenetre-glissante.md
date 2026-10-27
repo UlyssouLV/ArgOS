@@ -50,3 +50,5 @@ Limites restantes :
 - l’horloge propre à la caméra (moins de 2 s d’écart au Live) et l’image clé de départ restent visibles dans l’heure incrustée.
 
 Corriger l’enregistrement (ne garder que la vidéo, ou réaligner les pistes) relève du Pont, hors de cette décision.
+
+En dev, `camera-simulee-6` reproduit ce cas (#173, `media/simulated/README.md`) : son audio prend ~14 s d’avance sur sa vidéo pendant la lecture du Pont.

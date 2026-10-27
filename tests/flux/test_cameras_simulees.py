@@ -10,6 +10,7 @@ from ipaddress import ip_address, ip_network
 import pytest
 
 from conftest import (
+    AUDIOS,
     CAMERAS_SIMULEES,
     CHEMINS,
     CODECS,
@@ -59,7 +60,7 @@ def ffprobe(reseau: str, url_rtsp: str, *options: str) -> subprocess.CompletedPr
 
 @pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
 def test_diffuse_son_codec_en_1280x720_decodable(reseau_simulation, camera):
-    """H.264 pour les trois premières, HEVC pour camera-simulee-4."""
+    """HEVC pour camera-simulee-4 et camera-simulee-6, H.264 pour les autres."""
     resultat = ffprobe(reseau_simulation, url(camera, identifiants=IDENTIFIANTS.get(camera)))
 
     assert resultat.returncode == 0, resultat.stderr
@@ -70,8 +71,9 @@ def test_diffuse_son_codec_en_1280x720_decodable(reseau_simulation, camera):
 
 
 @pytest.mark.parametrize("camera", CAMERAS_SIMULEES)
-def test_seule_camera_simulee_4_annonce_une_piste_audio_pcm(reseau_simulation, camera):
-    """Comme la caméra H.265 réelle du bug #141 : PCM 16 bits 8 kHz mono, `ipcm` dans les Segments du pont."""
+def test_seules_les_cameras_simulees_4_et_6_annoncent_une_piste_audio(reseau_simulation, camera):
+    """La 4 comme la caméra H.265 réelle du bug #141 : PCM 16 bits 8 kHz mono, `ipcm` dans les Segments du pont.
+    La 6 comme Cam 01 : G.711 µ-law 8 kHz mono."""
     resultat = ffprobe(
         reseau_simulation,
         url(camera, identifiants=IDENTIFIANTS.get(camera)),
@@ -84,7 +86,7 @@ def test_seule_camera_simulee_4_annonce_une_piste_audio_pcm(reseau_simulation, c
         for flux in json.loads(resultat.stdout)["streams"]
         if flux["codec_type"] == "audio"
     ]
-    assert audio == ([("pcm_s16be", "8000", 1)] if camera == "camera-simulee-4" else [])
+    assert audio == ([AUDIOS[camera]] if camera in AUDIOS else [])
 
 
 def test_camera_simulee_2_refusee_sans_identifiants(reseau_simulation):

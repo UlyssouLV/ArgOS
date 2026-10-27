@@ -1,9 +1,9 @@
 # Simulation de dev, superposée à compose.yaml (jamais en prod) :
 #   docker compose -f compose.yaml -f compose.simulation.yaml up -d --build --wait
-# Cinq Caméras simulées, cinq hôtes distincts comme de vraies caméras : chacune diffuse sa vidéo
+# Six Caméras simulées, six hôtes distincts comme de vraies caméras : chacune diffuse sa vidéo
 # (media/simulated/camN.mp4) en boucle, en RTSP (port 554), sur un chemin de vraie caméra :
 # style Hikvision (1), style Dahua avec identifiants (2), chemin exotique `flux` (3), style Hikvision en H.265 (4),
-# style Hikvision (5).
+# style Hikvision (5), style Hikvision en H.265 avec un audio horodaté en avance sur la vidéo, comme Cam 01 (6).
 # Aucun port publié : on les regarde par le Live, une fois déclarées comme Caméras (media/simulated/README.md).
 # MAC et IP fixes, comme l'étiquette et le bail d'une vraie caméra : la Détection et l'essai les lisent.
 # Les Caméras simulées 2, 4 et 5 répondent aussi en ONVIF (simulation/onvif/README.md) : leur Flux, réencodé, porte
@@ -107,6 +107,25 @@ services:
     environment:
       FICHIER_DATE: /horloge/date.txt
       CHEMIN_FLUX: Streaming/Channels/101
+
+  camera-simulee-6:
+    <<: *camera-simulee
+    networks:
+      cameras-simulees:
+        ipv4_address: 172.30.0.16
+        mac_address: "02:a6:05:00:00:06"
+    volumes:
+      # Gabarit et diffusion propres : une vidéo H.265 et un audio G.711 horodaté en avance, comme Cam 01 (#173).
+      - ./media/simulated/camera-simulee-audio-en-avance.yml:/camera-simulee.yml:ro
+      - ./media/simulated/diffuser-audio-en-avance.sh:/diffuser-audio-en-avance.sh:ro
+      - ./media/simulated/cam4.mp4:/media/video.mp4:ro
+      # Fuseau de l'hôte : l'heure incrustée se lit comme celle de la Timeline.
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      CHEMIN_FLUX: Streaming/Channels/101
+      # Avance prise par l'audio sur la vidéo au début de chaque lecture (~14 s chez Cam 01) : le pont jette d'autant
+      # la vidéo au début de chaque Segment (ADR 0018, « Un Segment par fenêtre »).
+      AVANCE_AUDIO_S: "14"
 
   # Interfaces ONVIF des Caméras simulées 2, 4 et 5 (simulation/onvif/README.md) : chacune partage le réseau de sa
   # Caméra simulée, donc son IP et sa MAC, comme l'interface ONVIF d'une vraie caméra. Les 1 et 3 n'en ont pas.
@@ -226,5 +245,5 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
-          # Adresses dynamiques (pont, API) : hors des adresses fixes de temps (.10) et des Caméras simulées (.11 à .15).
+          # Adresses dynamiques (pont, API) : hors des adresses fixes de temps (.10) et des Caméras simulées (.11 à .16).
           ip_range: 172.30.0.128/26
