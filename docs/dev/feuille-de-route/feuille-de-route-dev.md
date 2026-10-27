@@ -1,6 +1,6 @@
 # Feuille de route de dev
 
-Jusqu’à la **0.9.x**, le Site couvre déjà connexion, Administration, Live, enregistrement / relecture et calage horaire des Caméras. La **1.0.0** a refait toute l’interface (identité visuelle figée au grilling) et porté la Conservation à 30 jours. Pas d’IA dans ce périmètre.
+Jusqu’à la **0.9.x**, le Site couvre déjà connexion, Administration, Live, enregistrement / relecture et calage horaire des Caméras. La **1.0.0** a refait toute l’interface et porté la Conservation à 30 jours : c’est le socle. Ensuite : confort de relecture et export (**1.1.x**), Live plus réactif (**1.2.0**), puis détection d’activité sur la timeline (**2.0.0** / **2.0.1**) et un passage de nettoyage des bugs ouverts (**2.0.2**).
 
 Contraintes transverses :
 
@@ -33,12 +33,39 @@ Contraintes transverses :
 - **0.9.0** — Le Site, serveur de temps des Caméras : service `temps` (chrony) qui sert le NTP sur le réseau des caméras (macvlan, ou UDP 123 publié sur l’hôte), Heure du Site (source `pool.ntp.org` ou horloge du serveur, fuseau) réglée une fois dans l’Administration, chaque Caméra ONVIF calée dessus (`SetNTP`, mode NTP, fuseau du Site) à l’ajout, au changement et toutes les heures, avec un état par Caméra ; section Horloge et « Mettre à l’heure du Site » de la 0.6.0 retirées des Réglages. Relecture vidéo seule et réponses par plages (`206`) : Safari lit les Segments H.265 d’une Caméra qui annonce de l’audio ([#141](https://github.com/UlyssouLV/ArgOS/issues/141)) ([PR #140](https://github.com/UlyssouLV/ArgOS/pull/140), [spec](../../specs/v0.9.0-le-site-serveur-de-temps-des-cameras.md), [ADR 0014](../../adr/0014-serveur-de-temps-du-site.md)).
 - **0.9.1** — Mise à l’heure à chaque vérification : à l’ajout, au changement de l’Heure du Site, toutes les heures, sur « Vérifier maintenant » et à l’instant de chaque changement d’heure, le Site pousse l’heure du Serveur de temps du Site dans chaque Caméra ONVIF active puis la recale ; dérive (avant) et écart (après) mesurés contre le Serveur de temps du Site, états à l’heure / écart / sans ONVIF / échec ; fuseau envoyé au décalage du moment (sans règles d’heure d’été, `DaylightSavings=false`) depuis la base des fuseaux de l’hôte (embarquée en secours), décalage relu vérifié ; install / MAJ Ubuntu réactivent la synchro NTP de l’OS ; Caméra simulée « NTP paresseux » ; caméras qualifiées documentées ([PR #149](https://github.com/UlyssouLV/ArgOS/pull/149), [spec](../../specs/v0.9.1-mise-a-l-heure-a-chaque-verification.md), [ADR 0015](../../adr/0015-mise-a-l-heure-a-chaque-verification.md), [doc](../../features/heure/serveur-de-temps-et-calage.md)).
 - **1.0.0** — Refonte graphique totale de l’interface et Conservation en jours : toute l’UI du Site redessinée sous les mêmes capacités produit — thème sombre au rouge du logo, Inter et JetBrains Mono embarquées, Tailwind v4 et shadcn/ui ; rail latéral (Live, Enregistrement, Relecture, Administration › Caméras / Heure du Site), Live en page d’accueil avec Précédente / Suivante et flèches ← / → ; Réglages de la Caméra en panneau latéral, Détection en boîte de dialogue, suppression confirmée, toasts, squelettes et états vides ; Conservation de 1 h à 30 jours saisie en jours + heures ; Relecture sur sa propre page, un jour à la fois (Timeline 00h → 24h au fuseau du Site, sélecteur de jour). Poste fixe et tablette (≥ 768 px) ; téléphone, thème clair et seek à la seconde Plus tard ([PR #162](https://github.com/UlyssouLV/ArgOS/pull/162), [spec](../../specs/v1.0.0-refonte-graphique-totale-de-l-interface-et-conservation-en-jours.md), [ADR 0016](../../adr/0016-tailwind-et-shadcn-ui-pour-l-ui-du-site.md), [ADR 0017](../../adr/0017-conservation-en-jours-et-relecture-a-la-journee.md)).
+- **1.1.0** — Relecture continue : Plages enregistrées (Segments contigus) lues sans interruption visible, une fenêtre par Segment demandée au Pont depuis l’instant lu, la suite préchargée dans une seconde `<video>` qui prend le relais ; clic sur la Timeline = lecture à la seconde visée (image clé précédente, sans promesse frame-exact), y compris pendant la lecture ; trou ou clic dans un trou → début de la Plage suivante du jour, pause après la dernière ; instant lu en HH:MM:SS au fuseau du Site ; vitesses ×1…×16, session et H.265 sans réencodage inchangés ; départ à la microseconde du premier Segment (#171), fenêtre recalée sur la vidéo d’une Caméra dont l’audio est en avance (#172), Caméra simulée audio en avance de 14 s (#173). Limite connue : sur une telle Caméra, les secondes de vidéo perdues au début de chaque Segment sautent aussi en relecture ([PR #170](https://github.com/UlyssouLV/ArgOS/pull/170), [spec](../../specs/v1.1.0-relecture-continue.md), [ADR 0018](../../adr/0018-relecture-continue-fenetre-glissante.md)).
+
+## Prochaine : 1.1.1 — Export d’une plage
+
+Objectif. Télécharger une plage d’enregistrement choisie (début et fin), sous un fichier utilisable hors du Site, derrière la session.
+
+Hors périmètre : relecture continue et seek (1.1.0) ; Live plus réactif (1.2.0) ; détection d’activité (2.0.0).
+
+## Ensuite : 1.2.0 — Live plus réactif
+
+Objectif. Voir l’image Live plus vite à l’ouverture de la page ou au changement de Caméra.
+
+Hors périmètre : relecture et export (1.1.x) ; détection d’activité (2.0.0).
+
+## Ensuite : 2.0.0 — Détection d’activité sur la timeline
+
+Objectif. Repérer les moments où il y a de l’activité sur une Caméra et les afficher comme traits sur la timeline en relecture, pour aller directement aux passages intéressants. Première livraison : activité par mouvement.
+
+Hors périmètre : distinguer Humains, Véhicules et Animaux (2.0.1) ; export d’une plage (1.1.1) ; Live plus réactif (1.2.0).
+
+## Ensuite : 2.0.1 — Classification Humains / Véhicules / Animaux
+
+Objectif. Sur la timeline, distinguer les passages de personnes, de véhicules et d’animaux (traits ou marques différenciés), pour filtrer ou repérer plus vite ce qui compte.
+
+Hors périmètre : détection par mouvement seule (2.0.0) ; export d’une plage (1.1.1) ; Live plus réactif (1.2.0) ; nettoyage des bugs (2.0.2).
+
+## Ensuite : 2.0.2 — Nettoyage des bugs
+
+Objectif. Corriger tous les bugs listés sous **Plus tard** (entrées `### Bug —`), pour repartir sans dettes connues après la ligne 2.0.x. Les fiches restent sous Plus tard jusqu’à la livraison (visibilité docsite / liste des bugs).
+
+Hors périmètre : nouvelles capacités produit (1.1.x, 1.2.0, 2.0.0, 2.0.1).
 
 ## Plus tard (pas encore numéroté)
-
-### Seek à la seconde dans la relecture
-
-Depuis la 0.8.2, un clic lit le Segment depuis son début ; pouvoir se positionner à la seconde près sur la timeline (promis un temps pour la 1.0.0, reporté hors refonte graphique).
 
 ### Interface mobile
 
@@ -77,10 +104,6 @@ Objectif produit : poser / documenter (et éventuellement automatiser) ces topol
 
 Repérer une Caméra `online` dont l’image est figée ou une boucle injectée (heure incrustée qui n’avance pas, images identiques, événements ONVIF de sabotage).
 
-### Détection IA
-
-Personnes / véhicules sur substream, après le cœur live.
-
 ### Un Appareil, plusieurs Caméras
 
 Prendre en charge les Appareils qui portent plusieurs Caméras sous une seule adresse MAC (enregistreurs, encodeurs multi-voies, caméras à plusieurs objectifs). Il faut d’abord étudier sur du vrai matériel comment chaque voie expose son chemin RTSP, puis proposer à l’ajout toutes les voies d’un Appareil, et regrouper ses Caméras dans l’Administration. Depuis la 0.4.2, ce cas est seulement toléré : même MAC sur plusieurs Caméras, mises à jour ensemble quand l’IP change.
@@ -105,15 +128,11 @@ Permettre des identifiants ONVIF autres que ceux du Flux, pour les marques qui s
 
 Depuis la 0.6.2, la session n’est vérifiée qu’à l’ouverture d’un Flux : un Live WebRTC déjà établi continue après la déconnexion ou l’expiration de la session (`docs/securite.md`). Fermer aussi ces Lives quand la session se termine.
 
-### Téléchargement / export des enregistrements
-
-Après la relecture in-browser (0.8.2) : permettre à l’Administrateur de **télécharger** ou **exporter** des segments / une plage d’enregistrement (fichier utilisable hors ArgOS), derrière la session. Hors 0.8.2 : la relecture UI suffit.
-
 ### Bug — Modifier l'URL d'une Caméra sans retaper son mot de passe enregistre *** comme mot de passe (#86)
 
-**Constat :** Dans **Modifier**, le champ « URL RTSP » d'une Caméra protégée par mot de passe s'affiche masqué (`rtsp://admin:***@…`). Si l'on change autre chose dans ce champ (chemin, requête, port) sans retaper le mot de passe, ArgOS enregistre `***` comme mot de passe : la Caméra passe `offline` et ses Réglages affichent « La caméra refuse ces identifiants en ONVIF. ».
+**Constat :** Dans **modifier**, le champ « URL RTSP » d'une Caméra protégée par mot de passe s'affiche masqué (`rtsp://admin:***@…`). Si l'on change autre chose dans ce champ (chemin, requête, port) sans retaper le mot de passe, ArgOS enregistre `***` comme mot de passe : la Caméra passe `offline` et ses Réglages affichent « La caméra refuse ces identifiants en ONVIF. ».
 
-**Reproductibilité :** Caméra simulée 2 déclarée avec `admin:argos-simulee` ; **Modifier** → changer seulement `subtype=0` en `subtype=1` dans l'URL masquée → **Enregistrer** : la Caméra passe `offline`, l'URL stockée porte `***`. Enregistrer l'URL masquée inchangée garde bien le mot de passe.
+**Reproductibilité :** Caméra simulée 2 déclarée avec `admin:argos-simulee` ; **modifier** → changer seulement `subtype=0` en `subtype=1` dans l'URL masquée → **Enregistrer** : la Caméra passe `offline`, l'URL stockée porte `***`. Enregistrer l'URL masquée inchangée garde bien le mot de passe.
 
 **Impact :** L'Administrateur qui corrige le chemin ou le port d'une Caméra perd son mot de passe sans avertissement : plus de Live, plus de Réglages, jusqu'à ce qu'il retape l'URL entière. Depuis la 0.6.3, une Caméra en ONVIF en clair afficherait en plus « Mot de passe court ». Le contact ONVIF (clé, port, accord) reste gardé.
 

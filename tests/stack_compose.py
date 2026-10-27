@@ -35,6 +35,7 @@ CHEMINS_SIMULES = {
     3: "flux",
     4: "Streaming/Channels/101",
     5: "Streaming/Channels/101",
+    6: "Streaming/Channels/101",
 }
 # MAC et IP fixes des Caméras simulées (compose.simulation.yaml), MAC au format affiché par ArgOS.
 MACS_SIMULEES = {n: f"02:a6:05:00:00:0{n}" for n in CHEMINS_SIMULES}
@@ -175,8 +176,8 @@ def redemarrer_api() -> None:
     attendre_api()
 
 
-def raccourcir_les_segments(chemin: str, delai_s: float = 20) -> None:
-    """Attend (`delai_s`) que la réconciliation ait ajouté le chemin au pont, puis y coupe les Segments toutes les 2 s.
+def raccourcir_les_segments(chemin: str, delai_s: float = 20, duree: str = "2s") -> None:
+    """Attend (`delai_s`) que la réconciliation ait ajouté le chemin au pont, puis y coupe les Segments à `duree`.
 
     Le pont coupe ses Segments à 1 min ; l'API du Site ne touche pas à `recordSegmentDuration`.
     """
@@ -191,7 +192,7 @@ def raccourcir_les_segments(chemin: str, delai_s: float = 20) -> None:
                 "-c",
                 "import json, urllib.request; "
                 f"urllib.request.urlopen(urllib.request.Request('http://mediamtx:9997/v3/config/paths/patch/{chemin}', "
-                "data=json.dumps({'recordSegmentDuration': '2s'}).encode(), method='PATCH', "
+                f"data=json.dumps({{'recordSegmentDuration': '{duree}'}}).encode(), method='PATCH', "
                 "headers={'Content-Type': 'application/json'}), timeout=5)",
             )
             return

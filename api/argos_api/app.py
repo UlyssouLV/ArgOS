@@ -385,12 +385,13 @@ def creer_app(
     @app.get("/api/relecture/get", dependencies=[Depends(administrateur_connecte)])
     def relire(request: Request) -> Response:
         """Relecture (ADR 0013), relayée par nginx sous /flux/relecture/get : `/get` du serveur playback, mêmes
-        paramètres, réponse en flux. En `format=mp4`, vidéo seule : Safari refuse un MP4 avec la piste audio
-        PCM d'une caméra (bug #141) ; assemblé, de taille connue, servi par plages d'octets : Safari ouvre la
-        `<video>` par `Range: bytes=0-1` et ne lit qu'un `206` (#143)."""
+        paramètres, fenêtre recalée sur la vidéo du Segment (#172), réponse en flux. En `format=mp4`, vidéo seule :
+        Safari refuse un MP4 avec la piste audio PCM d'une caméra (bug #141) ; assemblé, de taille connue, servi selon
+        l'en-tête `Range` : Safari ouvre la `<video>` par `Range: bytes=0-1` et ne lit qu'un `206` (#143)."""
+        requete = relecture.recaler_la_requete(racine_enregistrements, request.url.query)
         try:
             reponse = urllib.request.urlopen(
-                f"{configuration.url_playback_mediamtx}/get?{request.url.query}", timeout=DELAI_PLAYBACK_S
+                f"{configuration.url_playback_mediamtx}/get?{requete}", timeout=DELAI_PLAYBACK_S
             )
         except urllib.error.HTTPError as erreur:
             return Response(erreur.read(), erreur.code, media_type=erreur.headers.get_content_type())

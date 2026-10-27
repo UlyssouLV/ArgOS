@@ -8,6 +8,10 @@ Sur 30 jours, des Segments d’environ une minute font des dizaines de milliers 
 
 Cette décision remplace la borne 1–24 h de l’ADR 0012 et la Timeline « toute la Conservation » de l’ADR 0013, sans les réécrire. Le seek à la seconde annoncé par l’ADR 0013 pour la 1.0.0 est reporté (Plus tard).
 
+> **Modifié en V1.1.0** ([#164](https://github.com/UlyssouLV/ArgOS/issues/164)) — Seek à la seconde
+> Avant : Reporté hors 1.0.0 (Plus tard) ; le clic garde la granularité « début du Segment »
+> Après : Livré en 1.1.0 : clic = seconde visée (ADR 0018)
+
 ## Considered Options
 
 - **Timeline unique sur toute la Conservation** : simple, mais inutilisable au-delà de quelques jours, et une réponse API de milliers de Segments.

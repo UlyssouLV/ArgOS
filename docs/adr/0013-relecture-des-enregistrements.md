@@ -10,6 +10,10 @@ L’enregistrement continu (ADR 0011) et le suivi stockage (ADR 0012) laissent l
 
 **Granularité timeline (V0.8.2).** Un clic sur la timeline saute au **début du segment** qui couvre l’instant (ou le plus proche). Seek précis à la seconde = refonte **1.0.0** — à ne pas « oublier » en polish UI.
 
+> **Modifié en V1.1.0** ([#164](https://github.com/UlyssouLV/ArgOS/issues/164)) — Granularité clic Timeline et enchaînement des Segments
+> Avant : Clic = début du Segment ; nouveau `src` à chaque Segment (`onEnded`)
+> Après : Clic = seconde visée ; fenêtre de lecture d’un Segment au plus dans une Plage enregistrée, la suivante préchargée avant sa fin (ADR 0018, #172)
+
 ## Considered Options
 
 - **Playback MediaMTX** (retenu) : le pont assemble déjà les fMP4 en MP4 sur une plage `start` + `duration`, même au-delà d'un Segment ; aligne Live et archives sur le même composant ; un `location` nginx de plus.

@@ -30,12 +30,13 @@ def url_relecture(chemin: str, debut: str, duree_s: float) -> httpx.URL:
 
 
 def _attendre_un_segment_ferme(client: httpx.Client, id_camera: int) -> dict:
-    """Premier Segment fermé d'au moins 1 s : avec une piste audio, le pont ouvre d'abord un Segment de quelques
-    dixièmes de seconde, audio seul, avant la première image clé vidéo."""
+    """Premier Segment fermé d'au moins 1 s après le premier de l'enregistrement : avec une piste audio, le pont ouvre
+    d'abord un Segment audio seul jusqu'à la première image clé vidéo, qui dépasse parfois 1 s (~2 s entre images
+    clés pour la Caméra simulée 4) ; les suivants commencent sur une image clé."""
     echeance = time.monotonic() + DELAI_SEGMENT_FERME_S
     while True:
         segments = client.get(f"/api/cameras/{id_camera}/segments").json()["segments"]
-        avec_video = [segment for segment in segments if _duree_s(segment) >= 1]
+        avec_video = [segment for segment in segments[1:] if _duree_s(segment) >= 1]
         if avec_video:
             return avec_video[0]
         if time.monotonic() > echeance:
